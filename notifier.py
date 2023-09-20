@@ -6,7 +6,7 @@ import os
 from PIL import Image, ImageTk
 import matplotlib
 matplotlib.use('Agg')
-from generate_fancy_plot import Plotter
+from generate_plot import Plotter
 import json
 
 
@@ -113,6 +113,8 @@ class Notifier:
         posture_win.deiconify()  # Show the root window
         posture_win.configure(background="black")
 
+        self.plotter.generate_plot()
+
         
         if os.path.exists(self.plot_file_path):
 
@@ -136,7 +138,6 @@ class Notifier:
             if not self.accept_keypress:
                 return
             if event.char in ['1', '2', '3', '4', '5']:
-                self.ratings_file_path = os.path.join(self.script_dir, 'posture_ratings.txt')
                 with open(self.ratings_file_path, "a") as file:
                         file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Rating: {event.char}\n")
                 posture_win.destroy()
