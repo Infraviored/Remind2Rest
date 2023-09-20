@@ -4,13 +4,12 @@
 
 ## Features
 
-- **Visual Reminders**: Uses full-screen overlays to grab the user's attention and deliver the reminder message.
   
 - **Eye Relax Reminder**: Encourages users to look away from the screen periodically to reduce eye strain. The reminder flashes alternating colors to promote distance gazing.
   
 - **Posture Reminder**: Periodically reminds users to correct their sitting posture. Users can also rate their current posture, providing a feedback loop to improve over time.
 
-- **Dynamic Plotting**: Offers a visualization of posture ratings over time, utilizing advanced interpolation techniques for smooth curves.
+- **Dynamic Plotting**: Offers a visualization of posture ratings over time.
 
 - **Configuration GUI**: A user-friendly graphical interface (`setup.py`) to adjust various settings of the application.
 
@@ -36,7 +35,7 @@
 
 2. **Clone the Repository**:
    ```
-   git clone <repository-url>
+   git clone https://github.com/Infraviored/HealthNotifier.git
    ```
 
 3. **Navigate to the Repository Directory**:
@@ -54,7 +53,7 @@
    - Set frequencies and durations for both eye relaxation and posture reminders.
    - Enable or disable specific reminders.
    - Install the application as a system service.
-   - Create a desktop entry for quick access.
+   - Create a desktop entry for quick access to the configuration tool.
 
 5. **Start Using HealthNotifier**:
    Once set up, HealthNotifier will operate in the background, delivering reminders based on your configured settings.
