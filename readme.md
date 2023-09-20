@@ -21,7 +21,7 @@
 
 - Python3
 - `tkinter`
-- `PIL` (Python Imaging Library)
+- `PIL`
 - `matplotlib`
 - `numpy`
 - `scipy`
