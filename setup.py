@@ -5,17 +5,29 @@ from tkinter import ttk, messagebox
 import json
 import os
 import subprocess
+import mmap
+import time
+
 
 class ConfigGUI:
+    # Constants for our simple protocol
+    CMD_STOP = b"STOP    "
+    CMD_RELOAD = b"RELOAD  "
+    STATUS_RUNNING = b"RUNNING"
+    STATUS_STOPPED = b"STOPPED"
+    
+    COMMAND_FILE_PATH = "/tmp/reminderapp_cmd.mmap"
+    STATE_FILE_PATH = "/tmp/reminderapp_state.mmap"
     def __init__(self, root):
         # Determine the directory of the current script
         self.script_dir = os.path.dirname(os.path.realpath(__file__))
+        self.reminder_app_path = os.path.join(self.script_dir, 'ReminderApp.py')
         # Construct the full path to reminder_config.json based on the script's directory
         self.config_path = os.path.join(self.script_dir, 'reminder_config.json')
 
         self.header_fontsize = 20
         self.content_fontsize = 12
-        button_width = 25
+        self.button_width = 40
 
         # Styles
         self.style = ttk.Style()
@@ -49,27 +61,7 @@ class ConfigGUI:
         self.create_eye_relax_section(frame)
         self.create_posture_section(frame)
         self.create_offset_section(frame)
-
-        self.save_button = ttk.Button(frame, text="Save Configurations", command=self.save_config, width=button_width)
-        self.save_button.grid(row=11, columnspan=2, pady=20)
-
-
-        self.boot_button = ttk.Button(frame, command=self.toggle_boot_status, width=button_width)  # Text will be set based on boot status
-        self.boot_button.grid(row=12, columnspan=2, pady=20)
-        
-
-        self.running_button = ttk.Button(frame, command=self.toggle_running_status, width=button_width)  # Text will be set based on boot status
-        self.running_button.grid(row=13, columnspan=2, pady=20)
-        
-
-        self.service_button = ttk.Button(frame, text="Set up System Service", command=self.setup_service, width=button_width)
-        self.service_button.grid(row=14, columnspan=2, pady=20)
-
-        self.service_button = ttk.Button(frame, text="Create Desktop Entry", command=self.create_desktop_file, width=button_width)
-        self.service_button.grid(row=15, columnspan=2, pady=20)
-
-        self.update_boot_button_text()
-        self.update_running_button_text()
+        self.create_buttons_section(frame)
 
     def create_eye_relax_section(self, parent_frame):
         # Eye Relax Reminder Configurations
@@ -113,6 +105,78 @@ class ConfigGUI:
         self.offset_var.insert(0, self.config_data.get('offset', 10))
         self.offset_var.grid(row=10, column=1, pady=5)
 
+    def create_buttons_section(self, parent_frame):
+        # Button to save configurations
+        self.save_button = ttk.Button(parent_frame, text="Save Configurations", command=self.save_config, width=self.button_width)
+        self.save_button.grid(row=11, columnspan=2, pady=20)
+
+        # Button to toggle ReminderApp's running status
+        self.running_button = ttk.Button(parent_frame, command=self.toggle_running_status, width=self.button_width)
+        self.running_button.grid(row=13, columnspan=2, pady=20)
+        self.update_running_button_text()  # Call this function to initially set the button text
+
+        self.autostart_button = ttk.Button(parent_frame, command=self.toggle_autostart_entry, width=self.button_width)
+        self.autostart_button.grid(row=14, columnspan=2, pady=20)
+        self.update_autostart_button_text()  # Call this function to initially set the button text
+
+        # Button for creating a desktop entry
+        self.desktop_entry_button = ttk.Button(parent_frame, text="Create Desktop Entry", command=self.create_desktop_file, width=self.button_width)
+        self.desktop_entry_button.grid(row=15, columnspan=2, pady=20)
+
+
+    def reload_service(self):
+        """Reload ReminderApp configuration using mmap."""
+        if os.path.exists(self.COMMAND_FILE_PATH):
+            with open(self.COMMAND_FILE_PATH, "r+b") as f:
+                mmapped_file = mmap.mmap(f.fileno(), 8)
+                mmapped_file.seek(0)
+                mmapped_file.write(self.CMD_RELOAD)
+            self.update_running_button_text()
+            subprocess.run(['notify-send', 'ReminderApp', 'Reloaded service!'])
+        else:
+            subprocess.run(['notify-send', 'ReminderApp', 'App not running!'])
+
+
+    # Changed function
+    def check_service_status(self):
+        """Check the status of the ReminderApp."""
+        try:
+            with open(self.STATE_FILE_PATH, "r+b") as f:
+                mmapped_file = mmap.mmap(f.fileno(), 8)
+                mmapped_file.seek(0)
+                status = mmapped_file.read(7)
+            return status
+        except FileNotFoundError:
+            return self.STATUS_STOPPED  # Modified line: Return STATUS_STOPPED if file not found
+
+    def toggle_running_status(self):
+        """Toggle the running status of the ReminderApp using mmap."""
+        try:
+            with open(self.COMMAND_FILE_PATH, "r+b") as f:
+                mmapped_file = mmap.mmap(f.fileno(), 8)
+                status = self.check_service_status()
+                
+                if status == self.STATUS_RUNNING:
+                    mmapped_file.seek(0)
+                    mmapped_file.write(self.CMD_STOP)
+                    time.sleep(0.2)  # Wait for 200 ms
+                    
+                    # Re-check the status
+                    status = self.check_service_status()
+                    
+                    # Remove the temp file if still running
+                    if status == self.STATUS_RUNNING:
+                        os.remove(self.COMMAND_FILE_PATH)
+                        os.remove(self.STATE_FILE_PATH)
+                else:
+                    subprocess.Popen(["python3", self.reminder_app_path])
+        except FileNotFoundError:
+            # Start ReminderApp if file not found
+            subprocess.Popen(["python3", self.reminder_app_path])
+
+        self.update_running_button_text()
+
+
     def save_config(self):
         flash_frequency_val = float(self.flash_frequency.get()) if self.flash_frequency.get() else 1.0
 
@@ -135,52 +199,13 @@ class ConfigGUI:
         with open(self.config_path, 'w') as file:
             json.dump(config_data, file)
         
-        running, _ = self.check_service_status()
-        if running:
-            self.restart_service()
-            messagebox.showinfo("Info", "Configurations saved and service restarted!")
+        running = self.check_service_status()
+        if running == self.STATUS_RUNNING:
+            self.reload_service()
+            subprocess.run(['notify-send', 'ReminderApp', 'Configurations saved and service restarted!'])
         else:
-            messagebox.showinfo("Info", "Configurations saved!")
+            subprocess.run(['notify-send', 'ReminderApp', 'Configurations saved!'])
 
-    def setup_service(self):
-        # Determine the directory of the current script
-        ReminderApp_path = os.path.join(self.script_dir, 'ReminderApp.py')
-
-
-        # Write the systemd service file content
-        service_content = f"""[Unit]
-    Description=Reminder App Service
-    After=network.target
-
-    [Service]
-    ExecStart=/usr/bin/python3 {ReminderApp_path}
-    Restart=always
-    Environment="DISPLAY=:0"
-
-    [Install]
-    WantedBy=default.target
-    """
-
-        service_path = os.path.join(os.path.expanduser("~"), ".config", "systemd", "user", "reminderapp.service")
-        
-        with open(service_path, 'w') as temp_service_file:
-            temp_service_file.write(service_content)
-
-        # Make the Python files executable
-        os.chmod(ReminderApp_path, 0o755)
-
-        # Reload the systemd user daemon and enable the service
-        if os.system("systemctl --user daemon-reload") == 0 and \
-        os.system("systemctl --user enable reminderapp") == 0 and \
-        os.system("systemctl --user start reminderapp") == 0:
-            os.system('notify-send "Info" "User service for ReminderApp.py set up!"')
-
-            messagebox.showinfo("Info", "User service for ReminderApp.py set up!")
-        else:
-            messagebox.showerror("Error", "Failed to set up the service. Please ensure you have the necessary permissions.")
-            
-        self.update_boot_button_text()
-        self.update_running_button_text()
 
     def create_desktop_file(self):
         setup_path = os.path.join(self.script_dir, 'setup.py')
@@ -200,65 +225,55 @@ class ConfigGUI:
         os.chmod(desktop_file_path, 0o755)
         messagebox.showinfo("Info", "Desktop file created!")
 
-
-
-    def check_service_status(self):
-        """Check the status of the reminderapp service and return its status."""
-        # Check if the service is active
-        process = subprocess.Popen(["systemctl", "--user", "is-active", "reminderapp"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output, error = process.communicate()
-        running = output.decode('utf-8').strip().lower() == "active"
-
-        # Check if the service is enabled on boot
-        process = subprocess.Popen(["systemctl", "--user", "is-enabled", "reminderapp"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output, error = process.communicate()
-
-        start_on_boot = "enabled" in output.decode('utf-8')
-        print(f"Service is running: {running} | Service is enabled on boot: {start_on_boot}")
-
-        return running, start_on_boot
-
-    def restart_service(self):
-        """Restart the reminderapp service."""
-        os.system("systemctl --user restart reminderapp")
-
-    def toggle_boot_status(self):
-        """Toggle the boot status of the service and update the button text."""
-        _, boot = self.check_service_status()
-        if boot:
-            # Disable the service on boot if it's currently enabled
-            os.system("systemctl --user disable reminderapp")
-        else:
-            # Enable the service on boot if it's currently disabled
-            os.system("systemctl --user enable reminderapp")
-        self.update_boot_button_text()
-
-    def update_boot_button_text(self):
-        """Update the boot button text based on the service's boot status."""
-        _, boot = self.check_service_status()
-        if boot:
-            self.boot_button.config(text="Start on Boot is ON")
-        else:
-            self.boot_button.config(text="Start on Boot is OFF")
-
-
-    def toggle_running_status(self):
-        """Toggle the boot status of the service and update the button text."""
-        running, _ = self.check_service_status()
-        if running:
-            os.system("systemctl --user stop reminderapp")
-        else:
-            os.system("systemctl --user start reminderapp")
-        self.update_running_button_text()
-
-
     def update_running_button_text(self):
-        """Update the boot button text based on the service's boot status."""
-        running, boot = self.check_service_status()
-        if running:
-            self.running_button.config(text="Service is ON")
+        """Update the button text based on the ReminderApp's status."""
+        status = self.check_service_status()
+        
+        if status == self.STATUS_RUNNING:
+            self.running_button.config(text="ReminderApp is ON (Click to turn OFF)")
         else:
-            self.running_button.config(text="Service is OFF")
+            self.running_button.config(text="ReminderApp is OFF (Click to turn ON)")
+        self.root.after(300, self.update_running_button_text)  # Call this function again after 1 second
+
+
+
+    def toggle_autostart_entry(self):
+        autostart_directory = os.path.expanduser("~/.config/autostart/")
+        autostart_file_path = os.path.join(autostart_directory, "HealthNotifier.desktop")
+
+        if os.path.exists(autostart_file_path):
+            os.remove(autostart_file_path)
+            messagebox.showinfo("Info", "HealthNotifier will NOT start on login!")
+        else:
+            # Ensure the autostart directory exists
+            if not os.path.exists(autostart_directory):
+                os.makedirs(autostart_directory)
+
+            # Create the .desktop file
+            with open(autostart_file_path, 'w') as file:
+                file.write("[Desktop Entry]\n")
+                file.write("Type=Application\n")
+                file.write("Exec=python3 /home/flo/Programs/HealthNotifier/ReminderApp.py\n")
+                file.write("Hidden=false\n")
+                file.write("NoDisplay=false\n")
+                file.write("X-GNOME-Autostart-enabled=true\n")
+                file.write("Name[en_US]=HealthNotifier\n")
+                file.write("Name=HealthNotifier\n")
+                file.write("Comment[en_US]=Start HealthNotifier on login\n")
+                file.write("Comment=Start HealthNotifier on login\n")
+            
+            messagebox.showinfo("Info", "HealthNotifier will now start on login!")
+
+        self.update_autostart_button_text()
+    def update_autostart_button_text(self):
+            
+        """Update the autostart button text based on the existence of the autostart file."""
+        autostart_file_path = os.path.join(os.path.expanduser("~/.config/autostart/"), "HealthNotifier.desktop")
+        if os.path.exists(autostart_file_path):
+            self.autostart_button.config(text="Start on Login (Enabled)")
+        else:
+            self.autostart_button.config(text="Start on Login (Disabled)")
+
 
 root = tk.Tk()
 app = ConfigGUI(root)
