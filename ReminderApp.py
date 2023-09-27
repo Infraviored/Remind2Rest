@@ -33,10 +33,10 @@ def init_mmap_file(file_path):
 
 def clear_mmap_command_file():
     """Clear the command memory-mapped file to its initial state."""
-    with open(COMMAND_FILE_PATH, "r+b") as f:  # Open the file in read+write mode
+    with open(COMMAND_FILE_PATH, "r+b") as f:
         mmapped_file = mmap.mmap(f.fileno(), 8)
         mmapped_file.seek(0)
-        mmapped_file.write(b'\0' * 8)  # Write eight null bytes to clear the file
+        mmapped_file.write(b'\0' * 8)
         mmapped_file.close()
 
 def set_mmap(file_path, status):
@@ -61,7 +61,12 @@ def display_current_config(config):
     print(f"Offset: {config['offset']} minutes")
     print("======================\n")
 
-# Changed function
+def init_timestamps(config):
+    current_time = time.time()
+    eye_relax_next_timestamp = current_time + config['eye_relax_interval'] * 60 if config['eye_relax_enabled'] else None
+    posture_next_timestamp = current_time + config['posture_interval'] * 60 + config['offset'] * 60 if config['posture_enabled'] else None
+    return eye_relax_next_timestamp, posture_next_timestamp
+
 def main():
 
     # Initialize the memory-mapped files
@@ -76,7 +81,7 @@ def main():
         print("Another instance of ReminderApp is already running.")
         return
 
-    clear_mmap_command_file()  # Clear command mmap file at the start
+    clear_mmap_command_file()
 
     # Set the state to RUNNING
     set_mmap(STATE_FILE_PATH, STATUS_RUNNING)
@@ -85,21 +90,18 @@ def main():
     with open(config_path, 'r') as file:
         config = json.load(file)
 
-    display_current_config(config)  # Display the current configuration
+    display_current_config(config)
 
-    # Initialize next timestamps
-    eye_relax_next_timestamp = time.time() + config['eye_relax_interval'] * 60 if config['eye_relax_enabled'] else None
-    posture_next_timestamp = time.time() + config['posture_interval'] * 60 if config['posture_enabled'] else None
+    eye_relax_next_timestamp, posture_next_timestamp = init_timestamps(config)
 
     while True:
         current_time = time.time()
-        # Check command
+        
         with open(COMMAND_FILE_PATH, "r+b") as f:
             mmapped_file = mmap.mmap(f.fileno(), 8)
             mmapped_file.seek(0)
             command = mmapped_file.read(8)
 
-        # Handle STOP command
         if command == CMD_STOP:
             print("Stopping ReminderApp...")
             set_mmap(STATE_FILE_PATH, STATUS_STOPPED)
@@ -107,14 +109,10 @@ def main():
             break
 
         if command == CMD_RELOAD:
-            # Re-load the configuration
             with open(config_path, 'r') as file:
                 config = json.load(file)
-            current_time = time.time()  # Update current_time here
-            eye_relax_next_timestamp = current_time + config['eye_relax_interval'] * 60 if config['eye_relax_enabled'] else None
-            posture_next_timestamp = current_time + config['posture_interval'] * 60 if config['posture_enabled'] else None
+            eye_relax_next_timestamp, posture_next_timestamp = init_timestamps(config)
             clear_mmap_command_file()
-
 
         eye_relax_time_str = str(int(eye_relax_next_timestamp - current_time)) if eye_relax_next_timestamp else 'N/A'
         posture_time_str = str(int(posture_next_timestamp - current_time)) if posture_next_timestamp else 'N/A'
@@ -123,21 +121,16 @@ def main():
 
         if eye_relax_next_timestamp is not None and current_time >= eye_relax_next_timestamp:
             print("\nCalling eye relax reminder.")
-            # Fixing the argument list for eye_relax_reminder
             eye_relax_reminder(config['flash_frequency'], config['relax_duration'])
             eye_relax_next_timestamp = current_time + config['eye_relax_interval'] * 60
 
-        # Check if it's time for posture reminder
         if posture_next_timestamp is not None and current_time >= posture_next_timestamp:
             print("\nCalling posture reminder.")
-            # Fixing the function call for posture_reminder
             posture_reminder(config['wait_duration'])
-            posture_next_timestamp = current_time + config['posture_interval'] * 60
+            posture_next_timestamp = current_time + config['posture_interval'] * 60 + config['offset'] * 60
 
-        # Sleep for 1 second before the next check
         time.sleep(0.1)
 
-    # Release the lock and remove temporary files
     fcntl.flock(lock_file, fcntl.LOCK_UN)
     if os.path.exists(LOCK_FILE_PATH):
         os.remove(LOCK_FILE_PATH)

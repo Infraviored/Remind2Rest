@@ -9,7 +9,6 @@ from generate_plot import generate_plot  # Keeping the Plotter import
 
 # Variables for file paths
 script_dir = os.path.dirname(os.path.realpath(__file__))
-plot_file_path = os.path.join(script_dir, 'ratings_plot.png')
 ratings_file_path = os.path.join(script_dir, 'posture_ratings.txt')
 
 # New function for eye_relax_reminder
@@ -87,7 +86,7 @@ def posture_reminder(wait_duration):
     posture_win.attributes('-fullscreen', True)
     posture_win.attributes('-topmost', True)
     posture_win.configure(background="black")
-    plot_img = generate_plot(ratings_file_path, plot_file_path)
+    plot_img = generate_plot(ratings_file_path)
     if plot_img:
         photo = ImageTk.PhotoImage(plot_img)
         label = tk.Label(posture_win, image=photo, background="black")
