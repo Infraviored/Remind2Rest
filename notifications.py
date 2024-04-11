@@ -79,8 +79,9 @@ def eye_relax_reminder(flash_frequency, relax_duration):
     relax_win.mainloop()
 
 # New function for posture_reminder
-def posture_reminder(wait_duration):
+def posture_reminder(wait_duration, timeout = 10):
     wait_duration_ms = round(wait_duration * 1000) if wait_duration > 0 else 3000
+    timeout_duration_ms = round(timeout * 1000) if timeout > 0 else 10000
     accept_keypress = False
     posture_win = tk.Tk()
     posture_win.attributes('-fullscreen', True)
@@ -111,7 +112,11 @@ def posture_reminder(wait_duration):
                 file.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - Rating: {event.char}\n")
             posture_win.destroy()
 
+    def close_window():
+        posture_win.destroy()
+
     posture_win.bind('<Key>', on_key)
     posture_win.after(wait_duration_ms, enable_keypress)
+    posture_win.after(timeout_duration_ms, close_window)
 
     posture_win.mainloop()

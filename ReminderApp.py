@@ -5,6 +5,7 @@ import time
 import os
 import fcntl
 import mmap
+import threading
 
 from notifications import eye_relax_reminder, posture_reminder
 
@@ -67,8 +68,20 @@ def init_timestamps(config):
     posture_next_timestamp = current_time + config['posture_interval'] * 60 + config['offset'] * 60 if config['posture_enabled'] else None
     return eye_relax_next_timestamp, posture_next_timestamp
 
-def main():
 
+def non_blocking_eye_relax_reminder(flash_frequency, relax_duration):
+    # Wrap the blocking call in a function that can be started as a thread
+    eye_relax_thread = threading.Thread(target=eye_relax_reminder, args=(flash_frequency, relax_duration))
+    eye_relax_thread.daemon = True  # This makes the thread exit when the main program exits
+    eye_relax_thread.start()
+
+def non_blocking_posture_reminder(wait_duration):
+    # Wrap the blocking call in a function that can be started as a thread
+    posture_reminder_thread = threading.Thread(target=posture_reminder, args=(wait_duration,))
+    posture_reminder_thread.daemon = True  # This makes the thread exit when the main program exits
+    posture_reminder_thread.start()
+
+def main():
     # Initialize the memory-mapped files
     init_mmap_file(COMMAND_FILE_PATH)
     init_mmap_file(STATE_FILE_PATH)
@@ -121,12 +134,12 @@ def main():
 
         if eye_relax_next_timestamp is not None and current_time >= eye_relax_next_timestamp:
             print("\nCalling eye relax reminder.")
-            eye_relax_reminder(config['flash_frequency'], config['relax_duration'])
+            non_blocking_eye_relax_reminder(config['flash_frequency'], config['relax_duration'])
             eye_relax_next_timestamp = current_time + config['eye_relax_interval'] * 60
 
         if posture_next_timestamp is not None and current_time >= posture_next_timestamp:
             print("\nCalling posture reminder.")
-            posture_reminder(config['wait_duration'])
+            non_blocking_posture_reminder(config['wait_duration'])
             posture_next_timestamp = current_time + config['posture_interval'] * 60 + config['offset'] * 60
 
         time.sleep(0.1)
