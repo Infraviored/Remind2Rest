@@ -19,9 +19,9 @@
 
 ## Dependencies
 
-- Python3
+- `Python3`
 - `tkinter`
-- `PIL`
+- `Pillow`
 - `matplotlib`
 - `numpy`
 - `scipy`
