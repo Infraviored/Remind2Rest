@@ -1,0 +1,242 @@
+/* static/css/styles.css */
+
+:root {
+    --background-color: #121212;
+    --surface-color: #1e1e1e;
+    --primary-text-color: #e0e0e0;
+    --secondary-text-color: #a0a0a0;
+    --accent-color: #ffffff;
+    --eye-relax-color: #3498db;
+    --posture-color: #e74c3c;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: var(--background-color);
+    color: var(--primary-text-color);
+    line-height: 1.6;
+    padding: 20px;
+}
+
+#app {
+    max-width: 800px;
+    margin: 0 auto;
+    background-color: var(--surface-color);
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+h1 {
+    color: var(--accent-color);
+    margin-bottom: 30px;
+}
+
+.module-section {
+    margin-bottom: 30px;
+}
+
+.module-section h2 {
+    display: flex;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.module-section h2 input[type="checkbox"] {
+    margin-right: 10px;
+}
+
+.module-config {
+    margin-left: 25px;
+    padding: 15px;
+    border-radius: 4px;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.eye-relax-color h2 {
+    color: var(--eye-relax-color);
+}
+
+.posture-color h2 {
+    color: var(--posture-color);
+}
+
+.interval-slider-container {
+    margin-top: 50px;
+    position: relative;
+}
+
+.interval-slider-container h3 {
+    font-size: 1.1em;
+    color: var(--secondary-text-color);
+}
+
+#interval-slider {
+    margin-top: 60px;
+    margin-bottom: 80px;  /* Increased to provide more space for the pips */
+    height: 8px;  /* Increased height of the slider bar */
+}
+
+.add-reminder-btn {
+    display: block;
+    width: 100%;
+    border: none;
+    color: var(--primary-text-color);
+    padding: 8px 12px;
+    text-align: center;
+    font-size: 14px;
+    margin-top: 15px;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.eye-relax-color .add-reminder-btn {
+    background-color: var(--eye-relax-color);
+}
+
+.posture-color .add-reminder-btn {
+    background-color: var(--posture-color);
+}
+
+button {
+    background-color: var(--accent-color);
+    color: var(--background-color);
+    border: none;
+    padding: 10px 15px;
+    margin: 10px 0;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+
+button:hover {
+    opacity: 0.8;
+}
+
+.button-group {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 30px;
+}
+
+.button-group button {
+    flex: 1;
+    margin: 0 10px;
+    background-color: var(--surface-color);
+    color: var(--primary-text-color);
+    border: 1px solid var(--accent-color);
+}
+
+input[type="number"] {
+    background-color: var(--surface-color);
+    border: 1px solid var(--secondary-text-color);
+    color: var(--primary-text-color);
+    padding: 5px;
+    border-radius: 4px;
+    margin-left: 10px;
+}
+
+label {
+    display: block;
+    margin-bottom: 10px;
+}
+
+.interval-slider-container h3 {
+    font-size: 1.1em;
+    color: var(--secondary-text-color);
+}
+
+.noUi-target {
+    background: var(--secondary-text-color);
+    border: none;
+    box-shadow: none;
+    height: 10px;  /* Increased height of the slider bar */
+}
+
+.noUi-connects {
+    background: transparent;
+    height: 10px;  /* Increased height of the slider bar */
+}
+
+.noUi-connect {
+    background: transparent;
+}
+
+.noUi-handle {
+    /* width: 40px !important;
+    height: 30px !important; */
+    border-radius: 50%;
+    background: var(--accent-color);
+    box-shadow: none;
+    cursor: pointer;
+    border: none;
+}
+
+.noUi-handle::before {
+    content: "";
+    display: block;
+    position: absolute;
+    height: 14px;
+    width: 1px;
+    background: var(--background-color);
+    left: 13px;
+    top: 8px;
+}
+
+.noUi-handle::after {
+    content: "";
+    display: block;
+    position: absolute;
+    height: 14px;
+    width: 1px;
+    background: var(--background-color);
+    left: 16px;
+    top: 8px;
+}
+
+.delete-button {
+    display: none;
+    position: absolute;
+    top: 35px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 30px;
+    height: 30px;
+    background-color: var(--accent-color);
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    padding: 0;
+    font-size: 16px;
+}
+
+.delete-button:hover {
+    background-color: var(--primary-text-color);
+}
+
+.delete-icon {
+    transform: translateY(2px);
+    width: 24px;
+    height: 24px;
+    fill: var(--background-color);
+}
+
+button[type="submit"] {
+    display: block;
+    width: 50%;
+    margin: 50px auto 0;  /* Increased top margin */
+    padding: 15px;
+    font-size: 1.2em;
+}
+
+.noUi-pips {
+    padding-top: 15px;  /* Increased space between slider and pips */
+}
+
+.noUi-value {
+    color: var(--primary-text-color);
+}
+
+.noUi-marker {
+    background: var(--secondary-text-color);
+}

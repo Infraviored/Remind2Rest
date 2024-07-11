@@ -6,152 +6,199 @@ import os
 import fcntl
 import mmap
 import threading
+import logging
+from datetime import datetime, timedelta
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 
 from notifications import eye_relax_reminder, posture_reminder
 
 # Constants for our simple protocol
 CMD_STOP = b"STOP    "
 CMD_RELOAD = b"RELOAD  "
-STATUS_RUNNING = b"RUNNING"
-STATUS_STOPPED = b"STOPPED"
+STATUS_RUNNING = b"RUNNING "
+STATUS_STOPPED = b"STOPPED "
 
 LOCK_FILE_PATH = "/tmp/reminderapp.lock"
 COMMAND_FILE_PATH = "/tmp/reminderapp_cmd.mmap"
 STATE_FILE_PATH = "/tmp/reminderapp_state.mmap"
 
-# Determine the directory of the current script
 script_dir = os.path.dirname(os.path.realpath(__file__))
-
-# Construct the full path to reminder_config.json based on the script's directory
 config_path = os.path.join(script_dir, 'reminder_config.json')
 
+logging.basicConfig(filename='reminderapp.log', level=logging.DEBUG,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
 def init_mmap_file(file_path):
-    """Ensure the memory-mapped file exists and has the correct size."""
     with open(file_path, "a+b") as f:
         if f.tell() < 8:
             f.write(b'\0' * (8 - f.tell()))
         f.flush()
 
 def clear_mmap_command_file():
-    """Clear the command memory-mapped file to its initial state."""
-    with open(COMMAND_FILE_PATH, "r+b") as f:
-        mmapped_file = mmap.mmap(f.fileno(), 8)
-        mmapped_file.seek(0)
-        mmapped_file.write(b'\0' * 8)
-        mmapped_file.close()
+    try:
+        with open(COMMAND_FILE_PATH, "r+b") as f:
+            mmapped_file = mmap.mmap(f.fileno(), 8)
+            mmapped_file.seek(0)
+            mmapped_file.write(b'\0' * 8)
+            mmapped_file.close()
+    except FileNotFoundError:
+        pass
 
 def set_mmap(file_path, status):
-    """Set the memory-mapped file status."""
-    with open(file_path, "r+b") as f:
-        mmapped_file = mmap.mmap(f.fileno(), 8)
-        mmapped_file.seek(0)
-        mmapped_file.write(status)
-        mmapped_file.close()
+    try:
+        with open(file_path, "r+b") as f:
+            mmapped_file = mmap.mmap(f.fileno(), 8)
+            mmapped_file.seek(0)
+            mmapped_file.write(status)
+            mmapped_file.close()
+    except FileNotFoundError:
+        pass
 
-def display_current_config(config):
-    """Display the current configuration settings."""
-    print("Current Configuration:")
-    print("======================")
-    print(f"Eye Relax Reminder Enabled: {config['eye_relax_enabled']}")
-    print(f"Eye Relax Interval: {config['eye_relax_interval']} minutes")
-    print(f"Relax Duration: {config['relax_duration']} seconds")
-    print(f"Flash Frequency: {config['flash_frequency']} Hz")
-    print(f"Posture Reminder Enabled: {config['posture_enabled']}")
-    print(f"Posture Reminder Interval: {config['posture_interval']} minutes")
-    print(f"Wait Duration: {config['wait_duration']} seconds")
-    print(f"Offset: {config['offset']} minutes")
-    print("======================\n")
+def load_config():
+    try:
+        with open(config_path, 'r') as file:
+            config = json.load(file)
+        validate_config(config)
+        return config
+    except json.JSONDecodeError:
+        logging.error(f"Error: Invalid JSON in {config_path}")
+    except FileNotFoundError:
+        logging.error(f"Error: Config file not found at {config_path}")
+    except ValueError as e:
+        logging.error(f"Error: Invalid configuration - {str(e)}")
+    return None
 
-def init_timestamps(config):
-    current_time = time.time()
-    eye_relax_next_timestamp = current_time + config['eye_relax_interval'] * 60 if config['eye_relax_enabled'] else None
-    posture_next_timestamp = current_time + config['posture_interval'] * 60 + config['offset'] * 60 if config['posture_enabled'] else None
-    return eye_relax_next_timestamp, posture_next_timestamp
+def validate_config(config):
+    if 'global_interval' not in config:
+        raise ValueError("Missing 'global_interval' in config")
+    for module in ['eye_relax', 'posture']:
+        if module not in config:
+            raise ValueError(f"Missing '{module}' in config")
+        if 'enabled' not in config[module]:
+            raise ValueError(f"Missing 'enabled' for module {module}")
+        if 'reminders' not in config[module]:
+            raise ValueError(f"Missing 'reminders' for module {module}")
 
+def print_config_summary(config):
+    print(f"Reminder Interval: {config['global_interval']}min")
+    print(f"Eye Relax Reminders: {', '.join(map(str, config['eye_relax']['reminders'])) if config['eye_relax']['enabled'] else 'Not set'}")
+    print(f"Posture Reminders: {', '.join(map(str, config['posture']['reminders'])) if config['posture']['enabled'] else 'Not set'}")
+    print()
 
-def non_blocking_eye_relax_reminder(flash_frequency, relax_duration):
-    # Wrap the blocking call in a function that can be started as a thread
-    eye_relax_thread = threading.Thread(target=eye_relax_reminder, args=(flash_frequency, relax_duration))
-    eye_relax_thread.daemon = True  # This makes the thread exit when the main program exits
-    eye_relax_thread.start()
+def schedule_reminders(scheduler, config):
+    scheduler.remove_all_jobs()
+    interval_minutes = config['global_interval']
+    
+    def check_and_trigger_reminders():
+        current_time = datetime.now()
+        elapsed_minutes = (current_time.hour * 60 + current_time.minute) % interval_minutes
+        elapsed_seconds = current_time.second
 
-def non_blocking_posture_reminder(wait_duration):
-    # Wrap the blocking call in a function that can be started as a thread
-    posture_reminder_thread = threading.Thread(target=posture_reminder, args=(wait_duration,))
-    posture_reminder_thread.daemon = True  # This makes the thread exit when the main program exits
-    posture_reminder_thread.start()
+        next_reminder = None
+        next_reminder_type = None
+        time_to_next = float('inf')
+
+        for module in ['eye_relax', 'posture']:
+            if config[module]['enabled']:
+                for reminder in config[module]['reminders']:
+                    time_to_reminder = ((reminder - elapsed_minutes) % interval_minutes) * 60 - elapsed_seconds
+                    if 0 <= time_to_reminder < time_to_next:
+                        time_to_next = time_to_reminder
+                        next_reminder = reminder
+                        next_reminder_type = module
+
+                    if elapsed_minutes == reminder and elapsed_seconds < 1:
+                        trigger_reminder(module, config[module])
+
+        minutes_to_next, seconds_to_next = divmod(int(time_to_next), 60)
+        print(f"\rAt {elapsed_minutes:02d}min, {elapsed_seconds:02d}s of Interval | Next Reminder: {next_reminder_type.replace('_', ' ').title() if next_reminder_type else 'None'} in {minutes_to_next:02d}min, {seconds_to_next:02d}s", end='', flush=True)
+
+    scheduler.add_job(check_and_trigger_reminders, IntervalTrigger(seconds=1))
+
+def trigger_reminder(module, settings):
+    print(f"\nTriggering {module} reminder")
+    logging.info(f"Triggering {module} reminder")
+    if module == 'eye_relax':
+        threading.Thread(target=eye_relax_reminder, 
+                         args=(settings['flash_frequency'],
+                               settings['relax_duration'])).start()
+    elif module == 'posture':
+        threading.Thread(target=posture_reminder, 
+                         args=(settings['wait_duration'],)).start()
 
 def main():
-    # Initialize the memory-mapped files
     init_mmap_file(COMMAND_FILE_PATH)
     init_mmap_file(STATE_FILE_PATH)
 
-    # Acquire a lock to ensure single instance
     lock_file = open(LOCK_FILE_PATH, 'a')
     try:
         fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except IOError:
-        print("Another instance of ReminderApp is already running.")
+        logging.error("Another instance of ReminderApp is already running.")
         return
 
     clear_mmap_command_file()
-
-    # Set the state to RUNNING
     set_mmap(STATE_FILE_PATH, STATUS_RUNNING)
+    config = load_config()
+    
+    if config is None:
+        logging.error("Error loading configuration. Exiting.")
+        return
 
-    # Load configurations
-    with open(config_path, 'r') as file:
-        config = json.load(file)
+    logging.info("ReminderApp started successfully.")
+    logging.info(f"Loaded configuration: {json.dumps(config, indent=2)}")
+    
+    print("ReminderApp started successfully.")
+    print_config_summary(config)
+    
+    scheduler = BackgroundScheduler()
+    scheduler.start()
+    schedule_reminders(scheduler, config)
+    
+    try:
+        while True:
+            try:
+                with open(COMMAND_FILE_PATH, "r+b") as f:
+                    mmapped_file = mmap.mmap(f.fileno(), 8)
+                    mmapped_file.seek(0)
+                    command = mmapped_file.read(8)
 
-    display_current_config(config)
+                if command == CMD_STOP:
+                    print("\nStopping ReminderApp...")
+                    logging.info("Stopping ReminderApp...")
+                    break
+                elif command == CMD_RELOAD:
+                    print("\nReloading configuration...")
+                    logging.info("Reloading configuration...")
+                    new_config = load_config()
+                    if new_config is not None:
+                        config = new_config
+                        schedule_reminders(scheduler, config)
+                        print_config_summary(config)
+                        logging.info(f"Reloaded configuration: {json.dumps(config, indent=2)}")
+                    else:
+                        print("Error reloading configuration. Continuing with previous config.")
+                        logging.error("Error reloading configuration. Continuing with previous config.")
+                    clear_mmap_command_file()
+            except FileNotFoundError:
+                print("\nCommand file deleted. Stopping ReminderApp...")
+                logging.info("Command file deleted. Stopping ReminderApp...")
+                break
 
-    eye_relax_next_timestamp, posture_next_timestamp = init_timestamps(config)
-
-    while True:
-        current_time = time.time()
-        
-        with open(COMMAND_FILE_PATH, "r+b") as f:
-            mmapped_file = mmap.mmap(f.fileno(), 8)
-            mmapped_file.seek(0)
-            command = mmapped_file.read(8)
-
-        if command == CMD_STOP:
-            print("Stopping ReminderApp...")
-            set_mmap(STATE_FILE_PATH, STATUS_STOPPED)
-            clear_mmap_command_file()
-            break
-
-        if command == CMD_RELOAD:
-            with open(config_path, 'r') as file:
-                config = json.load(file)
-            eye_relax_next_timestamp, posture_next_timestamp = init_timestamps(config)
-            clear_mmap_command_file()
-
-        eye_relax_time_str = str(int(eye_relax_next_timestamp - current_time)) if eye_relax_next_timestamp else 'N/A'
-        posture_time_str = str(int(posture_next_timestamp - current_time)) if posture_next_timestamp else 'N/A'
-        
-        print(f"Time to next eye relax: {eye_relax_time_str:>5} s | Time to next posture: {posture_time_str:>5} s", end='\r')
-
-        if eye_relax_next_timestamp is not None and current_time >= eye_relax_next_timestamp:
-            print("\nCalling eye relax reminder.")
-            non_blocking_eye_relax_reminder(config['flash_frequency'], config['relax_duration'])
-            eye_relax_next_timestamp = current_time + config['eye_relax_interval'] * 60
-
-        if posture_next_timestamp is not None and current_time >= posture_next_timestamp:
-            print("\nCalling posture reminder.")
-            non_blocking_posture_reminder(config['wait_duration'])
-            posture_next_timestamp = current_time + config['posture_interval'] * 60 + config['offset'] * 60
-
-        time.sleep(0.1)
-
-    fcntl.flock(lock_file, fcntl.LOCK_UN)
-    if os.path.exists(LOCK_FILE_PATH):
-        os.remove(LOCK_FILE_PATH)
-    if os.path.exists(COMMAND_FILE_PATH):
-        os.remove(COMMAND_FILE_PATH)
-    if os.path.exists(STATE_FILE_PATH):
-        os.remove(STATE_FILE_PATH)
-
+            time.sleep(1)
+    except Exception as e:
+        print(f"\nAn error occurred: {str(e)}")
+        logging.error(f"An error occurred: {str(e)}")
+    finally:
+        scheduler.shutdown()
+        set_mmap(STATE_FILE_PATH, STATUS_STOPPED)
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        for file_path in [LOCK_FILE_PATH, COMMAND_FILE_PATH, STATE_FILE_PATH]:
+            try:
+                os.remove(file_path)
+            except FileNotFoundError:
+                pass
 
 if __name__ == "__main__":
     main()

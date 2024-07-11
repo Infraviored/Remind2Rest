@@ -1,0 +1,73 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HealthNotifier Configuration</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.css">
+</head>
+
+<body>
+    <div id="app">
+        <h1>HealthNotifier Configuration</h1>
+        <form @submit.prevent="saveConfig">
+            <div class="module-section eye-relax-color">
+                <h2>
+                    <input type="checkbox" :checked="config.eye_relax.enabled"
+                        @change="toggleModule('eye_relax', $event)">
+                    Eye Relax Reminder
+                </h2>
+                <div v-if="config.eye_relax.enabled" class="module-config">
+                    <label>
+                        Relax Duration (seconds):
+                        <input type="number" v-model.number="config.eye_relax.relax_duration">
+                    </label>
+                    <label>
+                        Flash Frequency (Hz):
+                        <input type="number" v-model.number="config.eye_relax.flash_frequency">
+                    </label>
+                    <button @click.prevent="addReminder('eye_relax')" class="add-reminder-btn">Add Reminder</button>
+                </div>
+            </div>
+            <div class="module-section posture-color">
+                <h2>
+                    <input type="checkbox" :checked="config.posture.enabled" @change="toggleModule('posture', $event)">
+                    Posture Reminder
+                </h2>
+                <div v-if="config.posture.enabled" class="module-config">
+                    <label>
+                        Wait Duration (seconds):
+                        <input type="number" v-model.number="config.posture.wait_duration">
+                    </label>
+                    <button @click.prevent="addReminder('posture')" class="add-reminder-btn">Add Reminder</button>
+                </div>
+            </div>
+            <div class="interval-slider-container">
+                <h3>Reminder Interval</h3>
+                <label>
+                    Total Interval (minutes):
+                    <input type="number" v-model.number="config.global_interval" @change="updateTotalInterval">
+                </label>
+                <div id="interval-slider"></div>
+            </div>
+            <button type="submit">Save Configuration</button>
+        </form>
+        <div class="button-group">
+            <button @click="toggleService">{% raw %}{{ serviceStatus }}{% endraw %}</button>
+            <button @click="toggleAutostart">{% raw %}{{ autostartStatus }}{% endraw %}</button>
+            <button @click="createDesktopEntry">Create Desktop Entry</button>
+        </div>
+    </div>
+    <script id="config-data" type="application/json">
+        {{ config | tojson | safe }}
+    </script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+
+</html>
