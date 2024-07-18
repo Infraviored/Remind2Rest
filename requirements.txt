@@ -1,0 +1,6 @@
+apscheduler
+pillow
+matplotlib
+numpy
+scipy
+flask

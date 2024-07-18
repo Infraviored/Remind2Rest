@@ -6,6 +6,10 @@ import os
 import subprocess
 import mmap
 import time
+import webbrowser
+browser_opened = False
+
+import threading
 
 app = Flask(__name__)
 
@@ -102,12 +106,32 @@ def autostart_status():
 
 @app.route('/create_desktop_entry', methods=['POST'])
 def create_desktop_entry():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     desktop_file_path = os.path.expanduser("~/.local/share/applications/reminderapp.desktop")
+    
     with open(desktop_file_path, 'w') as desktop_file:
-        desktop_file.write(f"[Desktop Entry]\nName=Reminder App\nExec=/usr/bin/python3 {script_dir}/app.py\n"
-                           f"Icon={script_dir}/icon.png\nTerminal=false\nType=Application\nCategories=Utility;Application;\n")
+        desktop_file.write(f"""[Desktop Entry]
+Name=Reminder App
+Exec=/usr/bin/python3 {script_dir}/flask_server.py
+Icon={script_dir}/icon.png
+Terminal=false
+Type=Application
+Categories=Utility;Application;
+""")
+    
     os.chmod(desktop_file_path, 0o755)
     return jsonify({"status": "success"})
 
+def open_browser():
+    global browser_opened
+    if not browser_opened:
+        try:
+            webbrowser.open('http://localhost:5000', new=2)
+            print("Browser opened successfully")
+            browser_opened = True
+        except Exception as e:
+            print(f"Error opening browser: {e}")
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    threading.Thread(target=open_browser).start()
+    app.run(debug=True, use_reloader=False)

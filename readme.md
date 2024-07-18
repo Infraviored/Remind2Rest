@@ -20,11 +20,12 @@
 ## Dependencies
 
 - `Python3`
-- `tkinter`
-- `Pillow`
+- `apscheduler`
+- `pillow`
 - `matplotlib`
 - `numpy`
 - `scipy`
+
 
 ## Setup
 
