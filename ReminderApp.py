@@ -3,68 +3,37 @@
 import json
 import time
 import os
-import fcntl
-import mmap
-import threading
+import socket
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-
+import threading
 from notifications import eye_relax_reminder, posture_reminder
 
-# Constants for our simple protocol
-CMD_STOP = b"STOP    "
-CMD_RELOAD = b"RELOAD  "
-STATUS_RUNNING = b"RUNNING "
-STATUS_STOPPED = b"STOPPED "
+# Use user-specific paths
+SOCKET_PATH = os.path.expanduser('~/.reminderapp.sock')
+CONFIG_PATH = os.path.expanduser('~/.config/reminderapp/reminder_config.json')
+LOG_PATH = os.path.expanduser('~/.local/share/reminderapp/reminderapp.log')
 
-LOCK_FILE_PATH = "/tmp/reminderapp.lock"
-COMMAND_FILE_PATH = "/tmp/reminderapp_cmd.mmap"
-STATE_FILE_PATH = "/tmp/reminderapp_state.mmap"
+# Ensure log directory exists
+os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
 
-script_dir = os.path.dirname(os.path.realpath(__file__))
-config_path = os.path.join(script_dir, 'reminder_config.json')
-
-logging.basicConfig(filename='reminderapp.log', level=logging.DEBUG,
+logging.basicConfig(filename=LOG_PATH, level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-def init_mmap_file(file_path):
-    with open(file_path, "a+b") as f:
-        if f.tell() < 8:
-            f.write(b'\0' * (8 - f.tell()))
-        f.flush()
-
-def clear_mmap_command_file():
-    try:
-        with open(COMMAND_FILE_PATH, "r+b") as f:
-            mmapped_file = mmap.mmap(f.fileno(), 8)
-            mmapped_file.seek(0)
-            mmapped_file.write(b'\0' * 8)
-            mmapped_file.close()
-    except FileNotFoundError:
-        pass
-
-def set_mmap(file_path, status):
-    try:
-        with open(file_path, "r+b") as f:
-            mmapped_file = mmap.mmap(f.fileno(), 8)
-            mmapped_file.seek(0)
-            mmapped_file.write(status)
-            mmapped_file.close()
-    except FileNotFoundError:
-        pass
+current_status = {}
 
 def load_config():
     try:
-        with open(config_path, 'r') as file:
+        with open(CONFIG_PATH, 'r') as file:
             config = json.load(file)
         validate_config(config)
         return config
     except json.JSONDecodeError:
-        logging.error(f"Error: Invalid JSON in {config_path}")
+        logging.error(f"Error: Invalid JSON in {CONFIG_PATH}")
     except FileNotFoundError:
-        logging.error(f"Error: Config file not found at {config_path}")
+        logging.error(f"Error: Config file not found at {CONFIG_PATH}")
     except ValueError as e:
         logging.error(f"Error: Invalid configuration - {str(e)}")
     return None
@@ -80,11 +49,10 @@ def validate_config(config):
         if 'reminders' not in config[module]:
             raise ValueError(f"Missing 'reminders' for module {module}")
 
-def print_config_summary(config):
-    print(f"Reminder Interval: {config['global_interval']}min")
-    print(f"Eye Relax Reminders: {', '.join(map(str, config['eye_relax']['reminders'])) if config['eye_relax']['enabled'] else 'Not set'}")
-    print(f"Posture Reminders: {', '.join(map(str, config['posture']['reminders'])) if config['posture']['enabled'] else 'Not set'}")
-    print()
+def update_status(status):
+    global current_status
+    current_status = status
+    logging.info(f"Status updated: {status}")
 
 def schedule_reminders(scheduler, config):
     scheduler.remove_all_jobs()
@@ -112,12 +80,17 @@ def schedule_reminders(scheduler, config):
                         trigger_reminder(module, config[module])
 
         minutes_to_next, seconds_to_next = divmod(int(time_to_next), 60)
-        print(f"\rAt {elapsed_minutes:02d}min, {elapsed_seconds:02d}s of Interval | Next Reminder: {next_reminder_type.replace('_', ' ').title() if next_reminder_type else 'None'} in {minutes_to_next:02d}min, {seconds_to_next:02d}s", end='', flush=True)
+        status = {
+            "running": True,
+            "next_reminder": next_reminder_type,
+            "time_to_next": f"{minutes_to_next:02d}:{seconds_to_next:02d}",
+            "total_interval": f"{interval_minutes:02d}"
+        }
+        update_status(status)
 
     scheduler.add_job(check_and_trigger_reminders, IntervalTrigger(seconds=1))
 
 def trigger_reminder(module, settings):
-    print(f"\nTriggering {module} reminder")
     logging.info(f"Triggering {module} reminder")
     if module == 'eye_relax':
         threading.Thread(target=eye_relax_reminder, 
@@ -128,77 +101,59 @@ def trigger_reminder(module, settings):
                          args=(settings['wait_duration'],)).start()
 
 def main():
-    init_mmap_file(COMMAND_FILE_PATH)
-    init_mmap_file(STATE_FILE_PATH)
+    if os.path.exists(SOCKET_PATH):
+        os.remove(SOCKET_PATH)
 
-    lock_file = open(LOCK_FILE_PATH, 'a')
-    try:
-        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except IOError:
-        logging.error("Another instance of ReminderApp is already running.")
-        return
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.bind(SOCKET_PATH)
+        s.listen()
+        s.setblocking(False)
 
-    clear_mmap_command_file()
-    set_mmap(STATE_FILE_PATH, STATUS_RUNNING)
-    config = load_config()
-    
-    if config is None:
-        logging.error("Error loading configuration. Exiting.")
-        return
+        config = load_config()
+        if config is None:
+            logging.error("Error loading configuration. Exiting.")
+            return
 
-    logging.info("ReminderApp started successfully.")
-    logging.info(f"Loaded configuration: {json.dumps(config, indent=2)}")
-    
-    print("ReminderApp started successfully.")
-    print_config_summary(config)
-    
-    scheduler = BackgroundScheduler()
-    scheduler.start()
-    schedule_reminders(scheduler, config)
-    
-    try:
+        logging.info("ReminderApp started successfully.")
+        
+        scheduler = BackgroundScheduler()
+        scheduler.start()
+        schedule_reminders(scheduler, config)
+        
         while True:
             try:
-                with open(COMMAND_FILE_PATH, "r+b") as f:
-                    mmapped_file = mmap.mmap(f.fileno(), 8)
-                    mmapped_file.seek(0)
-                    command = mmapped_file.read(8)
-
-                if command == CMD_STOP:
-                    print("\nStopping ReminderApp...")
-                    logging.info("Stopping ReminderApp...")
-                    break
-                elif command == CMD_RELOAD:
-                    print("\nReloading configuration...")
-                    logging.info("Reloading configuration...")
-                    new_config = load_config()
-                    if new_config is not None:
-                        config = new_config
-                        schedule_reminders(scheduler, config)
-                        print_config_summary(config)
-                        logging.info(f"Reloaded configuration: {json.dumps(config, indent=2)}")
-                    else:
-                        print("Error reloading configuration. Continuing with previous config.")
-                        logging.error("Error reloading configuration. Continuing with previous config.")
-                    clear_mmap_command_file()
-            except FileNotFoundError:
-                print("\nCommand file deleted. Stopping ReminderApp...")
-                logging.info("Command file deleted. Stopping ReminderApp...")
-                break
-
-            time.sleep(1)
-    except Exception as e:
-        print(f"\nAn error occurred: {str(e)}")
-        logging.error(f"An error occurred: {str(e)}")
-    finally:
-        scheduler.shutdown()
-        set_mmap(STATE_FILE_PATH, STATUS_STOPPED)
-        fcntl.flock(lock_file, fcntl.LOCK_UN)
-        for file_path in [LOCK_FILE_PATH, COMMAND_FILE_PATH, STATE_FILE_PATH]:
-            try:
-                os.remove(file_path)
-            except FileNotFoundError:
+                conn, addr = s.accept()
+                with conn:
+                    conn.sendall(json.dumps(current_status).encode())
+            except BlockingIOError:
+                # No connection available, continue
                 pass
+            except Exception as e:
+                logging.error(f"Error in main loop: {str(e)}")
+
+            # Check for STOP or RELOAD commands
+            try:
+                conn, addr = s.accept()
+                with conn:
+                    data = conn.recv(1024)
+                    if data == b'STOP':
+                        break
+                    elif data == b'RELOAD':
+                        new_config = load_config()
+                        if new_config is not None:
+                            config = new_config
+                            schedule_reminders(scheduler, config)
+                            logging.info("Configuration reloaded.")
+            except BlockingIOError:
+                # No connection available, continue
+                pass
+            except Exception as e:
+                logging.error(f"Error checking for commands: {str(e)}")
+
+            time.sleep(0.1)  # Short sleep to prevent CPU hogging
+
+    scheduler.shutdown()
+    os.remove(SOCKET_PATH)
 
 if __name__ == "__main__":
     main()
