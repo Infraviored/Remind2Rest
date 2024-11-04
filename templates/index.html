@@ -15,7 +15,7 @@
 
 <body>
     <div id="app">
-        <h1>Remind2Rest Configuration</h1>
+        <h1 class="main-title">Remind2Rest</h1>
         <form @submit.prevent="saveConfig">
             <div class="module-section eye-relax-color">
                 <h2>
@@ -48,13 +48,15 @@
                     <button @click.prevent="addReminder('posture')" class="add-reminder-btn">Add Reminder</button>
                 </div>
             </div>
-            <div class="interval-slider-container">
-                <h3>Reminder Interval</h3>
-                <label>
-                    Total Interval (minutes):
-                    <input type="number" v-model.number="config.global_interval" @change="updateTotalInterval">
-                </label>
-                <div id="interval-slider"></div>
+            <div class="interval-slider-section">
+                <h2>Reminder Interval</h2>
+                <div class="interval-slider-container">
+                    <label>
+                        Total Interval (minutes):
+                        <input type="number" v-model.number="config.global_interval" @change="updateTotalInterval">
+                    </label>
+                    <div id="interval-slider"></div>
+                </div>
             </div>
             <button type="submit">Save Configuration</button>
         </form>

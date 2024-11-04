@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from shutil import copy2
 
 # Define standard XDG paths
 XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
@@ -12,6 +13,7 @@ XDG_DATA_HOME = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/sha
 # App-specific paths
 APP_CONFIG_DIR = os.path.join(XDG_CONFIG_HOME, "Remind2Rest")
 APP_DATA_DIR = os.path.join(XDG_DATA_HOME, "Remind2Rest")
+APP_ICONS_DIR = os.path.join(APP_DATA_DIR, "icons")
 SERVICE_PATH = os.path.expanduser("~/.config/systemd/user/Remind2Rest.service")
 
 
@@ -41,6 +43,47 @@ WantedBy=default.target
         f.write(service_content)
 
 
+def copy_resources(current_dir):
+    """Copy all necessary resources to appropriate locations"""
+    # Create directories if they don't exist
+    os.makedirs(APP_CONFIG_DIR, exist_ok=True)
+    os.makedirs(APP_DATA_DIR, exist_ok=True)
+    os.makedirs(APP_ICONS_DIR, exist_ok=True)
+
+    # Copy icon
+    icon_src = os.path.join(current_dir, "Remind2Rest.png")
+    icon_dst = os.path.join(APP_ICONS_DIR, "Remind2Rest.png")
+    if os.path.exists(icon_src):
+        copy2(icon_src, icon_dst)
+        print(f"Icon copied to: {icon_dst}")
+    else:
+        print("Warning: Remind2Rest.png not found!")
+
+    # Copy config file
+    config_src = os.path.join(current_dir, "reminder_config.json")
+    config_dst = os.path.join(APP_CONFIG_DIR, "reminder_config.json")
+
+    if os.path.exists(config_dst):
+        if (
+            get_input(
+                f"\nConfig file already exists at {config_dst}. Replace it? (y/n): "
+            )
+            != "y"
+        ):
+            print("Keeping existing config file.")
+            return config_dst
+
+    if os.path.exists(config_src):
+        copy2(config_src, config_dst)
+        print(f"Config file copied to: {config_dst}")
+    else:
+        print(
+            "Warning: reminder_config.json not found. You'll need to create it manually."
+        )
+
+    return config_dst
+
+
 def uninstall():
     print("\nUninstalling Remind2Rest...")
     # Stop and disable service
@@ -56,12 +99,19 @@ def uninstall():
     subprocess.run(["systemctl", "--user", "reset-failed"])
 
     # Ask about config removal
-    if get_input("\nDo you want to remove all configuration files? (y/n): ") == "y":
-        if os.path.exists(APP_CONFIG_DIR):
-            shutil.rmtree(APP_CONFIG_DIR)
-        if os.path.exists(APP_DATA_DIR):
-            shutil.rmtree(APP_DATA_DIR)
-        print("Configuration files removed.")
+    if (
+        get_input("\nDo you want to remove all configuration files and data? (y/n): ")
+        == "y"
+    ):
+        for directory in [APP_CONFIG_DIR, APP_DATA_DIR]:
+            if os.path.exists(directory):
+                try:
+                    shutil.rmtree(directory)
+                    print(f"Removed: {directory}")
+                except Exception as e:
+                    print(f"Error removing {directory}: {e}")
+    else:
+        print("Configuration and data files preserved.")
 
     print("Uninstallation completed!")
 
@@ -69,22 +119,9 @@ def uninstall():
 def install_service(app_path):
     print("\nInstalling Remind2Rest...")
 
-    # Create necessary directories
-    os.makedirs(APP_CONFIG_DIR, exist_ok=True)
-    os.makedirs(APP_DATA_DIR, exist_ok=True)
-
-    # Copy config file if it exists
+    # Copy all necessary files
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_src = os.path.join(current_dir, "reminder_config.json")
-    config_dst = os.path.join(APP_CONFIG_DIR, "reminder_config.json")
-
-    if os.path.exists(config_src):
-        shutil.copy2(config_src, config_dst)
-        print(f"Config file copied to: {config_dst}")
-    else:
-        print(
-            "Warning: reminder_config.json not found. You'll need to create it manually."
-        )
+    config_dst = copy_resources(current_dir)
 
     # Create service file
     create_service_file(app_path, config_dst)
