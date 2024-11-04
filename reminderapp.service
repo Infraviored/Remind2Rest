@@ -1,0 +1,11 @@
+[Unit]
+Description=Health Reminder Application
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /path/to/Remind2Rest.py
+Restart=always
+User=schneider
+
+[Install]
+WantedBy=multi-user.target
