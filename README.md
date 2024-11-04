@@ -29,22 +29,18 @@
 
 ## Setup
 
-1. **Install Dependencies**: Ensure you have Python3 and the necessary libraries installed. You can use pip:
-   ```
-   pip install pillow matplotlib numpy scipy
-   ```
 
-2. **Clone the Repository**:
+1. **Clone the Repository**:
    ```
    git clone https://github.com/Infraviored/Remind2Rest.git
    ```
 
-3. **Navigate to the Repository Directory**:
+2. **Navigate to the Repository Directory**:
    ```
    cd Remind2Rest
    ```
 
-4. **Configuration**:
+3. **Configuration**:
    Run the Configuration GUI to customize the behavior of the reminders:
    ```
    python3 setup.py
@@ -56,5 +52,5 @@
    - Install the application as a system service.
    - Create a desktop entry for quick access to the configuration tool.
 
-5. **Start Using Remind2Rest**:
+4. **Start Using Remind2Rest**:
    Once set up, Remind2Rest will operate in the background, delivering reminders based on your configured settings.
