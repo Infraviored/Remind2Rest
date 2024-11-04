@@ -3,10 +3,24 @@
 import os
 import shutil
 import subprocess
+from pathlib import Path
+
+# Define standard XDG paths
+XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+XDG_DATA_HOME = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
+
+# App-specific paths
+APP_CONFIG_DIR = os.path.join(XDG_CONFIG_HOME, "Remind2Rest")
+APP_DATA_DIR = os.path.join(XDG_DATA_HOME, "Remind2Rest")
+SERVICE_PATH = os.path.expanduser("~/.config/systemd/user/Remind2Rest.service")
 
 
 def get_input(prompt):
     return input(prompt).strip().lower()
+
+
+def is_installed():
+    return os.path.exists(SERVICE_PATH)
 
 
 def create_service_file(app_path, config_path):
@@ -22,36 +36,48 @@ Restart=always
 [Install]
 WantedBy=default.target
 """
-    os.makedirs(os.path.expanduser("~/.config/systemd/user/"), exist_ok=True)
-    with open(
-        os.path.expanduser("~/.config/systemd/user/reminderapp.service"), "w"
-    ) as f:
+    os.makedirs(os.path.dirname(SERVICE_PATH), exist_ok=True)
+    with open(SERVICE_PATH, "w") as f:
         f.write(service_content)
 
 
-def remove_existing_service():
-    print("Removing existing ReminderApp service...")
-    subprocess.run(["systemctl", "--user", "stop", "reminderapp"])
-    subprocess.run(["systemctl", "--user", "disable", "reminderapp"])
-    service_path = os.path.expanduser("~/.config/systemd/user/reminderapp.service")
-    if os.path.exists(service_path):
-        os.remove(service_path)
+def uninstall():
+    print("\nUninstalling Remind2Rest...")
+    # Stop and disable service
+    subprocess.run(["systemctl", "--user", "stop", "Remind2Rest"])
+    subprocess.run(["systemctl", "--user", "disable", "Remind2Rest"])
+
+    # Remove service file
+    if os.path.exists(SERVICE_PATH):
+        os.remove(SERVICE_PATH)
+
+    # Reload systemd
     subprocess.run(["systemctl", "--user", "daemon-reload"])
     subprocess.run(["systemctl", "--user", "reset-failed"])
-    print("Existing service removed.")
+
+    # Ask about config removal
+    if get_input("\nDo you want to remove all configuration files? (y/n): ") == "y":
+        if os.path.exists(APP_CONFIG_DIR):
+            shutil.rmtree(APP_CONFIG_DIR)
+        if os.path.exists(APP_DATA_DIR):
+            shutil.rmtree(APP_DATA_DIR)
+        print("Configuration files removed.")
+
+    print("Uninstallation completed!")
 
 
 def install_service(app_path):
-    print("Installing ReminderApp service...")
+    print("\nInstalling Remind2Rest...")
 
-    # Create config directory
-    config_dir = os.path.expanduser("~/.config/reminderapp")
-    os.makedirs(config_dir, exist_ok=True)
+    # Create necessary directories
+    os.makedirs(APP_CONFIG_DIR, exist_ok=True)
+    os.makedirs(APP_DATA_DIR, exist_ok=True)
 
     # Copy config file if it exists
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config_src = os.path.join(current_dir, "reminder_config.json")
-    config_dst = os.path.join(config_dir, "reminder_config.json")
+    config_dst = os.path.join(APP_CONFIG_DIR, "reminder_config.json")
+
     if os.path.exists(config_src):
         shutil.copy2(config_src, config_dst)
         print(f"Config file copied to: {config_dst}")
@@ -63,57 +89,67 @@ def install_service(app_path):
     # Create service file
     create_service_file(app_path, config_dst)
 
-    # Reload systemd
+    # Reload systemd and start service
     subprocess.run(["systemctl", "--user", "daemon-reload"])
+    subprocess.run(["systemctl", "--user", "enable", "Remind2Rest"])
+    subprocess.run(["systemctl", "--user", "start", "Remind2Rest"])
 
-    # Enable and start the service
-    subprocess.run(["systemctl", "--user", "enable", "reminderapp"])
-    subprocess.run(["systemctl", "--user", "start", "reminderapp"])
+    # Launch web configurator after successful installation
+    print("\nLaunching web configurator...")
+    subprocess.Popen(["python3", os.path.join(current_dir, "web_configurator.py")])
 
     print("\nInstallation completed!")
-    print(f"ReminderApp installed at: {app_path}")
-    print(f"Config directory: {config_dir}")
-    print("The service has been enabled and started.")
-    print("\nChecking service status with: systemctl --user status reminderapp")
-    subprocess.run(["systemctl", "--user", "status", "reminderapp"])
-    print("View logs with: journalctl --user -u reminderapp")
+    print(f"Remind2Rest installed at: {app_path}")
+    print(f"Config directory: {APP_CONFIG_DIR}")
+    print(f"Data directory: {APP_DATA_DIR}")
+    print("\nService Status:")
+    subprocess.run(["systemctl", "--user", "status", "Remind2Rest"])
+    print("\nView logs with: journalctl --user -u Remind2Rest")
 
 
 def main():
-    print("ReminderApp Setup")
-    print("=================")
+    print("Remind2Rest Setup")
+    print("================")
 
-    # Install system dependencies first
-    print("Installing system dependencies...")
+    if is_installed():
+        print("\nRemind2Rest is already installed.")
+        choice = (
+            input("Do you want to (R)einstall or (U)ninstall? [R/U]: ").strip().upper()
+        )
+
+        if choice == "U":
+            uninstall()
+            return
+        elif choice == "R":
+            uninstall()
+            print("\nProceeding with reinstallation...")
+        else:
+            print("Invalid choice. Exiting.")
+            return
+    else:
+        choice = (
+            input("\nRemind2Rest is not installed. Install it? [Y/N]: ").strip().upper()
+        )
+        if choice != "Y":
+            print("Installation cancelled.")
+            return
+
+    # Install system dependencies
+    print("\nInstalling system dependencies...")
     subprocess.run(
         ["sudo", "apt-get", "install", "-y", "python3-tk", "python3-pil.imagetk"]
     )
 
-    pip_install = get_input("Do you want to pip install the requirements? (y/n): ")
-    if pip_install == "y":
+    # Install Python requirements
+    if get_input("\nDo you want to install Python requirements? (y/n): ") == "y":
         subprocess.run(["pip", "install", "-r", "requirements.txt"])
 
-    service_path = os.path.expanduser("~/.config/systemd/user/reminderapp.service")
-    if os.path.exists(service_path):
-        print("An existing ReminderApp service was detected.")
-        action = get_input("Do you want to remove the existing service? (y/n): ")
-        if action == "y":
-            remove_existing_service()
-        else:
-            print("Existing service will be kept. Exiting setup.")
-            return
-
-    install = get_input("Do you want to install the ReminderApp? (y/n): ")
-    if install != "y":
-        print("Installation cancelled.")
-        return
-
-    # Get the current directory
+    # Get the current directory and check for Remind2Rest.py
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    app_path = os.path.join(current_dir, "ReminderApp.py")
+    app_path = os.path.join(current_dir, "Remind2Rest.py")
 
     if not os.path.exists(app_path):
-        print(f"Error: ReminderApp.py not found in {current_dir}")
+        print(f"\nError: Remind2Rest.py not found in {current_dir}")
         return
 
     install_service(app_path)

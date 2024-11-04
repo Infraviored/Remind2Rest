@@ -17,7 +17,9 @@ new Vue({
                 reminders: []
             }
         },
-        serviceStatus: '',
+        serviceStatus: 'Unknown',
+        isServiceRunning: false,
+        isServiceEnabled: false,
         autostartStatus: '',
         slider: null,
         colors: {
@@ -35,13 +37,35 @@ new Vue({
                 });
         },
         toggleService() {
-            const action = this.serviceStatus.includes('OFF') ? 'start' : 'stop';
-            axios.post('/toggle_service', { action: action })
-                .then(response => this.updateServiceStatus(response.data.status))
+            axios.post('/toggle_service')
+                .then(response => {
+                    this.isServiceRunning = response.data.running;
+                    this.serviceStatus = response.data.status;
+                })
                 .catch(error => {
                     console.error('Error toggling service:', error);
                     alert('Error toggling service');
                 });
+        },
+        toggleServiceEnabled() {
+            axios.post('/toggle_service_enabled')
+                .then(response => {
+                    this.isServiceEnabled = response.data.enabled;
+                })
+                .catch(error => {
+                    console.error('Error toggling service enabled state:', error);
+                    alert('Error enabling/disabling service');
+                });
+        },
+        createConfiguratorShortcut() {
+            axios.post('/create_configurator_shortcut')
+                .then(() => alert('Configurator shortcut created successfully!'))
+                .catch(error => alert('Error creating configurator shortcut'));
+        },
+        stopConfigurator() {
+            axios.post('/stop_configurator')
+                .then(() => window.close())
+                .catch(error => alert('Error stopping configurator'));
         },
         toggleAutostart() {
             axios.post('/toggle_autostart')
@@ -58,9 +82,6 @@ new Vue({
                     console.error('Error creating desktop entry:', error);
                     alert('Error creating desktop entry');
                 });
-        },
-        updateServiceStatus(status) {
-            this.serviceStatus = `ReminderApp is ${status.toUpperCase()} (Click to turn ${status === 'on' ? 'OFF' : 'ON'})`;
         },
         updateAutostartStatus(status) {
             this.autostartStatus = `Start on Login (${status})`;
@@ -163,9 +184,13 @@ new Vue({
             this.config = { ...this.config, ...savedConfig };
         }
 
-        axios.get('/service_status')
-            .then(response => this.updateServiceStatus(response.data.status))
-            .catch(error => console.error('Error fetching service status:', error));
+        axios.get('/service_info')
+            .then(response => {
+                this.serviceStatus = response.data.status;
+                this.isServiceRunning = response.data.running;
+                this.isServiceEnabled = response.data.enabled;
+            })
+            .catch(error => console.error('Error fetching service info:', error));
 
         axios.get('/autostart_status')
             .then(response => this.updateAutostartStatus(response.data.status))
@@ -174,5 +199,23 @@ new Vue({
         this.$nextTick(() => {
             this.updateSlider();
         });
+    },
+    created() {
+        // Start ping interval when component is created
+        console.log('Starting ping interval...');
+        this.pingInterval = setInterval(() => {
+            axios.post('/ping')
+                .then(() => console.log('Ping sent successfully'))
+                .catch((error) => {
+                    console.error('Ping failed:', error);
+                    clearInterval(this.pingInterval);
+                });
+        }, 5000);
+    },
+    beforeDestroy() {
+        console.log('Cleaning up ping interval...');
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+        }
     }
 });

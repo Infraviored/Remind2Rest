@@ -5,7 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HealthNotifier Configuration</title>
+    <title>Remind2Rest Configuration</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
@@ -15,7 +15,7 @@
 
 <body>
     <div id="app">
-        <h1>HealthNotifier Configuration</h1>
+        <h1>Remind2Rest Configuration</h1>
         <form @submit.prevent="saveConfig">
             <div class="module-section eye-relax-color">
                 <h2>
@@ -59,9 +59,35 @@
             <button type="submit">Save Configuration</button>
         </form>
         <div class="button-group">
-            <button @click="toggleService">{% raw %}{{ serviceStatus }}{% endraw %}</button>
-            <button @click="toggleAutostart">{% raw %}{{ autostartStatus }}{% endraw %}</button>
-            <button @click="createDesktopEntry">Create Desktop Entry</button>
+            <div class="service-controls">
+                <div class="status-display">
+                    Service Status: {% raw %}{{ serviceStatus }}{% endraw %}
+                </div>
+                <div class="switch-container">
+                    <label class="switch">
+                        <input type="checkbox" :checked="isServiceRunning" @change="toggleService">
+                        <span class="slider round"></span>
+                    </label>
+                    <span class="switch-label">{% raw %}{{ isServiceRunning ? 'Stop Service' : 'Start Service' }}{% endraw %}</span>
+                </div>
+                <div class="switch-container">
+                    <label class="switch">
+                        <input type="checkbox" :checked="isServiceEnabled" @change="toggleServiceEnabled">
+                        <span class="slider round"></span>
+                    </label>
+                    <span class="switch-label">{% raw %}{{ isServiceEnabled ? 'Disable Autostart' : 'Enable Autostart' }}{% endraw %}</span>
+                </div>
+            </div>
+            <div class="configurator-controls">
+                <button @click="createConfiguratorShortcut" class="config-button">
+                    <span class="button-icon">🔧</span>
+                    Create Configurator Shortcut
+                </button>
+                <button @click="stopConfigurator" class="config-button stop-button">
+                    <span class="button-icon">⏹</span>
+                    Stop Configurator
+                </button>
+            </div>
         </div>
     </div>
     <script id="config-data" type="application/json">

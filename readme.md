@@ -1,6 +1,6 @@
-# HealthNotifier
+# Remind2Rest
 
-**HealthNotifier** is an interactive application tailored to promote better health habits, especially for those who spend extended periods in front of a computer. By leveraging visual cues and reminders, it helps users to take breaks, relax their eyes, and maintain proper posture.
+**Remind2Rest** is an interactive application tailored to promote better health habits, especially for those who spend extended periods in front of a computer. By leveraging visual cues and reminders, it helps users to take breaks, relax their eyes, and maintain proper posture.
 
 ## Features
 
@@ -36,12 +36,12 @@
 
 2. **Clone the Repository**:
    ```
-   git clone https://github.com/Infraviored/HealthNotifier.git
+   git clone https://github.com/Infraviored/Remind2Rest.git
    ```
 
 3. **Navigate to the Repository Directory**:
    ```
-   cd HealthNotifier
+   cd Remind2Rest
    ```
 
 4. **Configuration**:
@@ -56,5 +56,5 @@
    - Install the application as a system service.
    - Create a desktop entry for quick access to the configuration tool.
 
-5. **Start Using HealthNotifier**:
-   Once set up, HealthNotifier will operate in the background, delivering reminders based on your configured settings.
+5. **Start Using Remind2Rest**:
+   Once set up, Remind2Rest will operate in the background, delivering reminders based on your configured settings.
