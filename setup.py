@@ -27,7 +27,7 @@ def is_installed():
 
 def create_service_file(app_path, config_path):
     service_content = f"""[Unit]
-Description=Health Reminder Application
+Description=Remind2Rest Application
 After=network.target
 
 [Service]
@@ -58,6 +58,7 @@ def copy_resources(current_dir):
         print(f"Icon copied to: {icon_dst}")
     else:
         print("Warning: Remind2Rest.png not found!")
+        return None
 
     # Copy config file
     config_src = os.path.join(current_dir, "reminder_config.json")
@@ -71,7 +72,7 @@ def copy_resources(current_dir):
             != "y"
         ):
             print("Keeping existing config file.")
-            return config_dst
+            return config_dst, icon_dst
 
     if os.path.exists(config_src):
         copy2(config_src, config_dst)
@@ -81,7 +82,7 @@ def copy_resources(current_dir):
             "Warning: reminder_config.json not found. You'll need to create it manually."
         )
 
-    return config_dst
+    return config_dst, icon_dst
 
 
 def uninstall():
@@ -93,6 +94,17 @@ def uninstall():
     # Remove service file
     if os.path.exists(SERVICE_PATH):
         os.remove(SERVICE_PATH)
+
+    # Remove desktop shortcut
+    desktop_file_path = os.path.expanduser(
+        "~/.local/share/applications/Remind2Rest.desktop"
+    )
+    if os.path.exists(desktop_file_path):
+        try:
+            os.remove(desktop_file_path)
+            print(f"Removed desktop shortcut: {desktop_file_path}")
+        except Exception as e:
+            print(f"Error removing desktop shortcut: {e}")
 
     # Reload systemd
     subprocess.run(["systemctl", "--user", "daemon-reload"])
@@ -121,7 +133,13 @@ def install_service(app_path):
 
     # Copy all necessary files
     current_dir = os.path.dirname(os.path.abspath(__file__))
-    config_dst = copy_resources(current_dir)
+    config_dst, icon_dst = copy_resources(current_dir)
+
+    if (
+        icon_dst
+        and get_input("\nCreate desktop shortcut for Remind2Rest? (y/n): ") == "y"
+    ):
+        create_desktop_shortcut(current_dir, icon_dst)
 
     # Create service file
     create_service_file(app_path, config_dst)
@@ -142,6 +160,30 @@ def install_service(app_path):
     print("\nService Status:")
     subprocess.run(["systemctl", "--user", "status", "Remind2Rest"])
     print("\nView logs with: journalctl --user -u Remind2Rest")
+
+
+def create_desktop_shortcut(current_dir, icon_dst):
+    """Create desktop shortcut for the configurator"""
+    desktop_file_path = os.path.expanduser(
+        "~/.local/share/applications/Remind2Rest.desktop"
+    )
+    web_configurator_path = os.path.join(current_dir, "web_configurator.py")
+
+    desktop_entry = f"""[Desktop Entry]
+Name=Remind2Rest
+Comment=Health Reminder Configuration
+Exec=/usr/bin/python3 {web_configurator_path}
+Icon={icon_dst}
+Terminal=false
+Type=Application
+Categories=Utility;
+"""
+
+    os.makedirs(os.path.dirname(desktop_file_path), exist_ok=True)
+    with open(desktop_file_path, "w") as f:
+        f.write(desktop_entry)
+    os.chmod(desktop_file_path, 0o755)
+    print(f"Desktop shortcut created at: {desktop_file_path}")
 
 
 def main():
