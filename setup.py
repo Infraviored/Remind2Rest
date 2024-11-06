@@ -171,7 +171,7 @@ def create_desktop_shortcut(current_dir, icon_dst):
 
     desktop_entry = f"""[Desktop Entry]
 Name=Remind2Rest
-Comment=Health Reminder Configuration
+Comment=Name=Remind2Rest Web Configurator
 Exec=/usr/bin/python3 {web_configurator_path}
 Icon={icon_dst}
 Terminal=false
