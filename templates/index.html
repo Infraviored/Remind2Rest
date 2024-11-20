@@ -58,7 +58,13 @@
                     <div id="interval-slider"></div>
                 </div>
             </div>
-            <button type="submit">Save Configuration</button>
+            <div class="save-button-container">
+                <button type="submit">Save Configuration</button>
+                <div v-if="saveStatus.show" 
+                     :class="['save-status', saveStatus.success ? 'success' : 'error']">
+                    {{ saveStatus.message }}
+                </div>
+            </div>
         </form>
         <div class="button-group">
             <div class="service-controls">
@@ -94,6 +100,12 @@
     </div>
     <script id="config-data" type="application/json">
         {{ config | tojson | safe }}
+    </script>
+    <script id="initial-data" type="application/json">
+        {
+            "config": {{ config | tojson | safe }},
+            "saveStatus": {{ saveStatus | tojson | safe }}
+        }
     </script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>

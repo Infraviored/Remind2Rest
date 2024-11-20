@@ -170,48 +170,45 @@ label {
     background: var(--secondary-text-color);
     border: none;
     box-shadow: none;
-    height: 10px;  /* Increased height of the slider bar */
+    height: 4px;
+    margin-top: 10px;
 }
 
 .noUi-connects {
     background: transparent;
-    height: 10px;  /* Increased height of the slider bar */
-}
-
-.noUi-connect {
-    background: transparent;
+    height: 4px;
 }
 
 .noUi-handle {
-    /* width: 40px !important;
-    height: 30px !important; */
-    border-radius: 50%;
-    background: var(--accent-color);
-    box-shadow: none;
+    position: absolute;
     cursor: pointer;
-    border: none;
+    transition: all 0.3s ease;
+    height: 28px !important;
+    width: 34px !important;
+    right: -17px !important;
+    top: -12px !important;
+    border-radius: 3px;
+    background-color: rgb(231, 76, 60);
+    border: 0.555556px solid rgb(217, 217, 217);
+    box-shadow: rgb(255, 255, 255) 0px 0px 1px 0px inset, 
+                rgb(235, 235, 235) 0px 1px 7px 0px inset, 
+                rgb(187, 187, 187) 0px 3px 6px -3px;
 }
 
-.noUi-handle::before {
-    content: "";
+.noUi-handle::before,
+.noUi-handle::after {
     display: block;
+    content: "";
     position: absolute;
     height: 14px;
     width: 1px;
     background: var(--background-color);
     left: 13px;
-    top: 8px;
+    top: 6px;
 }
 
 .noUi-handle::after {
-    content: "";
-    display: block;
-    position: absolute;
-    height: 14px;
-    width: 1px;
-    background: var(--background-color);
     left: 16px;
-    top: 8px;
 }
 
 .delete-button {
@@ -222,35 +219,52 @@ label {
     transform: translateX(-50%);
     width: 30px;
     height: 30px;
-    background-color: var(--accent-color);
+    background-color: white;
     border: none;
     border-radius: 50%;
     cursor: pointer;
     padding: 0;
     font-size: 16px;
-}
-
-.delete-button:hover {
-    background-color: var(--primary-text-color);
+    z-index: 10;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .delete-icon {
     transform: translateY(2px);
     width: 24px;
     height: 24px;
-    fill: var(--background-color);
+    fill: #e74c3c;
+}
+
+.delete-button:hover .delete-icon {
+    fill: #e74c3c;
 }
 
 button[type="submit"] {
     display: block;
-    width: 50%;
-    margin: 50px auto 0;  /* Increased top margin */
+    width: 100%;
     padding: 15px;
     font-size: 1.2em;
+    background-color: var(--accent-color);
+    color: var(--background-color);
+    transition: all 0.3s ease;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button[type="submit"].saving-success {
+    background-color: rgba(40, 167, 69, 1);
+    color: white;
+}
+
+button[type="submit"].saving-error {
+    background-color: rgba(220, 53, 69, 1);
+    color: white;
 }
 
 .noUi-pips {
-    padding-top: 15px;  /* Increased space between slider and pips */
+    padding-top: 15px;
 }
 
 .noUi-value {
@@ -384,4 +398,23 @@ button[type="submit"] {
     text-align: center;
     font-size: 2.5em;
     font-weight: bold;
+}
+
+.noUi-handle.active {
+    transform: scale(1.2);
+    z-index: 20;
+}
+
+.noUi-handle.active .noUi-tooltip,
+.noUi-handle.active .delete-button {
+    display: block;
+}
+
+.noUi-tooltip {
+    display: none;
+    background-color: var(--surface-color);
+    border: 1px solid var(--accent-color);
+    color: var(--primary-text-color);
+    padding: 1px 4px;
+    border-radius: 3px;
 }

@@ -2,38 +2,58 @@
 
 new Vue({
     el: '#app',
-    data: {
-        config: {
-            global_interval: 60,
-            eye_relax: {
-                enabled: false,
-                relax_duration: 20,
-                flash_frequency: 1,
-                reminders: []
+    data: function() {
+        const initialData = JSON.parse(document.getElementById('initial-data').textContent);
+        return {
+            config: initialData.config || {
+                global_interval: 60,
+                eye_relax: {
+                    enabled: false,
+                    relax_duration: 20,
+                    flash_frequency: 1,
+                    reminders: []
+                },
+                posture: {
+                    enabled: false,
+                    wait_duration: 3,
+                    reminders: []
+                }
             },
-            posture: {
-                enabled: false,
-                wait_duration: 3,
-                reminders: []
+            serviceStatus: 'Unknown',
+            isServiceRunning: false,
+            isServiceEnabled: false,
+            autostartStatus: '',
+            slider: null,
+            colors: {
+                eye_relax: '#3498db',
+                posture: '#e74c3c'
+            },
+            saveStatus: initialData.saveStatus || {
+                show: false,
+                success: false,
+                message: ''
             }
-        },
-        serviceStatus: 'Unknown',
-        isServiceRunning: false,
-        isServiceEnabled: false,
-        autostartStatus: '',
-        slider: null,
-        colors: {
-            eye_relax: '#3498db',
-            posture: '#e74c3c'
-        }
+        };
     },
     methods: {
         saveConfig() {
+            const button = document.querySelector('button[type="submit"]');
+            
             axios.post('/save_config', this.config)
-                .then(() => alert('Configuration saved successfully!'))
+                .then(response => {
+                    if (response.data.status === 'success') {
+                        button.classList.add('saving-success');
+                        setTimeout(() => button.classList.remove('saving-success'), 3000);
+                    } else {
+                        button.classList.add('saving-error');
+                        setTimeout(() => button.classList.remove('saving-error'), 3000);
+                        console.error('Save error:', response.data.message);
+                    }
+                })
                 .catch(error => {
-                    console.error('Error saving configuration:', error);
-                    alert('Error saving configuration');
+                    button.classList.add('saving-error');
+                    setTimeout(() => button.classList.remove('saving-error'), 3000);
+                    console.error('Save error:', error.response?.data?.message || error);
                 });
         },
         toggleService() {
@@ -131,23 +151,54 @@ new Vue({
                 crossable: true
             });
 
+            let activeHandle = null;
+
             const handles = sliderElement.querySelectorAll('.noUi-handle');
             handles.forEach((handle, index) => {
                 handle.style.backgroundColor = this.colors[allReminders[index].module];
+
+                const tooltip = handle.querySelector('.noUi-tooltip');
+                if (tooltip) {
+                    tooltip.style.display = 'none';
+                }
 
                 const deleteButton = document.createElement('button');
                 deleteButton.className = 'delete-button';
                 deleteButton.innerHTML = '<svg class="delete-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
                 handle.appendChild(deleteButton);
 
-                handle.addEventListener('click', () => {
-                    deleteButton.style.display = deleteButton.style.display === 'block' ? 'none' : 'block';
+                handle.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    handles.forEach(h => {
+                        h.classList.remove('active');
+                        const t = h.querySelector('.noUi-tooltip');
+                        if (t) t.style.display = 'none';
+                    });
+                    handle.classList.toggle('active');
+                    if (tooltip) {
+                        tooltip.style.display = handle.classList.contains('active') ? 'block' : 'none';
+                    }
                 });
 
                 deleteButton.addEventListener('click', (event) => {
                     event.stopPropagation();
-                    this.deleteReminder(allReminders[index].module, index);
+                    const moduleIndex = allReminders[index].module;
+                    const reminderIndex = this.config[moduleIndex].reminders.indexOf(allReminders[index].time);
+                    this.deleteReminder(moduleIndex, reminderIndex);
                 });
+            });
+
+            // Close active handle when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.noUi-handle')) {
+                    handles.forEach(handle => {
+                        handle.classList.remove('active');
+                        const tooltip = handle.querySelector('.noUi-tooltip');
+                        if (tooltip) {
+                            tooltip.style.display = 'none';
+                        }
+                    });
+                }
             });
 
             this.slider.on('update', (values) => {
@@ -167,15 +218,38 @@ new Vue({
         },
         addReminder(module) {
             this.config[module].reminders.push(0);
-            this.updateSlider();
+            this.$nextTick(() => {
+                this.updateSlider();
+                const handles = document.querySelectorAll('.noUi-handle');
+                const lastHandle = handles[handles.length - 1];
+                if (lastHandle) {
+                    lastHandle.classList.add('active');
+                }
+            });
         },
         deleteReminder(module, index) {
-            this.config[module].reminders.splice(index, 1);
-            this.updateSlider();
+            console.log('Deleting reminder:', module, index);
+            const moduleConfig = this.config[module];
+            if (moduleConfig && Array.isArray(moduleConfig.reminders)) {
+                moduleConfig.reminders.splice(index, 1);
+                console.log('Remaining reminders:', moduleConfig.reminders);
+                this.$nextTick(() => {
+                    this.updateSlider();
+                });
+            }
         },
         updateTotalInterval() {
             this.config.global_interval = parseInt(this.config.global_interval) || 60;
             this.updateSlider();
+        },
+        showSaveStatus(success, message) {
+            this.saveStatus.show = true;
+            this.saveStatus.success = success;
+            this.saveStatus.message = message;
+            
+            setTimeout(() => {
+                this.saveStatus.show = false;
+            }, 3000);
         }
     },
     mounted() {

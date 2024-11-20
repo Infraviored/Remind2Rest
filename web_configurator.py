@@ -4,76 +4,103 @@ from flask import Flask, render_template, request, jsonify
 import json
 import os
 import subprocess
-import mmap
 import time
 import webbrowser
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
 import sys
+import socket
 
 browser_opened = False
 last_ping_time = None
 ping_timeout = 10  # seconds
 
+# Add these constants at the top
+STARTUP_MSG = """
+╔════════════════════════════════════╗
+║        Remind2Rest Configurator    ║
+╚════════════════════════════════════╝
+"""
 
 app = Flask(__name__)
 
-CMD_STOP = b"STOP    "
-CMD_RELOAD = b"RELOAD  "
-STATUS_RUNNING = b"RUNNING "
-STATUS_STOPPED = b"STOPPED "
-
-COMMAND_FILE_PATH = "/tmp/Remind2Rest_cmd.mmap"
-STATE_FILE_PATH = "/tmp/Remind2Rest_state.mmap"
-
+# Use XDG config path
+CONFIG_PATH = os.path.expanduser("~/.config/Remind2Rest/reminder_config.json")
 script_dir = os.path.dirname(os.path.realpath(__file__))
-config_path = os.path.join(script_dir, "reminder_config.json")
 reminder_app_path = os.path.join(script_dir, "Remind2Rest.py")
 
 
 def load_config():
     try:
-        with open(config_path, "r") as file:
+        with open(CONFIG_PATH, "r") as file:
             return json.load(file)
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
 
 def save_config(config):
-    with open(config_path, "w") as file:
-        json.dump(config, file, indent=2)
-
-
-def check_service_status():
     try:
-        with open(STATE_FILE_PATH, "r+b") as f:
-            return mmap.mmap(f.fileno(), 8).read(8)
-    except FileNotFoundError:
-        return STATUS_STOPPED
+        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        with open(CONFIG_PATH, "w") as file:
+            json.dump(config, file, indent=2)
+            print(f"💾 Configuration saved to {CONFIG_PATH}")
+    except Exception as e:
+        print(f"❌ Failed to save configuration: {e}")
+        raise
+
+
+def send_command_to_service(command):
+    sock_path = os.path.expanduser("~/.Remind2Rest.sock")
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.connect(sock_path)
+            sock.sendall(command.encode())
+            return True
+    except Exception as e:
+        print(f"Error sending command: {e}")
+        return False
 
 
 def reload_service():
-    try:
-        with open(COMMAND_FILE_PATH, "r+b") as f:
-            mmapped_file = mmap.mmap(f.fileno(), 8)
-            mmapped_file.seek(0)
-            mmapped_file.write(CMD_RELOAD)
-    except FileNotFoundError:
-        # If the file doesn't exist, the service isn't running
-        pass
+    return send_command_to_service("RELOAD")
 
 
 @app.route("/")
 def index():
-    return render_template("index.html", config=load_config())
+    initial_save_status = {"show": False, "success": False, "message": ""}
+    return render_template(
+        "index.html", config=load_config(), saveStatus=initial_save_status
+    )
 
 
 @app.route("/save_config", methods=["POST"])
 def save_configuration():
-    new_config = request.json
-    save_config(new_config)
-    reload_service()  # Reload the running Remind2Rest
-    return jsonify({"status": "success"})
+    try:
+        new_config = request.json
+        save_config(new_config)
+        if reload_service():
+            return jsonify(
+                {
+                    "status": "success",
+                    "message": "Configuration saved and service reloaded successfully",
+                }
+            )
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Configuration saved but failed to reload service",
+            }
+        )
+    except Exception as e:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": f"Failed to save configuration: {str(e)}",
+                }
+            ),
+            500,
+        )
 
 
 @app.route("/toggle_service", methods=["POST"])
@@ -235,33 +262,37 @@ def open_browser():
     if not browser_opened:
         try:
             webbrowser.open("http://localhost:5000", new=2)
-            print("Browser opened successfully")
+            print("🌐 Web interface opened in browser")
             browser_opened = True
         except Exception as e:
-            print(f"Error opening browser: {e}")
+            print(f"❌ Failed to open browser: {e}")
 
 
 def check_connection_timeout():
     global last_ping_time
-    print("Starting connection timeout checker...")
+    print(STARTUP_MSG)
+    print("🔄 Starting connection monitor...")
     while True:
         time.sleep(2)
         current_time = datetime.now()
         if last_ping_time:
             time_since_ping = (current_time - last_ping_time).seconds
-            print(f"Time since last ping: {time_since_ping} seconds")
             if time_since_ping > ping_timeout:
-                print("Client disconnected, shutting down server...")
+                print("\n❌ Client disconnected, shutting down server...")
                 shutdown_server()
         else:
-            print("Waiting for first ping...")
+            print("⏳ Waiting for client connection...")
+            time.sleep(
+                5
+            )  # Only check every 5 seconds when waiting for first connection
 
 
 @app.route("/ping", methods=["POST"])
 def ping():
     global last_ping_time
+    if last_ping_time is None:
+        print("✅ Client connected successfully")
     last_ping_time = datetime.now()
-    print(f"Ping received at {last_ping_time}")
     return jsonify({"status": "pong"})
 
 

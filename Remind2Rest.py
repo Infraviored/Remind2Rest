@@ -10,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import threading
 from notifications import eye_relax_reminder, posture_reminder
+from logging.handlers import RotatingFileHandler
 
 # Use user-specific paths
 SOCKET_PATH = os.path.expanduser("~/.Remind2Rest.sock")
@@ -19,11 +20,21 @@ LOG_PATH = os.path.expanduser("~/.local/share/Remind2Rest/Remind2Rest.log")
 # Ensure log directory exists
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
 
-logging.basicConfig(
-    filename=LOG_PATH,
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+# Setup rotating file handler
+handler = RotatingFileHandler(
+    LOG_PATH,
+    maxBytes=1024 * 1024,  # 1MB per file
+    backupCount=3,  # Keep 3 backup files
+    encoding="utf-8",
 )
+handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+
+# Configure logging
+logging.getLogger().setLevel(logging.INFO)
+logging.getLogger().addHandler(handler)
+
+# Add startup message
+logging.info("Remind2Rest starting up...")
 
 current_status = {}
 
@@ -57,13 +68,36 @@ def validate_config(config):
 
 def update_status(status):
     global current_status
+    if (
+        not current_status
+        or current_status.get("next_reminder") != status["next_reminder"]
+    ):
+        minutes_to_next = int(status["time_to_next"].split(":")[0])
+        logging.info(
+            f"Next {status['next_reminder']} reminder in {minutes_to_next} minutes"
+        )
     current_status = status
-    logging.info(f"Status updated: {status}")
 
 
 def schedule_reminders(scheduler, config):
     scheduler.remove_all_jobs()
     interval_minutes = config["global_interval"]
+    logging.info(f"Scheduling reminders with {interval_minutes} minute intervals")
+
+    current_time = datetime.now()
+    elapsed_minutes = (current_time.hour * 60 + current_time.minute) % interval_minutes
+
+    next_times = []
+    for module in ["eye_relax", "posture"]:
+        if config[module]["enabled"]:
+            for reminder in config[module]["reminders"]:
+                minutes_until = (reminder - elapsed_minutes) % interval_minutes
+                next_times.append((minutes_until, module))
+
+    next_reminder = min(next_times, key=lambda x: x[0])
+    logging.info(
+        f"First {next_reminder[1]} reminder will trigger in {next_reminder[0]} minutes"
+    )
 
     def check_and_trigger_reminders():
         current_time = datetime.now()
@@ -132,6 +166,8 @@ def main():
         os.remove(SOCKET_PATH)
 
     scheduler = BackgroundScheduler()
+    scheduler._logger = logging.getLogger("apscheduler")
+    scheduler._logger.setLevel(logging.WARNING)
     scheduler.start()
 
     try:
@@ -145,38 +181,41 @@ def main():
                 logging.error("Error loading configuration. Exiting.")
                 return
 
-            logging.info("Remind2Rest started successfully.")
+            logging.info("Remind2Rest started successfully with configuration:")
+            for module in ["eye_relax", "posture"]:
+                if config[module]["enabled"]:
+                    logging.info(
+                        f"- {module} reminders at minutes: {config[module]['reminders']}"
+                    )
+
             schedule_reminders(scheduler, config)
 
             while True:
                 try:
                     conn, addr = s.accept()
                     with conn:
-                        conn.sendall(json.dumps(current_status).encode())
+                        try:
+                            data = conn.recv(1024)
+                            if data == b"STOP":
+                                logging.info("Received STOP command")
+                                break
+                            elif data == b"RELOAD":
+                                logging.info("Received RELOAD command")
+                                new_config = load_config()
+                                if new_config is not None:
+                                    config = new_config
+                                    schedule_reminders(scheduler, config)
+                                    logging.info("Configuration reloaded successfully")
+                            else:
+                                # Send status response
+                                conn.sendall(json.dumps(current_status).encode())
+                        except Exception as e:
+                            logging.error(f"Error handling connection: {e}")
                 except BlockingIOError:
                     # No connection available, continue
                     pass
                 except Exception as e:
                     logging.error(f"Error in main loop: {str(e)}")
-
-                # Check for STOP or RELOAD commands
-                try:
-                    conn, addr = s.accept()
-                    with conn:
-                        data = conn.recv(1024)
-                        if data == b"STOP":
-                            break
-                        elif data == b"RELOAD":
-                            new_config = load_config()
-                            if new_config is not None:
-                                config = new_config
-                                schedule_reminders(scheduler, config)
-                                logging.info("Configuration reloaded.")
-                except BlockingIOError:
-                    # No connection available, continue
-                    pass
-                except Exception as e:
-                    logging.error(f"Error checking for commands: {str(e)}")
 
                 time.sleep(0.1)  # Short sleep to prevent CPU hogging
     finally:
