@@ -154,7 +154,7 @@ def install_service(app_path):
 
     # Launch web configurator and wait for it to finish
     print("\nLaunching web configurator...")
-    web_config_process = subprocess.run(
+    subprocess.run(
         ["python3", os.path.join(current_dir, "web_configurator.py")], check=True
     )
 
@@ -163,14 +163,24 @@ def install_service(app_path):
     print(f"Config directory: {APP_CONFIG_DIR}")
     print(f"Data directory: {APP_DATA_DIR}")
 
-    # Only show status after web configurator is done
+    # Show current service status
     print("\nService Status:")
     try:
         subprocess.run(["systemctl", "--user", "status", "Remind2Rest"], timeout=5)
     except subprocess.TimeoutExpired:
         print("Service is running (status command timed out)")
 
-    print("\nView logs with: journalctl --user -u Remind2Rest")
+    # Show log viewing command and execute it
+    print("\nViewing initial application logs:")
+    log_file = os.path.join(APP_DATA_DIR, "Remind2Rest.log")
+    print("\nTo monitor logs in the future, use:")
+    print(f"tail -f {log_file}")
+
+    # Execute tail command to show initial logs
+    try:
+        subprocess.run(["tail", "-n", "10", log_file])
+    except subprocess.CalledProcessError as e:
+        print(f"Error viewing logs: {e}")
 
 
 def create_desktop_shortcut(current_dir, icon_dst):
