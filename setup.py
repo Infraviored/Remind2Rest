@@ -28,11 +28,14 @@ def is_installed():
 def create_service_file(app_path, config_path):
     service_content = f"""[Unit]
 Description=Remind2Rest Application
-After=network.target
+After=network.target graphical-session.target
 
 [Service]
+Type=simple
 ExecStart=/usr/bin/python3 {app_path}
 Environment="REMINDER_CONFIG={config_path}"
+Environment="DISPLAY=:0"
+Environment="XAUTHORITY=/home/{os.getenv('USER')}/.Xauthority"
 Restart=always
 
 [Install]
@@ -149,16 +152,24 @@ def install_service(app_path):
     subprocess.run(["systemctl", "--user", "enable", "Remind2Rest"])
     subprocess.run(["systemctl", "--user", "start", "Remind2Rest"])
 
-    # Launch web configurator after successful installation
+    # Launch web configurator and wait for it to finish
     print("\nLaunching web configurator...")
-    subprocess.Popen(["python3", os.path.join(current_dir, "web_configurator.py")])
+    web_config_process = subprocess.run(
+        ["python3", os.path.join(current_dir, "web_configurator.py")], check=True
+    )
 
     print("\nInstallation completed!")
     print(f"Remind2Rest installed at: {app_path}")
     print(f"Config directory: {APP_CONFIG_DIR}")
     print(f"Data directory: {APP_DATA_DIR}")
+
+    # Only show status after web configurator is done
     print("\nService Status:")
-    subprocess.run(["systemctl", "--user", "status", "Remind2Rest"])
+    try:
+        subprocess.run(["systemctl", "--user", "status", "Remind2Rest"], timeout=5)
+    except subprocess.TimeoutExpired:
+        print("Service is running (status command timed out)")
+
     print("\nView logs with: journalctl --user -u Remind2Rest")
 
 
