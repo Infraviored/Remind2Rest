@@ -3,6 +3,8 @@
 import os
 import shutil
 import subprocess
+import sys
+import venv
 from pathlib import Path
 from shutil import copy2
 
@@ -14,6 +16,7 @@ XDG_DATA_HOME = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/sha
 APP_CONFIG_DIR = os.path.join(XDG_CONFIG_HOME, "Remind2Rest")
 APP_DATA_DIR = os.path.join(XDG_DATA_HOME, "Remind2Rest")
 APP_ICONS_DIR = os.path.join(APP_DATA_DIR, "icons")
+APP_VENV_DIR = os.path.join(APP_DATA_DIR, "venv")
 SERVICE_PATH = os.path.expanduser("~/.config/systemd/user/Remind2Rest.service")
 
 
@@ -26,16 +29,19 @@ def is_installed():
 
 
 def create_service_file(app_path, config_path):
+    python_executable = os.path.join(APP_VENV_DIR, "bin", "python")
+    display = os.environ.get("DISPLAY", ":0")
+    xauthority = os.environ.get("XAUTHORITY", f"/home/{os.getenv('USER')}/.Xauthority")
     service_content = f"""[Unit]
 Description=Remind2Rest Application
 After=network.target graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 {app_path}
+ExecStart={python_executable} {app_path}
 Environment="REMINDER_CONFIG={config_path}"
-Environment="DISPLAY=:0"
-Environment="XAUTHORITY=/home/{os.getenv('USER')}/.Xauthority"
+Environment="DISPLAY={display}"
+Environment="XAUTHORITY={xauthority}"
 Restart=always
 
 [Install]
@@ -88,6 +94,25 @@ def copy_resources(current_dir):
     return config_dst, icon_dst
 
 
+def create_virtual_environment():
+    """Create a virtual environment for the application"""
+    if not os.path.exists(APP_VENV_DIR):
+        print(f"\nCreating virtual environment at {APP_VENV_DIR}...")
+        venv.create(APP_VENV_DIR, with_pip=True)
+    else:
+        print(f"\nUsing existing virtual environment at {APP_VENV_DIR}")
+    
+    # Return path to python and pip executables in the virtual environment
+    if sys.platform.startswith('win'):
+        python_path = os.path.join(APP_VENV_DIR, 'Scripts', 'python')
+        pip_path = os.path.join(APP_VENV_DIR, 'Scripts', 'pip')
+    else:
+        python_path = os.path.join(APP_VENV_DIR, 'bin', 'python')
+        pip_path = os.path.join(APP_VENV_DIR, 'bin', 'pip')
+    
+    return python_path, pip_path
+
+
 def uninstall():
     print("\nUninstalling Remind2Rest...")
     # Stop and disable service
@@ -137,53 +162,74 @@ def install_service(app_path):
     # Copy all necessary files
     current_dir = os.path.dirname(os.path.abspath(__file__))
     config_dst, icon_dst = copy_resources(current_dir)
+    
+    # Create and setup virtual environment
+    python_path, pip_path = create_virtual_environment()
+    
+    # Install Python requirements in the virtual environment
+    if get_input("\nDo you want to install Python requirements? (y/n): ") == "y":
+        requirements_path = os.path.join(current_dir, "requirements.txt")
+        if os.path.exists(requirements_path):
+            print(f"Installing Python packages in virtual environment...")
+            subprocess.run([pip_path, "install", "-r", requirements_path])
+        else:
+            print("Warning: requirements.txt not found!")
 
     if (
         icon_dst
         and get_input("\nCreate desktop shortcut for Remind2Rest? (y/n): ") == "y"
     ):
-        create_desktop_shortcut(current_dir, icon_dst)
+        create_desktop_shortcut(current_dir, icon_dst, python_path)
 
-    # Create service file
-    create_service_file(app_path, config_dst)
-
-    # Reload systemd and start service
-    subprocess.run(["systemctl", "--user", "daemon-reload"])
-    subprocess.run(["systemctl", "--user", "enable", "Remind2Rest"])
-    subprocess.run(["systemctl", "--user", "start", "Remind2Rest"])
+    # Prompt for systemd service
+    install_service_choice = get_input("\nInstall and enable systemd user service? (y/n): ")
+    if install_service_choice == "y":
+        # Create service file
+        create_service_file(app_path, config_dst)
+        # Reload systemd and start service
+        subprocess.run(["systemctl", "--user", "daemon-reload"])
+        subprocess.run(["systemctl", "--user", "enable", "Remind2Rest"])
+        subprocess.run(["systemctl", "--user", "start", "Remind2Rest"])
+        print("\nSystemd user service installed and started.")
+    else:
+        print("\nSkipping systemd service installation.")
 
     # Launch web configurator and wait for it to finish
     print("\nLaunching web configurator...")
     subprocess.run(
-        ["python3", os.path.join(current_dir, "web_configurator.py")], check=True
+        [python_path, os.path.join(current_dir, "web_configurator.py")], check=True
     )
 
     print("\nInstallation completed!")
     print(f"Remind2Rest installed at: {app_path}")
     print(f"Config directory: {APP_CONFIG_DIR}")
     print(f"Data directory: {APP_DATA_DIR}")
+    print(f"Virtual environment: {APP_VENV_DIR}")
 
-    # Show current service status
-    print("\nService Status:")
-    try:
-        subprocess.run(["systemctl", "--user", "status", "Remind2Rest"], timeout=5)
-    except subprocess.TimeoutExpired:
-        print("Service is running (status command timed out)")
+    # Show current service status if installed
+    if install_service_choice == "y":
+        print("\nService Status:")
+        try:
+            subprocess.run(["systemctl", "--user", "status", "Remind2Rest"], timeout=5)
+        except subprocess.TimeoutExpired:
+            print("Service is running (status command timed out)")
 
-    # Show log viewing command and execute it
-    print("\nViewing initial application logs:")
-    log_file = os.path.join(APP_DATA_DIR, "Remind2Rest.log")
-    print("\nTo monitor logs in the future, use:")
-    print(f"tail -f {log_file}")
+        # Show log viewing command and execute it
+        print("\nViewing initial application logs:")
+        log_file = os.path.join(APP_DATA_DIR, "Remind2Rest.log")
+        print("\nTo monitor logs in the future, use:")
+        print(f"tail -f {log_file}")
 
-    # Execute tail command to show initial logs
-    try:
-        subprocess.run(["tail", "-n", "10", log_file])
-    except subprocess.CalledProcessError as e:
-        print(f"Error viewing logs: {e}")
+        # Execute tail command to show initial logs
+        try:
+            subprocess.run(["tail", "-n", "10", log_file])
+        except subprocess.CalledProcessError as e:
+            print(f"Error viewing logs: {e}")
+    else:
+        print("Systemd service not installed; skipping service status and logs.")
 
 
-def create_desktop_shortcut(current_dir, icon_dst):
+def create_desktop_shortcut(current_dir, icon_dst, python_path):
     """Create desktop shortcut for the configurator"""
     desktop_file_path = os.path.expanduser(
         "~/.local/share/applications/Remind2Rest.desktop"
@@ -193,7 +239,7 @@ def create_desktop_shortcut(current_dir, icon_dst):
     desktop_entry = f"""[Desktop Entry]
 Name=Remind2Rest
 Comment=Name=Remind2Rest Web Configurator
-Exec=/usr/bin/python3 {web_configurator_path}
+Exec={python_path} {web_configurator_path}
 Icon={icon_dst}
 Terminal=false
 Type=Application
@@ -240,19 +286,15 @@ def main():
         ["sudo", "apt-get", "install", "-y", "python3-tk", "python3-pil.imagetk"]
     )
 
-    # Install Python requirements
-    if get_input("\nDo you want to install Python requirements? (y/n): ") == "y":
-        subprocess.run(["pip", "install", "-r", "requirements.txt"])
-
     # Get the current directory and check for Remind2Rest.py
     current_dir = os.path.dirname(os.path.abspath(__file__))
     app_path = os.path.join(current_dir, "Remind2Rest.py")
 
-    if not os.path.exists(app_path):
-        print(f"\nError: Remind2Rest.py not found in {current_dir}")
+    if os.path.exists(app_path):
+        install_service(app_path)
+    else:
+        print(f"Error: {app_path} not found!")
         return
-
-    install_service(app_path)
 
 
 if __name__ == "__main__":

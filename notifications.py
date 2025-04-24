@@ -84,6 +84,53 @@ def eye_relax_reminder(flash_frequency, relax_duration):
         print(f"Debug: Error in eye_relax_reminder: {str(e)}")  # Debug print
         logging.error(f"Error in eye_relax_reminder: {str(e)}")
 
+def show_custom_reminder(message, flashing, duration, cancel_key, flashing_freq=2, initial_color="black", fontsize=60):
+    print(f"Debug: show_custom_reminder called with message={message}, flashing={flashing}, duration={duration}, cancel_key={cancel_key}, flashing_freq={flashing_freq}, initial_color={initial_color}, fontsize={fontsize}")
+    logging.info(f"show_custom_reminder called with message={message}, flashing={flashing}, duration={duration}, cancel_key={cancel_key}, flashing_freq={flashing_freq}, initial_color={initial_color}, fontsize={fontsize}")
+    try:
+        win = tk.Tk()
+        win.attributes('-fullscreen', True)
+        win.attributes('-topmost', True)
+        win.focus_set()
+
+        bg_colors = ["white", "black"]
+        if initial_color not in bg_colors:
+            initial_color = "black"
+        current_color = bg_colors.index(initial_color)
+        flashing_active = [True]
+        interval_ms = int(1000 / max(1, flashing_freq))
+
+        def toggle_bg():
+            if not flashing or not flashing_active[0]:
+                return
+            nonlocal current_color
+            current_color = 1 - current_color
+            win.configure(background=bg_colors[current_color])
+            label.configure(foreground=bg_colors[1-current_color], background=bg_colors[current_color])
+            win.after(interval_ms, toggle_bg)
+
+        def close_reminder(event=None):
+            flashing_active[0] = False
+            win.destroy()
+
+        win.bind(f'<{cancel_key}>', close_reminder)
+
+        label = tk.Label(win, text=message, font=('Arial', fontsize))
+        label.place(relx=0.5, rely=0.5, anchor=tk.CENTER)
+        win.configure(background=bg_colors[current_color])
+        label.configure(foreground=bg_colors[1-current_color], background=bg_colors[current_color])
+
+        if flashing:
+            toggle_bg()
+
+        if duration > 0:
+            win.after(duration * 1000, close_reminder)
+
+        win.mainloop()
+    except Exception as e:
+        print(f"Debug: Error in show_custom_reminder: {str(e)}")
+        logging.error(f"Error in show_custom_reminder: {str(e)}")
+
 def posture_reminder(wait_duration, timeout=10):
     print(f"Debug: posture_reminder called with wait_duration={wait_duration}, timeout={timeout}")  # Debug print
     logging.info(f"posture_reminder called with wait_duration={wait_duration}, timeout={timeout}")

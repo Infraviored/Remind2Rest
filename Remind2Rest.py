@@ -9,7 +9,7 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import threading
-from notifications import eye_relax_reminder, posture_reminder
+from notifications import eye_relax_reminder, posture_reminder, show_custom_reminder
 from logging.handlers import RotatingFileHandler
 
 # Use user-specific paths
@@ -192,22 +192,34 @@ def main():
 
             while True:
                 try:
-                    conn, addr = s.accept()
+                    conn, _ = s.accept()
                     with conn:
+                        data = conn.recv(4096)
+                        if not data:
+                            continue
                         try:
-                            data = conn.recv(1024)
-                            if data == b"STOP":
-                                logging.info("Received STOP command")
-                                break
-                            elif data == b"RELOAD":
-                                logging.info("Received RELOAD command")
-                                new_config = load_config()
-                                if new_config is not None:
-                                    config = new_config
-                                    schedule_reminders(scheduler, config)
-                                    logging.info("Configuration reloaded successfully")
-                            else:
-                                # Send status response
+                            command = data.decode()
+                            # Try to parse as JSON for custom reminders
+                            try:
+                                cmd_obj = json.loads(command)
+                                if isinstance(cmd_obj, dict) and cmd_obj.get("action") == "custom_reminder":
+                                    message = cmd_obj.get("message", "Reminder!")
+                                    flashing = bool(cmd_obj.get("flashing", False))
+                                    duration = int(cmd_obj.get("duration", 0))
+                                    cancel_key = cmd_obj.get("cancel_key", "Escape")
+                                    flashing_freq = int(cmd_obj.get("flashing_freq", 2))
+                                    initial_color = cmd_obj.get("initial_color", "black")
+                                    fontsize = int(cmd_obj.get("fontsize", 60))
+                                    threading.Thread(target=show_custom_reminder, args=(message, flashing, duration, cancel_key, flashing_freq, initial_color, fontsize)).start()
+                                    conn.sendall(b"OK")
+                                    continue
+                            except Exception:
+                                pass
+                            if command == "RELOAD":
+                                config = load_config()
+                                schedule_reminders(scheduler, config)
+                                conn.sendall(b"OK")
+                            elif command == "STATUS":
                                 conn.sendall(json.dumps(current_status).encode())
                         except Exception as e:
                             logging.error(f"Error handling connection: {e}")
