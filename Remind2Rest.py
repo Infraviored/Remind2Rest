@@ -80,6 +80,11 @@ def update_status(status):
 
 
 def schedule_reminders(scheduler, config):
+    # Guard against invalid config
+    if not config or not isinstance(config, dict):
+        logging.error("schedule_reminders called with invalid config; skipping schedule")
+        return
+
     scheduler.remove_all_jobs()
     interval_minutes = config["global_interval"]
     logging.info(f"Scheduling reminders with {interval_minutes} minute intervals")
@@ -94,10 +99,13 @@ def schedule_reminders(scheduler, config):
                 minutes_until = (reminder - elapsed_minutes) % interval_minutes
                 next_times.append((minutes_until, module))
 
-    next_reminder = min(next_times, key=lambda x: x[0])
-    logging.info(
-        f"First {next_reminder[1]} reminder will trigger in {next_reminder[0]} minutes"
-    )
+    if next_times:
+        next_reminder = min(next_times, key=lambda x: x[0])
+        logging.info(
+            f"First {next_reminder[1]} reminder will trigger in {next_reminder[0]} minutes"
+        )
+    else:
+        logging.info("No enabled reminders found; waiting for configuration reload")
 
     def check_and_trigger_reminders():
         current_time = datetime.now()
@@ -124,7 +132,10 @@ def schedule_reminders(scheduler, config):
                     if elapsed_minutes == reminder and elapsed_seconds < 1:
                         trigger_reminder(module, config[module])
 
-        minutes_to_next, seconds_to_next = divmod(int(time_to_next), 60)
+        if time_to_next == float("inf"):
+            minutes_to_next, seconds_to_next = 0, 0
+        else:
+            minutes_to_next, seconds_to_next = divmod(int(time_to_next), 60)
         status = {
             "running": True,
             "next_reminder": next_reminder_type,
