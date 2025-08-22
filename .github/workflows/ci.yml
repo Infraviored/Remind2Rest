@@ -27,11 +27,20 @@ jobs:
         run: |
           python -m py_compile Remind2Rest.py notifications.py tray_icon.py web_configurator.py || true
 
-      - name: Smoke import
+      - name: Smoke import (skip tray_icon if gi missing)
         run: |
           python - <<PY
           import importlib.util, sys
-          for f in ["Remind2Rest.py", "notifications.py", "tray_icon.py", "web_configurator.py"]:
+
+          files = ["Remind2Rest.py", "notifications.py", "web_configurator.py"]
+
+          try:
+              import gi  # Optional dependency for tray_icon
+              files.append("tray_icon.py")
+          except Exception:
+              print("Skipping tray_icon.py import: gi not available")
+
+          for f in files:
               spec = importlib.util.spec_from_file_location("mod", f)
               mod = importlib.util.module_from_spec(spec)
               try:
