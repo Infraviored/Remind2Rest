@@ -29,7 +29,7 @@ else:
     CONFIG_PATH = os.path.expanduser("~/.config/Remind2Rest/reminder_config.json")
     LOG_PATH = os.path.expanduser("~/.local/share/Remind2Rest/Remind2Rest.log")
     ADDR = os.path.expanduser("~/.Remind2Rest.sock")
-    SOCKET_FAMILY = socket.AF_UNIX
+    SOCKET_FAMILY = getattr(socket, 'AF_UNIX', socket.AF_INET)
 
 # Ensure log directory exists
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
@@ -204,7 +204,7 @@ def trigger_reminder(module, settings):
 
 
 def main():
-    if SOCKET_FAMILY == socket.AF_UNIX and os.path.exists(ADDR):
+    if os.name != 'nt' and os.path.exists(ADDR):
         os.remove(ADDR)
 
     scheduler = BackgroundScheduler()
@@ -282,7 +282,7 @@ def main():
                 time.sleep(0.1)
     finally:
         scheduler.shutdown()
-        if SOCKET_FAMILY == socket.AF_UNIX and os.path.exists(ADDR):
+        if os.name != 'nt' and os.path.exists(ADDR):
             os.remove(ADDR)
 
 

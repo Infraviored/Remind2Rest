@@ -33,6 +33,7 @@
                         <input type="number" v-model.number="config.eye_relax.flash_frequency">
                     </label>
                     <button @click.prevent="addReminder('eye_relax')" class="add-reminder-btn">Add Reminder</button>
+                    <button @click.prevent="testReminder('eye_relax')" class="test-reminder-btn">Test Reminder</button>
                 </div>
             </div>
             <div class="module-section posture-color">
@@ -46,6 +47,7 @@
                         <input type="number" v-model.number="config.posture.wait_duration">
                     </label>
                     <button @click.prevent="addReminder('posture')" class="add-reminder-btn">Add Reminder</button>
+                    <button @click.prevent="testReminder('posture')" class="test-reminder-btn">Test Reminder</button>
                 </div>
             </div>
             <div class="interval-slider-section">

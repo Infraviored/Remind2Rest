@@ -25,7 +25,7 @@ if os.name == 'nt':
 else:
     CONFIG_PATH = os.path.expanduser("~/.config/Remind2Rest/reminder_config.json")
     ADDR = os.path.expanduser("~/.Remind2Rest.sock")
-    SOCKET_FAMILY = socket.AF_UNIX
+    SOCKET_FAMILY = getattr(socket, 'AF_UNIX', socket.AF_INET)
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 reminder_app_path = os.path.join(script_dir, "Remind2Rest.py")
@@ -110,6 +110,35 @@ def save_configuration():
         )
 
 
+@app.route("/test_reminder", methods=["POST"])
+def test_reminder():
+    try:
+        data = request.json
+        module = data.get("module")
+        config = load_config()
+        
+        if module == "eye_relax":
+            settings = config.get("eye_relax", {})
+            subprocess.Popen([
+                sys.executable,
+                os.path.join(script_dir, "notifications.py"),
+                "eye_relax",
+                "--freq", str(settings.get("flash_frequency", 2.0)),
+                "--duration", str(settings.get("relax_duration", 20))
+            ])
+        elif module == "posture":
+            settings = config.get("posture", {})
+            subprocess.Popen([
+                sys.executable,
+                os.path.join(script_dir, "notifications.py"),
+                "posture",
+                "--wait", str(settings.get("wait_duration", 3.0))
+            ])
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/toggle_service", methods=["POST"])
 def toggle_service():
     if os.name == 'nt':
@@ -179,7 +208,9 @@ def service_info():
         pass
 
     if os.name == 'nt':
-        return jsonify({"status": "Running" if is_running else "Stopped", "running": is_running, "enabled": False})
+        startup_path = os.path.join(os.environ['APPDATA'], 'Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Remind2Rest.lnk')
+        is_enabled = os.path.exists(startup_path)
+        return jsonify({"status": "Running" if is_running else "Stopped", "running": is_running, "enabled": is_enabled})
 
     try:
         # For Linux, also check systemd
@@ -190,6 +221,42 @@ def service_info():
         )
         is_enabled = result.returncode == 0
         return jsonify({"status": "Running" if is_running else "Stopped", "running": is_running, "enabled": is_enabled})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/toggle_service_enabled", methods=["POST"])
+def toggle_service_enabled():
+    if os.name == 'nt':
+        startup_path = os.path.join(os.environ['APPDATA'], 'Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Remind2Rest.lnk')
+        if os.path.exists(startup_path):
+            try:
+                os.remove(startup_path)
+                return jsonify({"enabled": False})
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+        else:
+            try:
+                # Use powershell to create the shortcut
+                ps_cmd = f'$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut("{startup_path}"); $Shortcut.TargetPath = "{sys.executable}"; $Shortcut.Arguments = "{reminder_app_path}"; $Shortcut.Save()'
+                subprocess.run(['powershell', '-Command', ps_cmd], check=True)
+                return jsonify({"enabled": True})
+            except Exception as e:
+                return jsonify({"error": str(e)}), 500
+
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "is-enabled", "Remind2Rest"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            subprocess.run(["systemctl", "--user", "disable", "Remind2Rest"])
+            enabled = False
+        else:
+            subprocess.run(["systemctl", "--user", "enable", "Remind2Rest"])
+            enabled = True
+        return jsonify({"enabled": enabled})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

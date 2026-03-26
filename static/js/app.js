@@ -227,6 +227,16 @@ new Vue({
                 }
             });
         },
+        testReminder(module) {
+            axios.post('/test_reminder', { module: module })
+                .then(response => {
+                    console.log(`Test reminder for ${module} triggered`);
+                })
+                .catch(error => {
+                    console.error(`Error testing reminder ${module}:`, error);
+                    alert('Error triggering test reminder');
+                });
+        },
         deleteReminder(module, index) {
             console.log('Deleting reminder:', module, index);
             const moduleConfig = this.config[module];
