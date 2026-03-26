@@ -11,15 +11,25 @@ from apscheduler.triggers.interval import IntervalTrigger
 import threading
 import subprocess
 import sys
-from notifications import show_custom_reminder
 from logging.handlers import RotatingFileHandler
 
 script_dir = os.path.dirname(os.path.realpath(__file__))
 
-# Use user-specific paths
-SOCKET_PATH = os.path.expanduser("~/.Remind2Rest.sock")
-CONFIG_PATH = os.path.expanduser("~/.config/Remind2Rest/reminder_config.json")
-LOG_PATH = os.path.expanduser("~/.local/share/Remind2Rest/Remind2Rest.log")
+# Platform-specific paths and socket configuration
+if os.name == 'nt':
+    appdata = os.environ.get('LOCALAPPDATA', os.path.expanduser('~/AppData/Local'))
+    base_dir = os.path.join(appdata, 'Remind2Rest')
+    os.makedirs(base_dir, exist_ok=True)
+    CONFIG_PATH = os.path.join(base_dir, 'reminder_config.json')
+    LOG_PATH = os.path.join(base_dir, 'Remind2Rest.log')
+    # Use AF_INET for Windows IPC as it's more universally supported than AF_UNIX
+    ADDR = ('127.0.0.1', 55555)
+    SOCKET_FAMILY = socket.AF_INET
+else:
+    CONFIG_PATH = os.path.expanduser("~/.config/Remind2Rest/reminder_config.json")
+    LOG_PATH = os.path.expanduser("~/.local/share/Remind2Rest/Remind2Rest.log")
+    ADDR = os.path.expanduser("~/.Remind2Rest.sock")
+    SOCKET_FAMILY = socket.AF_UNIX
 
 # Ensure log directory exists
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
@@ -45,18 +55,30 @@ current_status = {}
 
 def load_config():
     try:
+        if not os.path.exists(CONFIG_PATH):
+            # Create a default config if not exists
+            default_config = {
+                "global_interval": 60,
+                "eye_relax": {"enabled": True, "reminders": [20, 40], "flash_frequency": 2.0, "relax_duration": 20},
+                "posture": {"enabled": True, "reminders": [0, 30], "wait_duration": 3.0}
+            }
+            save_config(default_config)
+            return default_config
         with open(CONFIG_PATH, "r") as file:
             config = json.load(file)
         validate_config(config)
         return config
-    except json.JSONDecodeError:
-        logging.error(f"Error: Invalid JSON in {CONFIG_PATH}")
-    except FileNotFoundError:
-        logging.error(f"Error: Config file not found at {CONFIG_PATH}")
-    except ValueError as e:
-        logging.error(f"Error: Invalid configuration - {str(e)}")
+    except Exception as e:
+        logging.error(f"Error loading configuration: {e}")
     return None
 
+def save_config(config):
+    try:
+        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        with open(CONFIG_PATH, "w") as file:
+            json.dump(config, file, indent=2)
+    except Exception as e:
+        logging.error(f"Error saving default configuration: {e}")
 
 def validate_config(config):
     if "global_interval" not in config:
@@ -84,7 +106,6 @@ def update_status(status):
 
 
 def schedule_reminders(scheduler, config):
-    # Guard against invalid config
     if not config or not isinstance(config, dict):
         logging.error("schedule_reminders called with invalid config; skipping schedule")
         return
@@ -170,21 +191,21 @@ def trigger_reminder(module, settings):
             sys.executable,
             os.path.join(script_dir, "notifications.py"),
             "eye_relax",
-            "--freq", str(settings["flash_frequency"]),
-            "--duration", str(settings["relax_duration"])
+            "--freq", str(settings.get("flash_frequency", 2.0)),
+            "--duration", str(settings.get("relax_duration", 20))
         ])
     elif module == "posture":
         subprocess.Popen([
             sys.executable,
             os.path.join(script_dir, "notifications.py"),
             "posture",
-            "--wait", str(settings["wait_duration"])
+            "--wait", str(settings.get("wait_duration", 3.0))
         ])
 
 
 def main():
-    if os.path.exists(SOCKET_PATH):
-        os.remove(SOCKET_PATH)
+    if SOCKET_FAMILY == socket.AF_UNIX and os.path.exists(ADDR):
+        os.remove(ADDR)
 
     scheduler = BackgroundScheduler()
     scheduler._logger = logging.getLogger("apscheduler")
@@ -192,8 +213,10 @@ def main():
     scheduler.start()
 
     try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-            s.bind(SOCKET_PATH)
+        with socket.socket(SOCKET_FAMILY, socket.SOCK_STREAM) as s:
+            if SOCKET_FAMILY == socket.AF_INET:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(ADDR)
             s.listen()
             s.setblocking(False)
 
@@ -202,13 +225,7 @@ def main():
                 logging.error("Error loading configuration. Exiting.")
                 return
 
-            logging.info("Remind2Rest started successfully with configuration:")
-            for module in ["eye_relax", "posture"]:
-                if config[module]["enabled"]:
-                    logging.info(
-                        f"- {module} reminders at minutes: {config[module]['reminders']}"
-                    )
-
+            logging.info("Remind2Rest started successfully")
             schedule_reminders(scheduler, config)
 
             while True:
@@ -258,16 +275,15 @@ def main():
                         except Exception as e:
                             logging.error(f"Error handling connection: {e}")
                 except BlockingIOError:
-                    # No connection available, continue
                     pass
                 except Exception as e:
                     logging.error(f"Error in main loop: {str(e)}")
 
-                time.sleep(0.1)  # Short sleep to prevent CPU hogging
+                time.sleep(0.1)
     finally:
         scheduler.shutdown()
-        if os.path.exists(SOCKET_PATH):
-            os.remove(SOCKET_PATH)
+        if SOCKET_FAMILY == socket.AF_UNIX and os.path.exists(ADDR):
+            os.remove(ADDR)
 
 
 if __name__ == "__main__":

@@ -4,4 +4,6 @@ matplotlib
 numpy
 scipy
 flask
-PyGObject
+# PyGObject is required for Wayland/Linux support (GTK backend)
+# On Windows, the Tkinter backend is used (usually included with Python)
+# PyGObject

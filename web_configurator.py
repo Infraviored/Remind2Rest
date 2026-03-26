@@ -15,7 +15,21 @@ browser_opened = False
 last_ping_time = None
 ping_timeout = 10  # seconds
 
-# Add these constants at the top
+# Platform-specific paths and socket configuration
+if os.name == 'nt':
+    appdata = os.environ.get('LOCALAPPDATA', os.path.expanduser('~/AppData/Local'))
+    base_dir = os.path.join(appdata, 'Remind2Rest')
+    CONFIG_PATH = os.path.join(base_dir, 'reminder_config.json')
+    ADDR = ('127.0.0.1', 55555)
+    SOCKET_FAMILY = socket.AF_INET
+else:
+    CONFIG_PATH = os.path.expanduser("~/.config/Remind2Rest/reminder_config.json")
+    ADDR = os.path.expanduser("~/.Remind2Rest.sock")
+    SOCKET_FAMILY = socket.AF_UNIX
+
+script_dir = os.path.dirname(os.path.realpath(__file__))
+reminder_app_path = os.path.join(script_dir, "Remind2Rest.py")
+
 STARTUP_MSG = """
 ╔════════════════════════════════════╗
 ║        Remind2Rest Configurator    ║
@@ -23,12 +37,6 @@ STARTUP_MSG = """
 """
 
 app = Flask(__name__)
-
-# Use XDG config path
-CONFIG_PATH = os.path.expanduser("~/.config/Remind2Rest/reminder_config.json")
-script_dir = os.path.dirname(os.path.realpath(__file__))
-reminder_app_path = os.path.join(script_dir, "Remind2Rest.py")
-
 
 def load_config():
     try:
@@ -50,10 +58,9 @@ def save_config(config):
 
 
 def send_command_to_service(command):
-    sock_path = os.path.expanduser("~/.Remind2Rest.sock")
     try:
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-            sock.connect(sock_path)
+        with socket.socket(SOCKET_FAMILY, socket.SOCK_STREAM) as sock:
+            sock.connect(ADDR)
             sock.sendall(command.encode())
             return True
     except Exception as e:
@@ -87,8 +94,8 @@ def save_configuration():
             )
         return jsonify(
             {
-                "status": "error",
-                "message": "Configuration saved but failed to reload service",
+                "status": "warning",
+                "message": "Configuration saved but service is not running. Start it manually.",
             }
         )
     except Exception as e:
@@ -105,6 +112,8 @@ def save_configuration():
 
 @app.route("/toggle_service", methods=["POST"])
 def toggle_service():
+    if os.name == 'nt':
+        return jsonify({"error": "Service control not implemented for Windows yet. Please run Remind2Rest.py manually."}), 501
     try:
         result = subprocess.run(
             ["systemctl", "--user", "is-active", "Remind2Rest"],
@@ -126,6 +135,8 @@ def toggle_service():
 
 @app.route("/toggle_autostart", methods=["POST"])
 def toggle_autostart():
+    if os.name == 'nt':
+        return jsonify({"error": "Autostart control not implemented for Windows yet."}), 501
     autostart_file_path = os.path.expanduser("~/.config/autostart/Remind2Rest.desktop")
     if os.path.exists(autostart_file_path):
         os.remove(autostart_file_path)
@@ -145,6 +156,8 @@ def toggle_autostart():
 
 @app.route("/autostart_status")
 def autostart_status():
+    if os.name == 'nt':
+        return jsonify({"status": "Unknown (Windows)"})
     status = (
         "Enabled"
         if os.path.exists(os.path.expanduser("~/.config/autostart/Remind2Rest.desktop"))
@@ -153,93 +166,32 @@ def autostart_status():
     return jsonify({"status": status})
 
 
-@app.route("/create_desktop_entry", methods=["POST"])
-def create_desktop_entry():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    desktop_file_path = os.path.expanduser(
-        "~/.local/share/applications/Remind2Rest.desktop"
-    )
-
-    with open(desktop_file_path, "w") as desktop_file:
-        desktop_file.write(
-            f"""[Desktop Entry]
-Name=Reminder App
-Exec=/usr/bin/python3 {script_dir}/web_configurator.py
-Icon={script_dir}/icon.png
-Terminal=false
-Type=Application
-Categories=Utility;Application;
-"""
-        )
-
-    os.chmod(desktop_file_path, 0o755)
-    return jsonify({"status": "success"})
-
-
 @app.route("/service_info")
 def service_info():
+    is_running = False
+    # Check if we can connect to the socket
     try:
-        # Check if service is running
-        result = subprocess.run(
-            ["systemctl", "--user", "is-active", "Remind2Rest"],
-            capture_output=True,
-            text=True,
-        )
-        is_running = result.returncode == 0
+        with socket.socket(SOCKET_FAMILY, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.5)
+            sock.connect(ADDR)
+            is_running = True
+    except:
+        pass
 
-        # Check if service is enabled
+    if os.name == 'nt':
+        return jsonify({"status": "Running" if is_running else "Stopped", "running": is_running, "enabled": False})
+
+    try:
+        # For Linux, also check systemd
         result = subprocess.run(
             ["systemctl", "--user", "is-enabled", "Remind2Rest"],
             capture_output=True,
             text=True,
         )
         is_enabled = result.returncode == 0
-
-        status = "Running" if is_running else "Stopped"
-
-        return jsonify({"status": status, "running": is_running, "enabled": is_enabled})
+        return jsonify({"status": "Running" if is_running else "Stopped", "running": is_running, "enabled": is_enabled})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-@app.route("/toggle_service_enabled", methods=["POST"])
-def toggle_service_enabled():
-    try:
-        result = subprocess.run(
-            ["systemctl", "--user", "is-enabled", "Remind2Rest"],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0:
-            subprocess.run(["systemctl", "--user", "disable", "Remind2Rest"])
-            enabled = False
-        else:
-            subprocess.run(["systemctl", "--user", "enable", "Remind2Rest"])
-            enabled = True
-        return jsonify({"enabled": enabled})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/create_configurator_shortcut", methods=["POST"])
-def create_configurator_shortcut():
-    desktop_file_path = os.path.expanduser(
-        "~/.local/share/applications/Remind2Rest-config.desktop"
-    )
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-
-    with open(desktop_file_path, "w") as f:
-        f.write(
-            f"""[Desktop Entry]
-Name=Remind2Rest Configurator
-Exec=/usr/bin/python3 {script_dir}/web_configurator.py
-Icon={script_dir}/icon.png
-Type=Application
-Categories=Utility;
-"""
-        )
-    os.chmod(desktop_file_path, 0o755)
-    return jsonify({"status": "success"})
 
 
 def shutdown_server():
@@ -252,7 +204,6 @@ def shutdown_server():
 
 @app.route("/stop_configurator", methods=["POST"])
 def stop_configurator():
-    # Schedule the shutdown after sending response
     threading.Timer(0.1, shutdown_server).start()
     return jsonify({"status": "success"})
 
@@ -271,7 +222,6 @@ def open_browser():
 def check_connection_timeout():
     global last_ping_time
     print(STARTUP_MSG)
-    print("🔄 Starting connection monitor...")
     while True:
         time.sleep(2)
         current_time = datetime.now()
@@ -281,17 +231,12 @@ def check_connection_timeout():
                 print("\n❌ Client disconnected, shutting down server...")
                 shutdown_server()
         else:
-            print("⏳ Waiting for client connection...")
-            time.sleep(
-                5
-            )  # Only check every 5 seconds when waiting for first connection
+            time.sleep(5)
 
 
 @app.route("/ping", methods=["POST"])
 def ping():
     global last_ping_time
-    if last_ping_time is None:
-        print("✅ Client connected successfully")
     last_ping_time = datetime.now()
     return jsonify({"status": "pong"})
 
