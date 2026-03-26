@@ -4,53 +4,62 @@
 
 ## Features
 
-  
 - **Eye Relax Reminder**: Encourages users to look away from the screen periodically to reduce eye strain. The reminder flashes alternating colors to promote distance gazing.
-  
 - **Posture Reminder**: Periodically reminds users to correct their sitting posture. Users can also rate their current posture, providing a feedback loop to improve over time.
-
 - **Dynamic Plotting**: Offers a visualization of posture ratings over time.
-
-- **Configuration GUI**: A user-friendly graphical interface (`setup.py`) to adjust various settings of the application.
-
-- **Service Integration**: The application can be set up as a system service, ensuring that it runs in the background and starts automatically on boot.
-
-- **Desktop Entry Creation**: Users can easily create a desktop entry for swift access to the Configuration GUI.
+- **Cross-Platform Support**:
+  - **Windows**: Native support with always-on-top Tkinter overlays.
+  - **Linux (Wayland)**: High-performance GTK overlays with Layer Shell support.
+  - **Linux (X11)**: Reliable Tkinter fullscreen overlays.
+- **Web Configurator**: A modern web interface to adjust various settings, reload the service, and monitor status.
+- **Service Integration**: Supports running as a background service on both Windows (via Startup) and Linux (via systemd).
 
 ## Dependencies
 
-- `Python3`
+- `Python 3.8+`
 - `apscheduler`
 - `pillow`
 - `matplotlib`
 - `numpy`
 - `scipy`
-
+- `flask`
+- `PyGObject` (Linux/Wayland only)
 
 ## Setup
 
+### 1. Clone the Repository
+```bash
+git clone https://github.com/Infraviored/Remind2Rest.git
+cd Remind2Rest
+```
 
-1. **Clone the Repository**:
-   ```
-   git clone https://github.com/Infraviored/Remind2Rest.git
-   ```
+### 2. Installation
 
-2. **Navigate to the Repository Directory**:
-   ```
-   cd Remind2Rest
-   ```
+#### **Linux (Ubuntu/Debian)**
+Run the setup script to install dependencies, create a virtual environment, and set up a systemd user service:
+```bash
+python3 setup.py
+```
+This will:
+- Install system dependencies (`python3-tk`, `python3-pil.imagetk`).
+- Create a virtual environment in `~/.local/share/Remind2Rest/venv`.
+- Set up a systemd service for the background reminder app.
+- Create a desktop entry for the Web Configurator.
 
-3. **Configuration**:
-   Run the Configuration GUI to customize the behavior of the reminders:
+#### **Windows**
+Run the PowerShell installer script:
+1. Open PowerShell in the project directory.
+2. Run:
+   ```powershell
+   .\Install-Remind2Rest.ps1
    ```
-   python3 setup.py
-   ```
+This will:
+- Create a virtual environment in `%LOCALAPPDATA%\Remind2Rest\venv`.
+- Install all requirements.
+- Add Remind2Rest to your **Windows Startup** folder.
+- Create a **Desktop Shortcut** for the Web Configurator.
 
-   Using the Configuration GUI, you can:
-   - Set frequencies and durations for both eye relaxation and posture reminders.
-   - Enable or disable specific reminders.
-   - Install the application as a system service.
-   - Create a desktop entry for quick access to the configuration tool.
-
-4. **Start Using Remind2Rest**:
-   Once set up, Remind2Rest will operate in the background, delivering reminders based on your configured settings.
+### 3. Usage
+Once installed, the background service will start automatically on login. You can manage your reminders via the **Web Configurator**:
+- **URL**: `http://localhost:5000`
+- **Actions**: Change reminder intervals, enable/disable modules, and reload the service.
