@@ -115,10 +115,13 @@ def test_reminder():
     try:
         data = request.json
         module = data.get("module")
-        config = load_config()
+        # Prioritize settings passed from UI, fallback to file
+        settings = data.get("settings")
+        if not settings:
+            config = load_config()
+            settings = config.get(module, {})
         
         if module == "eye_relax":
-            settings = config.get("eye_relax", {})
             subprocess.Popen([
                 sys.executable,
                 os.path.join(script_dir, "notifications.py"),
@@ -127,7 +130,6 @@ def test_reminder():
                 "--duration", str(settings.get("relax_duration", 20))
             ])
         elif module == "posture":
-            settings = config.get("posture", {})
             subprocess.Popen([
                 sys.executable,
                 os.path.join(script_dir, "notifications.py"),

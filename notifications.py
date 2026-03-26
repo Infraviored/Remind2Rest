@@ -230,16 +230,18 @@ if HAS_TK:
         root = tk.Tk()
         setup_tk_fullscreen(root)
         
-        state = {"blinking": True, "remaining": int(relax_duration), "color": "white"}
+        state = {"blinking": True, "remaining": int(relax_duration), "color": "white", "timer_id": None}
         
         def toggle_color():
-            if not state["blinking"]: return
+            if not state["blinking"]:
+                state["timer_id"] = None
+                return
             state["color"] = "black" if state["color"] == "white" else "white"
             fg = "white" if state["color"] == "black" else "black"
             root.configure(background=state["color"])
             for l in [msg_l, hint_l, count_l]:
                 l.configure(background=state["color"], foreground=fg)
-            root.after(int(1000 / flash_frequency) if flash_frequency > 0 else 10000, toggle_color)
+            state["timer_id"] = root.after(int(1000 / flash_frequency) if flash_frequency > 0 else 10000, toggle_color)
 
         def update_countdown():
             state["remaining"] -= 1
@@ -254,8 +256,17 @@ if HAS_TK:
         count_l = tk.Label(root, text=f"Remaining: {state['remaining']}s", font=('Arial', 40))
         count_l.place(relx=0.5, rely=0.65, anchor=tk.CENTER)
         
-        root.bind('<Button-1>', lambda e: state.update({"blinking": False}))
-        root.bind('<ButtonRelease-1>', lambda e: state.update({"blinking": True}))
+        def on_press(e):
+            state["blinking"] = False
+
+        def on_release(e):
+            if not state["blinking"]:
+                state["blinking"] = True
+                if state["timer_id"] is None:
+                    toggle_color()
+
+        root.bind('<Button-1>', on_press)
+        root.bind('<ButtonRelease-1>', on_release)
         
         toggle_color()
         update_countdown()

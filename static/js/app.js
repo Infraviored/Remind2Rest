@@ -228,7 +228,10 @@ new Vue({
             });
         },
         testReminder(module) {
-            axios.post('/test_reminder', { module: module })
+            axios.post('/test_reminder', { 
+                module: module,
+                settings: this.config[module]
+            })
                 .then(response => {
                     console.log(`Test reminder for ${module} triggered`);
                 })
