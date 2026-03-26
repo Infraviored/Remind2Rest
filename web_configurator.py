@@ -121,6 +121,8 @@ def test_reminder():
             config = load_config()
             settings = config.get(module, {})
         
+        print(f"DEBUG: Triggering test reminder for {module} with settings: {settings}")
+        
         if module == "eye_relax":
             subprocess.Popen([
                 sys.executable,
