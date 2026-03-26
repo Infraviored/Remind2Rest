@@ -1,105 +1,421 @@
-<!-- templates/index.html -->
 <!DOCTYPE html>
-<html lang="en">
+<html class="dark" lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Remind2Rest Configuration</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>Remind2Rest | Wellness Sync Dashboard</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700&display=swap" rel="stylesheet" />
+    
+    <!-- Vue and Axios -->
     <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
+    <!-- noUiSlider -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.css">
+
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "tertiary": "#49d7f7",
+                        "outline": "#8c909f",
+                        "tertiary-fixed-dim": "#49d7f7",
+                        "primary-fixed-dim": "#adc6ff",
+                        "tertiary-fixed": "#acedff",
+                        "secondary-fixed-dim": "#a8c8ff",
+                        "on-secondary-container": "#8cb6fb",
+                        "on-tertiary-fixed": "#001f26",
+                        "outline-variant": "#424753",
+                        "on-error": "#690005",
+                        "background": "#121316",
+                        "primary-fixed": "#d8e2ff",
+                        "on-secondary-fixed": "#001b3c",
+                        "secondary": "#a8c8ff",
+                        "on-primary-fixed-variant": "#004494",
+                        "surface-dim": "#121316",
+                        "secondary-fixed": "#d5e3ff",
+                        "surface-bright": "#38393c",
+                        "error": "#ffb4ab",
+                        "on-surface-variant": "#c2c6d5",
+                        "on-primary": "#002e69",
+                        "on-tertiary-container": "#002e38",
+                        "on-secondary": "#003061",
+                        "on-tertiary": "#003640",
+                        "error-container": "#93000a",
+                        "on-error-container": "#ffdad6",
+                        "on-background": "#e3e2e6",
+                        "surface-container": "#1e2022",
+                        "on-surface": "#e3e2e6",
+                        "primary-container": "#4d8efe",
+                        "secondary-container": "#114784",
+                        "primary": "#adc6ff",
+                        "tertiary-container": "#009eb9",
+                        "surface-container-low": "#1a1b1e",
+                        "surface-container-high": "#292a2d",
+                        "inverse-on-surface": "#2f3033",
+                        "inverse-surface": "#e3e2e6",
+                        "surface-container-lowest": "#0d0e11",
+                        "surface": "#121316",
+                        "surface-tint": "#adc6ff",
+                        "on-tertiary-fixed-variant": "#004e5c",
+                        "inverse-primary": "#005ac1",
+                        "on-primary-container": "#00285c",
+                        "on-secondary-fixed-variant": "#114784",
+                        "surface-container-highest": "#343538",
+                        "on-primary-fixed": "#001a41",
+                        "surface-variant": "#343538"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+    <style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+
+        .tonal-shift {
+            background-color: #121316;
+        }
+
+        .glass-card {
+            background: rgba(30, 32, 34, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+
+        .primary-gradient {
+            background: linear-gradient(135deg, #adc6ff 0%, #4d8efe 100%);
+        }
+
+        /* noUiSlider Overrides */
+        #interval-slider {
+            height: 12px;
+            background: #0d0e11;
+            border: none;
+            box-shadow: none;
+            margin: 40px 0;
+        }
+
+        #interval-slider .noUi-connect {
+            background: transparent;
+        }
+
+        #interval-slider .noUi-handle {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 4px solid #121316;
+            box-shadow: 0 0 15px currentColor;
+            right: -8px;
+            top: -2px;
+            cursor: grab;
+            background: currentColor;
+        }
+        
+        #interval-slider .noUi-handle:active {
+            cursor: grabbing;
+        }
+
+        #interval-slider .noUi-handle::before,
+        #interval-slider .noUi-handle::after {
+            display: none;
+        }
+
+        #interval-slider .noUi-tooltip {
+            background: #1e2022;
+            color: #e3e2e6;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.75rem;
+            padding: 4px 8px;
+            font-size: 10px;
+            font-weight: bold;
+            bottom: 150%;
+        }
+
+        .delete-button {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #93000a;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .noUi-handle.active .delete-button {
+            opacity: 1;
+        }
+
+        .delete-icon {
+            width: 12px;
+            height: 12px;
+        }
+    </style>
 </head>
 
-<body>
+<body class="bg-background text-on-background font-body selection:bg-primary/30 min-h-screen">
     <div id="app">
-        <h1 class="main-title">Remind2Rest</h1>
-        <form @submit.prevent="saveConfig">
-            <div class="module-section eye-relax-color">
-                <h2>
-                    <input type="checkbox" :checked="config.eye_relax.enabled"
-                        @change="toggleModule('eye_relax', $event)">
-                    Eye Relax Reminder
-                </h2>
-                <div v-if="config.eye_relax.enabled" class="module-config">
-                    <label>
-                        Relax Duration (seconds):
-                        <input type="number" v-model.number="config.eye_relax.relax_duration">
-                    </label>
-                    <label>
-                        Flash Frequency (Hz):
-                        <input type="number" v-model.number="config.eye_relax.flash_frequency">
-                    </label>
-                    <button @click.prevent="addReminder('eye_relax')" class="add-reminder-btn">Add Reminder</button>
-                    <button @click.prevent="testReminder('eye_relax')" class="test-reminder-btn">Test Reminder</button>
+        <!-- SideNavBar Shell -->
+        <aside class="fixed left-0 top-0 h-full flex flex-col py-8 px-4 bg-slate-900/80 backdrop-blur-xl w-64 border-r border-white/5 shadow-[40px_0_60px_-10px_rgba(0,0,0,0.3)] z-50">
+            <div class="mb-12 px-4">
+                <h1 class="text-xl font-bold tracking-tighter text-slate-100">Remind2Rest</h1>
+                <p class="font-['Inter'] tracking-tight text-sm font-medium text-blue-400">Wellness Sync</p>
+            </div>
+            <nav class="flex-1 space-y-2">
+                <!-- Dashboard (Active) -->
+                <a class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 text-blue-400 font-semibold border-r-2 border-blue-400 bg-blue-400/5" href="#">
+                    <span class="material-symbols-outlined">dashboard</span>
+                    <span class="font-['Inter'] tracking-tight text-sm font-medium">Dashboard</span>
+                </a>
+                <!-- Toggle Service -->
+                <button @click="toggleService" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-slate-400 hover:text-slate-200 hover:bg-white/5 text-left">
+                    <span class="material-symbols-outlined">{% raw %}{{ isServiceRunning ? 'stop_circle' : 'play_circle' }}{% endraw %}</span>
+                    <span class="font-['Inter'] tracking-tight text-sm font-medium">{% raw %}{{ isServiceRunning ? 'Stop Service' : 'Start Service' }}{% endraw %}</span>
+                </button>
+                <!-- Toggle Autostart -->
+                <button @click="toggleServiceEnabled" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-slate-400 hover:text-slate-200 hover:bg-white/5 text-left">
+                    <span class="material-symbols-outlined">{% raw %}{{ isServiceEnabled ? 'auto_mode' : 'sync_disabled' }}{% endraw %}</span>
+                    <span class="font-['Inter'] tracking-tight text-sm font-medium">{% raw %}{{ isServiceEnabled ? 'Autostart: ON' : 'Autostart: OFF' }}{% endraw %}</span>
+                </button>
+                <!-- Create Shortcut -->
+                <button @click="createConfiguratorShortcut" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors text-slate-400 hover:text-slate-200 hover:bg-white/5 text-left">
+                    <span class="material-symbols-outlined">shortcut</span>
+                    <span class="font-['Inter'] tracking-tight text-sm font-medium">Create Shortcut</span>
+                </button>
+            </nav>
+            <div class="mt-auto px-4">
+                <button @click="stopConfigurator" class="w-full bg-surface-container-highest text-on-background h-12 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-error-container transition-colors active:scale-95">
+                    <span class="material-symbols-outlined">logout</span>
+                    Exit Configurator
+                </button>
+            </div>
+        </aside>
+
+        <!-- TopAppBar Shell -->
+        <header class="flex justify-between items-center px-12 ml-64 w-[calc(100%-16rem)] h-20 bg-slate-950/50 backdrop-blur-lg fixed top-0 right-0 z-40">
+            <div class="flex items-center gap-8">
+                <span class="text-2xl font-black tracking-tighter bg-gradient-to-br from-blue-300 to-blue-600 bg-clip-text text-transparent">Remind2Rest</span>
+                <nav class="flex gap-6">
+                    <a class="font-['Inter'] tracking-wide uppercase text-[10px] text-blue-400 border-b-2 border-blue-400 pb-1" href="#">Overview</a>
+                    <a class="font-['Inter'] tracking-wide uppercase text-[10px] text-slate-500 hover:text-slate-300 transition-opacity" href="#">History</a>
+                </nav>
+            </div>
+            <div class="flex items-center gap-6">
+                <div v-if="saveStatus.show" :class="['text-xs font-bold px-4 py-2 rounded-lg transition-all', saveStatus.success ? 'bg-primary/20 text-primary' : 'bg-error/20 text-error']">
+                    {% raw %}{{ saveStatus.message }}{% endraw %}
+                </div>
+                <div class="flex items-center gap-3 bg-white/5 px-3 py-1.5 rounded-full">
+                    <span class="material-symbols-outlined text-slate-300">account_circle</span>
+                    <span class="text-xs font-semibold text-slate-300">Admin</span>
                 </div>
             </div>
-            <div class="module-section posture-color">
-                <h2>
-                    <input type="checkbox" :checked="config.posture.enabled" @change="toggleModule('posture', $event)">
-                    Posture Reminder
-                </h2>
-                <div v-if="config.posture.enabled" class="module-config">
-                    <label>
-                        Wait Duration (seconds):
-                        <input type="number" v-model.number="config.posture.wait_duration">
-                    </label>
-                    <button @click.prevent="addReminder('posture')" class="add-reminder-btn">Add Reminder</button>
-                    <button @click.prevent="testReminder('posture')" class="test-reminder-btn">Test Reminder</button>
+        </header>
+
+        <!-- Main Content Canvas -->
+        <main class="ml-64 pt-24 px-12 pb-12 min-h-screen">
+            <!-- Header Controls Section -->
+            <section class="mb-10 flex justify-between items-end">
+                <div>
+                    <h2 class="text-4xl font-black tracking-tighter mb-2">Workspace <span class="text-primary">Sync</span></h2>
+                    <p class="text-on-surface-variant max-w-md">Configure your wellness micro-habits and visualize your routine across the hourly timeline.</p>
+                </div>
+                <div class="flex items-center gap-4 bg-surface-container p-2 rounded-xl border border-outline-variant/10 shadow-xl">
+                    <div class="flex items-center gap-3 px-4 py-2 bg-surface-container-high rounded-lg">
+                        <span class="text-[10px] font-bold tracking-widest uppercase text-outline">Service Status</span>
+                        <div class="flex items-center gap-2">
+                            <span :class="['w-2 h-2 rounded-full shadow-[0_0_10px]', isServiceRunning ? 'bg-tertiary shadow-tertiary' : 'bg-error shadow-error']"></span>
+                            <span class="text-sm font-bold text-on-surface">{% raw %}{{ serviceStatus }}{% endraw %}</span>
+                        </div>
+                    </div>
+                    <button @click="saveConfig" class="primary-gradient text-on-primary px-6 py-2 rounded-lg font-bold text-sm shadow-md active:scale-95 transition-transform hover:brightness-110">
+                        Save Configuration
+                    </button>
+                </div>
+            </section>
+
+            <!-- Top Half: Module Configuration -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+                <!-- Eye Relax Reminder Card -->
+                <div :class="['glass-card rounded-[2rem] p-8 border transition-all duration-500', config.eye_relax.enabled ? 'border-primary/30 bg-primary/5' : 'border-outline-variant/10']">
+                    <div class="flex items-start justify-between mb-8">
+                        <div class="w-14 h-14 rounded-2xl bg-primary-container/20 flex items-center justify-center text-primary transition-transform duration-500">
+                            <span class="material-symbols-outlined text-3xl">visibility</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" :checked="config.eye_relax.enabled" @change="toggleModule('eye_relax', $event)" class="w-6 h-6 rounded border-outline-variant bg-surface-container-lowest text-primary focus:ring-primary/20" />
+                            <span class="text-[10px] font-bold tracking-[0.2em] uppercase text-primary bg-primary/10 px-3 py-1 rounded-full">Vision Module</span>
+                        </div>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-6 tracking-tight">Eye Relax Reminder</h3>
+                    <div v-if="config.eye_relax.enabled" class="space-y-6">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="space-y-2">
+                                <label class="text-[10px] font-bold tracking-widest uppercase text-outline ml-1">Relax Duration (sec)</label>
+                                <input v-model.number="config.eye_relax.relax_duration" class="w-full bg-surface-container-lowest border-none rounded-xl focus:ring-2 focus:ring-primary/20 text-on-surface placeholder:text-outline/30 px-4 py-3" type="number" />
+                            </div>
+                            <div class="space-y-2">
+                                <label class="text-[10px] font-bold tracking-widest uppercase text-outline ml-1">Flash Frequency (Hz)</label>
+                                <input v-model.number="config.eye_relax.flash_frequency" class="w-full bg-surface-container-lowest border-none rounded-xl focus:ring-2 focus:ring-primary/20 text-on-surface placeholder:text-outline/30 px-4 py-3" type="number" />
+                            </div>
+                        </div>
+                        <div class="flex gap-4">
+                            <button @click.prevent="addReminder('eye_relax')" class="flex-1 py-4 rounded-xl bg-surface-variant text-on-surface-variant font-bold hover:bg-primary hover:text-on-primary transition-all duration-300 flex items-center justify-center gap-2">
+                                <span class="material-symbols-outlined">add</span>
+                                Add to Timeline
+                            </button>
+                            <button @click.prevent="testReminder('eye_relax')" class="px-6 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                                <span class="material-symbols-outlined">test_slow_motion</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div v-else class="h-[148px] flex items-center justify-center text-outline/40 italic text-sm">
+                        Module disabled. Toggle above to configure.
+                    </div>
+                </div>
+
+                <!-- Posture Reminder Card -->
+                <div :class="['glass-card rounded-[2rem] p-8 border transition-all duration-500', config.posture.enabled ? 'border-tertiary/30 bg-tertiary/5' : 'border-outline-variant/10']">
+                    <div class="flex items-start justify-between mb-8">
+                        <div class="w-14 h-14 rounded-2xl bg-tertiary-container/20 flex items-center justify-center text-tertiary transition-transform duration-500">
+                            <span class="material-symbols-outlined text-3xl">accessibility_new</span>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <input type="checkbox" :checked="config.posture.enabled" @change="toggleModule('posture', $event)" class="w-6 h-6 rounded border-outline-variant bg-surface-container-lowest text-tertiary focus:ring-tertiary/20" />
+                            <span class="text-[10px] font-bold tracking-[0.2em] uppercase text-tertiary bg-tertiary/10 px-3 py-1 rounded-full">Physical Module</span>
+                        </div>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-6 tracking-tight">Posture Reminder</h3>
+                    <div v-if="config.posture.enabled" class="space-y-6">
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-bold tracking-widest uppercase text-outline ml-1">Wait Duration (sec)</label>
+                            <input v-model.number="config.posture.wait_duration" class="w-full bg-surface-container-lowest border-none rounded-xl focus:ring-2 focus:ring-tertiary/20 text-on-surface placeholder:text-outline/30 px-4 py-3" type="number" />
+                        </div>
+                        <div class="flex gap-4 pt-4">
+                            <button @click.prevent="addReminder('posture')" class="flex-1 py-4 rounded-xl bg-surface-variant text-on-surface-variant font-bold hover:bg-tertiary hover:text-on-tertiary transition-all duration-300 flex items-center justify-center gap-2">
+                                <span class="material-symbols-outlined">add</span>
+                                Add to Timeline
+                            </button>
+                            <button @click.prevent="testReminder('posture')" class="px-6 rounded-xl bg-tertiary/10 text-tertiary hover:bg-tertiary/20 transition-colors">
+                                <span class="material-symbols-outlined">test_slow_motion</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div v-else class="h-[148px] flex items-center justify-center text-outline/40 italic text-sm">
+                        Module disabled. Toggle above to configure.
+                    </div>
                 </div>
             </div>
-            <div class="interval-slider-section">
-                <h2>Reminder Interval</h2>
-                <div class="interval-slider-container">
-                    <label>
-                        Total Interval (minutes):
-                        <input type="number" v-model.number="config.global_interval" @change="updateTotalInterval">
-                    </label>
+
+            <!-- Bottom Half: Reminder Timeline -->
+            <section class="glass-card rounded-[2.5rem] p-10 border border-outline-variant/10">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-12">
+                    <div>
+                        <h3 class="text-2xl font-bold tracking-tight mb-1">Reminder Timeline</h3>
+                        <p class="text-sm text-on-surface-variant">Drag handles to arrange wellness triggers across the session interval.</p>
+                    </div>
+                    <div class="flex items-center gap-4 bg-surface-container-lowest p-1.5 rounded-2xl border border-outline-variant/5">
+                        <div class="px-4 py-2">
+                            <span class="text-[10px] font-bold tracking-widest uppercase text-outline block mb-0.5">Total Interval</span>
+                            <div class="flex items-center gap-2">
+                                <input v-model.number="config.global_interval" @change="updateTotalInterval" class="w-16 bg-transparent border-none p-0 text-xl font-black text-primary focus:ring-0" type="number" />
+                                <span class="text-xs font-bold text-on-surface-variant uppercase">Minutes</span>
+                            </div>
+                        </div>
+                        <div class="w-px h-10 bg-outline-variant/20"></div>
+                        <button class="px-6 text-on-surface-variant hover:text-on-surface transition-colors" title="Timeline Settings">
+                            <span class="material-symbols-outlined">settings_suggest</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Visual Timeline Container -->
+                <div class="relative py-12 px-4">
                     <div id="interval-slider"></div>
+                    <!-- Timeline Labels -->
+                    <div class="flex justify-between mt-6 text-[10px] font-bold tracking-widest text-outline uppercase px-2">
+                        <span>0 min</span>
+                        <span>{% raw %}{{ Math.round(config.global_interval * 0.25) }}{% endraw %} min</span>
+                        <span>{% raw %}{{ Math.round(config.global_interval * 0.5) }}{% endraw %} min</span>
+                        <span>{% raw %}{{ Math.round(config.global_interval * 0.75) }}{% endraw %} min</span>
+                        <span>{% raw %}{{ config.global_interval }}{% endraw %} min</span>
+                    </div>
+                </div>
+
+                <!-- Timeline Metadata/Summary -->
+                <div class="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="bg-surface-container-low p-6 rounded-2xl border border-outline-variant/5">
+                        <span class="text-[10px] font-bold tracking-widest uppercase text-outline block mb-2">Total Triggers</span>
+                        <span class="text-3xl font-black text-on-surface">{% raw %}{{ (config.eye_relax.enabled ? config.eye_relax.reminders.length : 0) + (config.posture.enabled ? config.posture.reminders.length : 0) }}{% endraw %}</span>
+                    </div>
+                    <div class="bg-surface-container-low p-6 rounded-2xl border border-outline-variant/5">
+                        <span class="text-[10px] font-bold tracking-widest uppercase text-outline block mb-2">Interval Window</span>
+                        <span class="text-3xl font-black text-on-surface">{% raw %}{{ config.global_interval }}{% endraw %}<span class="text-sm font-medium text-outline ml-1">min</span></span>
+                    </div>
+                    <div class="bg-surface-container-low p-6 rounded-2xl border border-outline-variant/5">
+                        <span class="text-[10px] font-bold tracking-widest uppercase text-outline block mb-2">Sync Intensity</span>
+                        <div class="flex items-center gap-2">
+                            <span class="text-3xl font-black text-on-surface">{% raw %}{{ (config.eye_relax.reminders.length + config.posture.reminders.length) > 5 ? 'High' : (config.eye_relax.reminders.length + config.posture.reminders.length) > 2 ? 'Mid' : 'Low' }}{% endraw %}</span>
+                            <div class="flex gap-1">
+                                <div :class="['w-1.5 h-6 rounded-full', (config.eye_relax.reminders.length + config.posture.reminders.length) > 0 ? 'bg-tertiary' : 'bg-outline-variant/30']"></div>
+                                <div :class="['w-1.5 h-6 rounded-full', (config.eye_relax.reminders.length + config.posture.reminders.length) > 2 ? 'bg-tertiary' : 'bg-outline-variant/30']"></div>
+                                <div :class="['w-1.5 h-6 rounded-full', (config.eye_relax.reminders.length + config.posture.reminders.length) > 5 ? 'bg-tertiary' : 'bg-outline-variant/30']"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Dynamic Context Card -->
+            <div class="mt-12 relative overflow-hidden glass-card rounded-[2.5rem] p-10 border border-outline-variant/10">
+                <div class="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-primary/10 blur-[100px] rounded-full"></div>
+                <div class="relative z-10 flex flex-col md:flex-row items-center gap-10">
+                    <img alt="Wellness Mood" class="w-48 h-48 rounded-3xl object-cover shadow-2xl" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBBRhnFutSU9ft-8JOynA4zIGLYwy3MvLkRdPheKxYf64BNKfvaNIMLvWhORS-DiNvLdcwfZ7NHytWNh-X_2RZ5aVHuSy_8bpoRCKgDFl6E_SbkmTruS3Xf8Txda4XLweX9ofQxPZoKKoMrhde7scub5AI83JxMkxOVH4y_MmMor7PW60VIt7GkVHEl5wSWLydUzKT3DbtrV9EqopIwG83KUlTYjuph96MpHsDE4QbODvxgB4x--jLxIbqyLZufkB851JvOT0DYdKY" />
+                    <div>
+                        <h4 class="text-2xl font-bold mb-4">Why Micro-Reminders?</h4>
+                        <p class="text-on-surface-variant max-w-xl leading-relaxed">
+                            Scientific studies show that brief mental breaks help you stay focused on your tasks for longer periods.
+                            By automating your "rest architecture," you eliminate the cognitive load of remembering to take care of yourself.
+                        </p>
+                        <div class="mt-6 flex gap-4">
+                            <button class="text-primary font-bold text-sm flex items-center gap-2 hover:translate-x-1 transition-transform">
+                                Read scientific guide
+                                <span class="material-symbols-outlined text-sm">arrow_forward</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="save-button-container">
-                <button type="submit">Save Configuration</button>
-                <div v-if="saveStatus.show" 
-                     :class="['save-status', saveStatus.success ? 'success' : 'error']">
-                    {{ saveStatus.message }}
-                </div>
-            </div>
-        </form>
-        <div class="button-group">
-            <div class="service-controls">
-                <div class="status-display">
-                    Service Status: {% raw %}{{ serviceStatus }}{% endraw %}
-                </div>
-                <div class="switch-container">
-                    <label class="switch">
-                        <input type="checkbox" :checked="isServiceRunning" @change="toggleService">
-                        <span class="slider round"></span>
-                    </label>
-                    <span class="switch-label">{% raw %}{{ isServiceRunning ? 'Stop Service' : 'Start Service' }}{% endraw %}</span>
-                </div>
-                <div class="switch-container">
-                    <label class="switch">
-                        <input type="checkbox" :checked="isServiceEnabled" @change="toggleServiceEnabled">
-                        <span class="slider round"></span>
-                    </label>
-                    <span class="switch-label">{% raw %}{{ isServiceEnabled ? 'Disable Autostart' : 'Enable Autostart' }}{% endraw %}</span>
-                </div>
-            </div>
-            <div class="configurator-controls">
-                <button @click="createConfiguratorShortcut" class="config-button">
-                    <span class="button-icon">🔧</span>
-                    Create Configurator Shortcut
-                </button>
-                <button @click="stopConfigurator" class="config-button stop-button">
-                    <span class="button-icon">⏹</span>
-                    Stop Configurator
-                </button>
-            </div>
-        </div>
+        </main>
+
+        <!-- Contextual FAB (Trigger Test) -->
+        <button @click="testReminder('eye_relax')" class="fixed bottom-8 right-8 w-16 h-16 rounded-2xl primary-gradient text-on-primary shadow-2xl shadow-primary/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-50" title="Quick Test: Eye Relax">
+            <span class="material-symbols-outlined text-3xl" style="font-variation-settings: 'FILL' 1;">bolt</span>
+        </button>
     </div>
+
+    <!-- Data Injection -->
     <script id="config-data" type="application/json">
         {{ config | tojson | safe }}
     </script>
