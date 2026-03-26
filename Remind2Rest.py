@@ -9,8 +9,12 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 import threading
-from notifications import eye_relax_reminder, posture_reminder, show_custom_reminder
+import subprocess
+import sys
+from notifications import show_custom_reminder
 from logging.handlers import RotatingFileHandler
+
+script_dir = os.path.dirname(os.path.realpath(__file__))
 
 # Use user-specific paths
 SOCKET_PATH = os.path.expanduser("~/.Remind2Rest.sock")
@@ -162,14 +166,20 @@ def trigger_reminder(module, settings):
     trigger_reminder.last_trigger = trigger_key
 
     if module == "eye_relax":
-        threading.Thread(
-            target=eye_relax_reminder,
-            args=(settings["flash_frequency"], settings["relax_duration"]),
-        ).start()
+        subprocess.Popen([
+            sys.executable,
+            os.path.join(script_dir, "notifications.py"),
+            "eye_relax",
+            "--freq", str(settings["flash_frequency"]),
+            "--duration", str(settings["relax_duration"])
+        ])
     elif module == "posture":
-        threading.Thread(
-            target=posture_reminder, args=(settings["wait_duration"],)
-        ).start()
+        subprocess.Popen([
+            sys.executable,
+            os.path.join(script_dir, "notifications.py"),
+            "posture",
+            "--wait", str(settings["wait_duration"])
+        ])
 
 
 def main():
@@ -221,7 +231,20 @@ def main():
                                     flashing_freq = int(cmd_obj.get("flashing_freq", 2))
                                     initial_color = cmd_obj.get("initial_color", "black")
                                     fontsize = int(cmd_obj.get("fontsize", 60))
-                                    threading.Thread(target=show_custom_reminder, args=(message, flashing, duration, cancel_key, flashing_freq, initial_color, fontsize)).start()
+                                    cmd = [
+                                        sys.executable,
+                                        os.path.join(script_dir, "notifications.py"),
+                                        "custom",
+                                        "--message", message,
+                                        "--duration", str(duration),
+                                        "--cancel-key", cancel_key,
+                                        "--freq", str(flashing_freq),
+                                        "--color", initial_color,
+                                        "--fontsize", str(fontsize)
+                                    ]
+                                    if flashing:
+                                        cmd.append("--flashing")
+                                    subprocess.Popen(cmd)
                                     conn.sendall(b"OK")
                                     continue
                             except Exception:
