@@ -255,7 +255,7 @@ if HAS_TK:
         count_l.place(relx=0.5, rely=0.65, anchor=tk.CENTER)
         
         root.bind('<Button-1>', lambda e: state.update({"blinking": False}))
-        root.bind('<ButtonRelease-1>', lambda e: state.update({"blinking": True}) or toggle_color())
+        root.bind('<ButtonRelease-1>', lambda e: state.update({"blinking": True}))
         
         toggle_color()
         update_countdown()
