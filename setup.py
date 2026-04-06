@@ -31,7 +31,20 @@ def is_installed():
 def create_service_file(app_path, config_path):
     python_executable = os.path.join(APP_VENV_DIR, "bin", "python")
     display = os.environ.get("DISPLAY", ":0")
+    wayland_display = os.environ.get("WAYLAND_DISPLAY", "")
     xauthority = os.environ.get("XAUTHORITY", f"/home/{os.getenv('USER')}/.Xauthority")
+    runtime_dir = os.environ.get("XDG_RUNTIME_DIR", "")
+
+    env_lines = [f'Environment="DISPLAY={display}"']
+    if wayland_display:
+        env_lines.append(f'Environment="WAYLAND_DISPLAY={wayland_display}"')
+    if xauthority:
+        env_lines.append(f'Environment="XAUTHORITY={xauthority}"')
+    if runtime_dir:
+        env_lines.append(f'Environment="XDG_RUNTIME_DIR={runtime_dir}"')
+
+    env_content = "\n".join(env_lines)
+
     service_content = f"""[Unit]
 Description=Remind2Rest Application
 After=network.target graphical-session.target
@@ -40,8 +53,7 @@ After=network.target graphical-session.target
 Type=simple
 ExecStart={python_executable} {app_path}
 Environment="REMINDER_CONFIG={config_path}"
-Environment="DISPLAY={display}"
-Environment="XAUTHORITY={xauthority}"
+{env_content}
 Restart=always
 
 [Install]
@@ -98,7 +110,7 @@ def create_virtual_environment():
     """Create a virtual environment for the application"""
     if not os.path.exists(APP_VENV_DIR):
         print(f"\nCreating virtual environment at {APP_VENV_DIR}...")
-        venv.create(APP_VENV_DIR, with_pip=True)
+        venv.create(APP_VENV_DIR, with_pip=True, system_site_packages=True)
     else:
         print(f"\nUsing existing virtual environment at {APP_VENV_DIR}")
     
@@ -177,9 +189,10 @@ def install_service(app_path):
 
     if (
         icon_dst
-        and get_input("\nCreate desktop shortcut for Remind2Rest? (y/n): ") == "y"
+        and get_input("\nCreate desktop shortcut and enable autostart? (y/n): ") == "y"
     ):
         create_desktop_shortcut(current_dir, icon_dst, python_path)
+        enable_autostart(current_dir, python_path)
 
     # Prompt for systemd service
     install_service_choice = get_input("\nInstall and enable systemd user service? (y/n): ")
@@ -194,10 +207,10 @@ def install_service(app_path):
     else:
         print("\nSkipping systemd service installation.")
 
-    # Launch web configurator and wait for it to finish
+    # Launch web configurator in background
     print("\nLaunching web configurator...")
-    subprocess.run(
-        [python_path, os.path.join(current_dir, "web_configurator.py")], check=True
+    subprocess.Popen(
+        [python_path, os.path.join(current_dir, "web_configurator.py")]
     )
 
     print("\nInstallation completed!")
@@ -238,7 +251,7 @@ def create_desktop_shortcut(current_dir, icon_dst, python_path):
 
     desktop_entry = f"""[Desktop Entry]
 Name=Remind2Rest
-Comment=Name=Remind2Rest Web Configurator
+Comment=Remind2Rest Web Configurator
 Exec={python_path} {web_configurator_path}
 Icon={icon_dst}
 Terminal=false
@@ -251,6 +264,29 @@ Categories=Utility;
         f.write(desktop_entry)
     os.chmod(desktop_file_path, 0o755)
     print(f"Desktop shortcut created at: {desktop_file_path}")
+
+def enable_autostart(current_dir, python_path):
+    """Create autostart entry for the tray icon"""
+    autostart_dir = os.path.expanduser("~/.config/autostart")
+    os.makedirs(autostart_dir, exist_ok=True)
+    tray_icon_path = os.path.join(current_dir, "tray_icon.py")
+    icon_path = os.path.join(current_dir, "Remind2Rest.png")
+
+    autostart_content = f"""[Desktop Entry]
+Type=Application
+Exec={python_path} {tray_icon_path}
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Name=Remind2Rest Tray Icon
+Comment=Monitor Remind2Rest status
+Icon={icon_path}
+"""
+    autostart_file = os.path.join(autostart_dir, "Remind2Rest-Tray.desktop")
+    with open(autostart_file, "w") as f:
+        f.write(autostart_content)
+    os.chmod(autostart_file, 0o755)
+    print(f"Autostart entry created at: {autostart_file}")
 
 
 def main():
@@ -283,7 +319,7 @@ def main():
     # Install system dependencies
     print("\nInstalling system dependencies...")
     subprocess.run(
-        ["sudo", "apt-get", "install", "-y", "python3-tk", "python3-pil.imagetk"]
+        ["sudo", "apt-get", "install", "-y", "python3-tk", "python3-pil.imagetk", "libgirepository1.0-dev", "python3-gi", "libgtk-3-dev", "libcairo2-dev", "pkg-config"]
     )
 
     # Get the current directory and check for Remind2Rest.py

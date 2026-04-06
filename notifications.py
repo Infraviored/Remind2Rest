@@ -58,11 +58,16 @@ if HAS_GTK:
 
     def apply_css(widget, css):
         screen = Gdk.Screen.get_default()
+        if not screen:
+            return
         style_provider = Gtk.CssProvider()
-        style_provider.load_from_data(css.encode())
-        Gtk.StyleContext.add_provider_for_screen(
-            screen, style_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-        )
+        try:
+            style_provider.load_from_data(css.encode())
+            Gtk.StyleContext.add_provider_for_screen(
+                screen, style_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+            )
+        except Exception as e:
+            logging.error(f"Error applying CSS: {e}")
 
     def eye_relax_reminder_gtk(flash_frequency, relax_duration):
         win = Gtk.Window()

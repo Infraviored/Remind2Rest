@@ -3,8 +3,13 @@
 import gi
 
 gi.require_version("Gtk", "3.0")
-gi.require_version("AppIndicator3", "0.1")
-from gi.repository import Gtk, AppIndicator3
+try:
+    gi.require_version("AppIndicator3", "0.1")
+    from gi.repository import Gtk, AppIndicator3, GLib
+    HAS_APPINDICATOR = True
+except (ImportError, ValueError):
+    from gi.repository import Gtk, GLib
+    HAS_APPINDICATOR = False
 import os
 import json
 import subprocess
@@ -13,6 +18,10 @@ import webbrowser
 
 class Remind2RestIndicator:
     def __init__(self):
+        if not HAS_APPINDICATOR:
+            print("Warning: AppIndicator3 not found. Tray icon will not be available.")
+            return
+
         self.indicator = AppIndicator3.Indicator.new(
             "Remind2Rest",
             "appointment-soon",  # Default system icon
@@ -102,6 +111,9 @@ class Remind2RestIndicator:
 
 
 def main():
+    if not HAS_APPINDICATOR:
+        print("Tray icon skipped: AppIndicator3 is not installed.")
+        return
     Remind2RestIndicator()
     Gtk.main()
 
