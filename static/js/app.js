@@ -25,8 +25,8 @@ new Vue({
             autostartStatus: '',
             slider: null,
             colors: {
-                eye_relax: '#3498db',
-                posture: '#e74c3c'
+                eye_relax: '#818cf8', // Indigo-400
+                posture: '#2dd4bf'   // Teal-400
             },
             saveStatus: initialData.saveStatus || {
                 show: false,
@@ -108,9 +108,6 @@ new Vue({
         },
         toggleModule(module, event) {
             this.config[module].enabled = event.target.checked;
-            if (!this.config[module].enabled) {
-                this.config[module].reminders = [];
-            }
             this.$nextTick(() => {
                 this.updateSlider();
             });
@@ -142,11 +139,6 @@ new Vue({
                 },
                 step: 1,
                 tooltips: true,
-                pips: {
-                    mode: 'count',
-                    values: 5,
-                    density: 2
-                },
                 behaviour: 'unconstrained-tap',
                 crossable: true
             });
@@ -156,12 +148,7 @@ new Vue({
             const handles = sliderElement.querySelectorAll('.noUi-handle');
             handles.forEach((handle, index) => {
                 handle.style.backgroundColor = this.colors[allReminders[index].module];
-
-                const tooltip = handle.querySelector('.noUi-tooltip');
-                if (tooltip) {
-                    tooltip.style.display = 'none';
-                }
-
+                
                 const deleteButton = document.createElement('button');
                 deleteButton.className = 'delete-button';
                 deleteButton.innerHTML = '<svg class="delete-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
@@ -169,15 +156,18 @@ new Vue({
 
                 handle.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    handles.forEach(h => {
-                        h.classList.remove('active');
-                        const t = h.querySelector('.noUi-tooltip');
-                        if (t) t.style.display = 'none';
-                    });
-                    handle.classList.toggle('active');
-                    if (tooltip) {
-                        tooltip.style.display = handle.classList.contains('active') ? 'block' : 'none';
+                    const wasActive = handle.classList.contains('active');
+                    handles.forEach(h => h.classList.remove('active'));
+                    if (!wasActive) {
+                        handle.classList.add('active');
                     }
+                });
+
+                deleteButton.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    const moduleIndex = allReminders[index].module;
+                    const reminderIndex = this.config[moduleIndex].reminders.indexOf(allReminders[index].time);
+                    this.deleteReminder(moduleIndex, reminderIndex);
                 });
 
                 deleteButton.addEventListener('click', (event) => {
@@ -191,13 +181,7 @@ new Vue({
             // Close active handle when clicking outside
             document.addEventListener('click', (e) => {
                 if (!e.target.closest('.noUi-handle')) {
-                    handles.forEach(handle => {
-                        handle.classList.remove('active');
-                        const tooltip = handle.querySelector('.noUi-tooltip');
-                        if (tooltip) {
-                            tooltip.style.display = 'none';
-                        }
-                    });
+                    handles.forEach(handle => handle.classList.remove('active'));
                 }
             });
 

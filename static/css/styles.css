@@ -1,13 +1,13 @@
 /* static/css/styles.css */
 
 :root {
-    --background-color: #121212;
-    --surface-color: #1e1e1e;
-    --primary-text-color: #e0e0e0;
-    --secondary-text-color: #a0a0a0;
+    --background-color: #121316;
+    --surface-color: #1e2022;
+    --primary-text-color: #e3e2e6;
+    --secondary-text-color: #94a3b8;
     --accent-color: #ffffff;
-    --eye-relax-color: #3498db;
-    --posture-color: #e74c3c;
+    --eye-relax-color: #818cf8;
+    --posture-color: #2dd4bf;
 }
 
 body {
@@ -189,10 +189,8 @@ label {
     top: -12px !important;
     border-radius: 3px;
     background-color: rgb(231, 76, 60);
-    border: 0.555556px solid rgb(217, 217, 217);
-    box-shadow: rgb(255, 255, 255) 0px 0px 1px 0px inset, 
-                rgb(235, 235, 235) 0px 1px 7px 0px inset, 
-                rgb(187, 187, 187) 0px 3px 6px -3px;
+    border: 2px solid #121316;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .noUi-handle::before,

@@ -18,3 +18,7 @@
 2026-03-26 19:20:01,537 - INFO - eye_relax: freq=10.0, dur=20, backend=Tk
 2026-03-26 19:20:02,353 - INFO - eye_relax: freq=1.0, dur=20, backend=Tk
 2026-03-26 19:20:09,933 - INFO - eye_relax: freq=1.0, dur=20, backend=Tk
+2026-04-06 17:15:20,497 - INFO - eye_relax: freq=5.0, dur=20, backend=GTK
+2026-04-06 17:15:53,192 - INFO - eye_relax: freq=5.0, dur=20, backend=GTK
+2026-04-06 17:15:56,787 - INFO - eye_relax: freq=5.0, dur=20, backend=GTK
+2026-04-06 17:24:45,211 - INFO - eye_relax: freq=5.0, dur=20, backend=GTK
