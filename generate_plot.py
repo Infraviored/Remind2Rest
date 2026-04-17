@@ -26,7 +26,7 @@ def rating_to_color(rating):
     )
 
 
-def generate_plot(ratings_file):
+def generate_plot(ratings_file, figsize=(10, 6), dpi=100):
     try:
         if not os.path.exists(ratings_file):
             logging.warning("Ratings file does not exist.")
@@ -80,7 +80,7 @@ def generate_plot(ratings_file):
         colors = [rating_to_color(y) for y in ynew]
         poly = PolyCollection(verts, facecolors=colors)
 
-        fig, ax = plt.subplots(figsize=(10, 6), frameon=False)
+        fig, ax = plt.subplots(figsize=figsize, frameon=False)
         ax.xaxis.set_major_locator(plt.MaxNLocator(15))
         ax.scatter(time_nums, ratings, color="white", s=20)
         ax.add_collection(poly)
@@ -93,10 +93,13 @@ def generate_plot(ratings_file):
         ax.tick_params(axis="both", colors="white", labelsize=16)
         plt.xticks(rotation=45)
         plt.gca().patch.set_facecolor("none")
-
+        plt.tight_layout()
+        plt.subplots_adjust(bottom=0.2)
+        
         buf = BytesIO()
-        plt.savefig(buf, format="png", dpi=300)
+        plt.savefig(buf, format="png", dpi=dpi, transparent=True)
         buf.seek(0)
+        plt.close(fig)
         return Image.open(buf)
     except Exception as e:
         logging.error(f"Error generating plot: {str(e)}")

@@ -207,7 +207,7 @@
     <div id="app">
         <!-- SideNavBar Shell -->
         <aside
-            class="fixed left-0 top-0 h-full flex flex-col py-8 px-4 bg-slate-800/20 backdrop-blur-3xl w-64 border-r border-white-[0.03] shadow-[20px_0_40px_-5px_rgba(0,0,0,0.4)] z-50">
+            class="fixed left-0 top-0 h-full flex flex-col py-[4vh] px-[1.5vw] bg-slate-800/20 backdrop-blur-3xl w-[clamp(16rem,18vw,22rem)] border-r border-white-[0.03] shadow-[20px_0_40px_-5px_rgba(0,0,0,0.4)] z-50">
             <div class="mb-12 h-6"></div>
             <nav class="flex-1 space-y-2">
                 <!-- Dashboard (Active) -->
@@ -245,30 +245,30 @@
         </aside>
 
         <!-- Main Content Canvas -->
-        <main class="ml-64 px-12 pt-8 pb-12 min-h-screen">
+        <main class="ml-[clamp(16rem,18vw,22rem)] px-[5vw] pt-[4vh] pb-12 min-h-screen">
             <!-- Header Controls Section -->
             <section class="mb-8 flex justify-between items-center">
                 <div>
-                    <div class="relative w-96 h-28 select-none -mb-4">
+                    <div class="relative w-[30vw] min-w-[320px] h-[15vh] min-h-[100px] select-none -mb-8">
                         <span
-                            class="absolute top-2 left-0 p-0 m-0 text-5xl font-black tracking-tighter text-slate-100 leading-none">Remind</span>
+                            class="absolute top-[10%] left-0 p-0 m-0 text-[clamp(2rem,4vw,4rem)] font-black tracking-tighter text-slate-100 leading-none">Remind</span>
                         <span
-                            class="absolute top-1/2 left-[180px] -translate-y-[58%] p-0 m-0 text-8xl font-black tracking-tighter text-indigo-500 drop-shadow-[0_0_20px_rgba(129,140,248,0.3)] leading-none">2</span>
+                            class="absolute top-1/2 left-[45%] -translate-x-1/2 -translate-y-[58%] p-0 m-0 text-[clamp(4rem,10vw,10rem)] font-black tracking-tighter text-indigo-500 drop-shadow-[0_0_20px_rgba(129,140,248,0.3)] leading-none">2</span>
                         <span
-                            class="absolute bottom-[22px] left-[252px] p-0 m-0 text-5xl font-black tracking-tighter text-slate-100 leading-none">Rest</span>
+                            class="absolute bottom-[10%] left-[65%] p-0 m-0 text-[clamp(2rem,4vw,4rem)] font-black tracking-tighter text-slate-100 leading-none">Rest</span>
                     </div>
                 </div>
                 <div
-                    class="flex items-center gap-4 bg-surface-container p-2 rounded-xl border border-outline-variant/10 shadow-xl">
-                    <div class="flex items-center gap-3 px-4 py-2 bg-surface-container-high rounded-lg">
+                    class="flex items-center gap-[1vw] bg-surface-container p-[1vw] rounded-xl border border-outline-variant/10 shadow-xl">
+                    <div class="flex items-center gap-[1vw] px-[1.5vw] py-[1vh] bg-surface-container-high rounded-lg">
                         <div class="flex items-center gap-2">
                             <span
                                 :class="['w-2 h-2 rounded-full shadow-[0_0_10px]', isServiceRunning ? 'bg-tertiary shadow-tertiary' : 'bg-error shadow-error']"></span>
-                            <span class="text-sm font-bold text-on-surface">{% raw %}{{ serviceStatus }}{% endraw %}</span>
+                            <span class="text-[clamp(0.8rem,1.2vw,1.2rem)] font-bold text-on-surface">{% raw %}{{ serviceStatus }}{% endraw %}</span>
                         </div>
                     </div>
                     <button @click="saveConfig"
-                        class="bg-surface-container-high text-indigo-400 border border-indigo-400/30 px-8 py-3 rounded-xl font-bold text-sm active:scale-95 transition-all hover:bg-indigo-400/10">
+                        class="bg-surface-container-high text-indigo-400 border border-indigo-400/30 px-[2vw] py-[1.5vh] rounded-xl font-bold text-[clamp(0.8rem,1vw,1rem)] active:scale-95 transition-all hover:bg-indigo-400/10">
                         Save Configuration
                     </button>
                 </div>
@@ -278,7 +278,7 @@
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
                 <!-- Eye Relax Reminder Card -->
                 <div
-                    :class="['glass-card rounded-[2rem] p-8 border transition-all duration-500', config.eye_relax.enabled ? 'border-primary/30 bg-primary/5' : 'border-outline-variant/10']">
+                    :class="['glass-card rounded-[2rem] p-[clamp(1.5rem,3vw,3rem)] border transition-all duration-500', config.eye_relax.enabled ? 'border-primary/30 bg-primary/5' : 'border-outline-variant/10']">
                     <div class="flex items-start justify-between mb-8">
                         <div
                             class="w-14 h-14 rounded-2xl bg-primary-container/20 flex items-center justify-center text-primary transition-transform duration-500">
@@ -330,7 +330,7 @@
 
                 <!-- Posture Reminder Card -->
                 <div
-                    :class="['glass-card rounded-[2rem] p-8 border transition-all duration-500', config.posture.enabled ? 'border-tertiary/30 bg-tertiary/5' : 'border-outline-variant/10']">
+                    :class="['glass-card rounded-[2rem] p-[clamp(1.5rem,3vw,3rem)] border transition-all duration-500', config.posture.enabled ? 'border-tertiary/30 bg-tertiary/5' : 'border-outline-variant/10']">
                     <div class="flex items-start justify-between mb-8">
                         <div
                             class="w-14 h-14 rounded-2xl bg-tertiary-container/20 flex items-center justify-center text-tertiary transition-transform duration-500">
@@ -402,7 +402,7 @@
                     <div id="interval-slider"></div>
                     <!-- Timeline Labels -->
                     <div
-                        class="flex justify-between mt-6 text-[10px] font-bold tracking-widest text-outline uppercase px-2">
+                        class="flex justify-between mt-6 text-[clamp(0.6rem,1vw,1rem)] font-bold tracking-widest text-outline uppercase px-2">
                         <span>0 min</span>
                         <span>{% raw %}{{ Math.round(config.global_interval * 0.25) }}{% endraw %} min</span>
                         <span>{% raw %}{{ Math.round(config.global_interval * 0.5) }}{% endraw %} min</span>

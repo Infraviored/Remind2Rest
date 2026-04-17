@@ -283,7 +283,7 @@ def open_browser():
     global browser_opened
     if not browser_opened:
         try:
-            webbrowser.open("http://localhost:5000", new=2)
+            webbrowser.open_new_tab("http://localhost:5000")
             print("🌐 Web interface opened in browser")
             browser_opened = True
         except Exception as e:

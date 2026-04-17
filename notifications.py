@@ -9,11 +9,12 @@ import matplotlib
 matplotlib.use('Agg')
 from generate_plot import generate_plot
 
-# Set up logging
-logging.basicConfig(filename='notifications.log', level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
-
 script_dir = os.path.dirname(os.path.realpath(__file__))
+
+# Set up logging with absolute path
+log_path = os.path.join(script_dir, 'notifications.log')
+logging.basicConfig(filename=log_path, level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 ratings_file_path = os.path.join(script_dir, 'posture_ratings.txt')
 
 # Detection logic
@@ -166,6 +167,13 @@ if HAS_GTK:
     def posture_reminder_gtk(wait_duration, timeout=10):
         win = Gtk.Window()
         apply_aggressive_fullscreen(win)
+        
+        # Get screen dimensions
+        screen = Gdk.Screen.get_default()
+        sw = screen.get_width()
+        sh = screen.get_height()
+        logging.info(f"GTK Detected Resolution: {sw}x{sh} (Default Screen)")
+        
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         main_box.set_valign(Gtk.Align.CENTER)
         main_box.set_halign(Gtk.Align.CENTER)
@@ -174,7 +182,7 @@ if HAS_GTK:
         title_label = Gtk.Label(label="How is your posture?")
         title_label.set_name("title")
         main_box.pack_start(title_label, False, False, 0)
-        rating_prompt = Gtk.Label(label="")
+        rating_prompt = Gtk.Label(label="Wait...")
         rating_prompt.set_name("prompt")
         main_box.pack_start(rating_prompt, False, False, 0)
         image_widget = Gtk.Image()
@@ -187,8 +195,24 @@ if HAS_GTK:
         """
         apply_css(win, css)
         
-        plot_img = generate_plot(ratings_file_path)
+        # Calculate sensible plot size (80% width, 55% height max to avoid cutoff)
+        plot_w = int(sw * 0.8)
+        plot_h = int(sh * 0.55)
+        
+        # Calculate DPI to fit within both width and height constraints
+        # figsize is (10, 6)
+        dpi_w = plot_w / 10
+        dpi_h = plot_h / 6
+        dynamic_dpi = int(min(dpi_w, dpi_h))
+        
+        logging.info(f"GTK Detected: {sw}x{sh}. Constraints: {plot_w}x{plot_h}. Chosen DPI: {dynamic_dpi}")
+        
+        # Generate plot at higher resolution natively
+        plot_img = generate_plot(ratings_file_path, figsize=(10, 6), dpi=dynamic_dpi)
         if plot_img:
+            # Resize plot to fit accurately
+            plot_img.thumbnail((plot_w, plot_h), Image.Resampling.LANCZOS)
+            
             from gi.repository import GdkPixbuf
             buf = io.BytesIO()
             plot_img.save(buf, format='PNG')
@@ -307,17 +331,34 @@ if HAS_TK:
         setup_tk_fullscreen(root)
         root.configure(background="black")
         
-        msg_l = tk.Label(root, text="How is your posture?", font=('Arial', 60), fg="white", bg="black")
-        msg_l.place(relx=0.5, rely=0.1, anchor=tk.CENTER)
-        prompt_l = tk.Label(root, text="", font=('Arial', 40), fg="white", bg="black")
-        prompt_l.place(relx=0.5, rely=0.2, anchor=tk.CENTER)
+        sw = root.winfo_screenwidth()
+        sh = root.winfo_screenheight()
+        logging.info(f"Tkinter Detected Resolution: {sw}x{sh} (Root Window)")
         
-        plot_img = generate_plot(ratings_file_path)
+        msg_l = tk.Label(root, text="How is your posture?", font=('Arial', 60), fg="white", bg="black")
+        msg_l.place(relx=0.5, rely=0.08, anchor=tk.CENTER)
+        prompt_l = tk.Label(root, text="Wait...", font=('Arial', 40), fg="white", bg="black")
+        prompt_l.place(relx=0.5, rely=0.16, anchor=tk.CENTER)
+        
+        # Calculate sensible plot size (80% width, 55% height max)
+        plot_w = int(sw * 0.8)
+        plot_h = int(sh * 0.55)
+        
+        # Calculate DPI to fit both constraints
+        dpi_w = plot_w / 10
+        dpi_h = plot_h / 6
+        dynamic_dpi = int(min(dpi_w, dpi_h))
+        
+        logging.info(f"Tkinter Detected: {sw}x{sh}. Constraints: {plot_w}x{plot_h}. Chosen DPI: {dynamic_dpi}")
+        
+        plot_img = generate_plot(ratings_file_path, figsize=(10, 6), dpi=dynamic_dpi)
         if plot_img:
+            # Resize plot to fit accurately
+            plot_img.thumbnail((plot_w, plot_h), Image.Resampling.LANCZOS)
             photo = ImageTk.PhotoImage(plot_img)
             img_l = tk.Label(root, image=photo, bg="black")
             img_l.image = photo
-            img_l.place(relx=0.5, rely=0.6, anchor=tk.CENTER)
+            img_l.place(relx=0.5, rely=0.55, anchor=tk.CENTER)
             
         state = {"accept": False}
         def enable():
