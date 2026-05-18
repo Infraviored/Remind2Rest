@@ -96,7 +96,7 @@ def generate_plot(ratings_file, figsize=(10, 6), dpi=100):
         plt.xticks(rotation=45)
         plt.gca().patch.set_facecolor("none")
         plt.tight_layout()
-        plt.subplots_adjust(bottom=0.2)
+        plt.subplots_adjust(bottom=0.11)
         
         buf = BytesIO()
         plt.savefig(buf, format="png", dpi=dpi, transparent=True)

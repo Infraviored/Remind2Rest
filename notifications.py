@@ -182,6 +182,11 @@ if HAS_GTK:
         image_widget = Gtk.Image()
         main_box.pack_start(image_widget, False, False, 0)
         
+        # Get screen dimensions initially to avoid NameError
+        screen = Gdk.Screen.get_default()
+        sw = screen.get_width() if screen else 1920
+        sh = screen.get_height() if screen else 1080
+        
         # Calculate fluid font sizes (calibrated for FHD: 60px/40px)
         title_fs = max(30, int(sh * 0.055))
         prompt_fs = max(20, int(sh * 0.037))
@@ -210,9 +215,9 @@ if HAS_GTK:
             """
             apply_css(win, css_alloc)
 
-            # Calculate sensible plot size (90% width, 70% height max)
-            plot_w = int(sw * 0.9)
-            plot_h = int(sh * 0.7)
+            # Calculate sensible plot size (95% width, 78% height max)
+            plot_w = int(sw * 0.95)
+            plot_h = int(sh * 0.78)
             
             # Calculate DPI to fit within both width and height constraints
             # figsize is (10, 6)
@@ -365,9 +370,9 @@ if HAS_TK:
         prompt_l = tk.Label(root, text="Wait...", font=('Arial', prompt_fs), fg="white", bg="black")
         prompt_l.place(relx=0.5, rely=0.16, anchor=tk.CENTER)
         
-        # Calculate sensible plot size (90% width, 70% height max)
-        plot_w = int(sw * 0.9)
-        plot_h = int(sh * 0.7)
+        # Calculate sensible plot size (95% width, 78% height max)
+        plot_w = int(sw * 0.95)
+        plot_h = int(sh * 0.78)
         
         # Calculate DPI to fit both constraints
         dpi_w = plot_w / 10
@@ -384,7 +389,7 @@ if HAS_TK:
                 photo = ImageTk.PhotoImage(plot_img)
                 img_l = tk.Label(root, image=photo, bg="black")
                 img_l.image = photo
-                img_l.place(relx=0.5, rely=0.6, anchor=tk.CENTER)
+                img_l.place(relx=0.5, rely=0.97, anchor=tk.S)
         
         # Defer plot generation slightly to ensure UI responsiveness
         root.after(100, show_plot)
