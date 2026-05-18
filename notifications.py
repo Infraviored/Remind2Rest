@@ -9,12 +9,21 @@ import matplotlib
 matplotlib.use('Agg')
 from generate_plot import generate_plot
 
+from logging.handlers import RotatingFileHandler
+
 script_dir = os.path.dirname(os.path.realpath(__file__))
 
-# Set up logging with absolute path
+# Set up logging with absolute path and rotating file handler to prevent infinite growth
 log_path = os.path.join(script_dir, 'notifications.log')
-logging.basicConfig(filename=log_path, level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+handler = RotatingFileHandler(
+    log_path,
+    maxBytes=1024 * 1024,  # 1MB per file
+    backupCount=3,  # Keep 3 backup files
+    encoding="utf-8",
+)
+handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+logging.getLogger().setLevel(logging.INFO)
+logging.getLogger().addHandler(handler)
 ratings_file_path = os.path.join(script_dir, 'posture_ratings.txt')
 
 # Detection logic

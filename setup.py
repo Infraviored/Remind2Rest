@@ -30,34 +30,20 @@ def is_installed():
 
 def create_service_file(app_path, config_path):
     python_executable = os.path.join(APP_VENV_DIR, "bin", "python")
-    display = os.environ.get("DISPLAY", ":0")
-    wayland_display = os.environ.get("WAYLAND_DISPLAY", "")
-    xauthority = os.environ.get("XAUTHORITY", f"/home/{os.getenv('USER')}/.Xauthority")
-    runtime_dir = os.environ.get("XDG_RUNTIME_DIR", "")
-
-    env_lines = [f'Environment="DISPLAY={display}"']
-    if wayland_display:
-        env_lines.append(f'Environment="WAYLAND_DISPLAY={wayland_display}"')
-    if xauthority:
-        env_lines.append(f'Environment="XAUTHORITY={xauthority}"')
-    if runtime_dir:
-        env_lines.append(f'Environment="XDG_RUNTIME_DIR={runtime_dir}"')
-
-    env_content = "\n".join(env_lines)
 
     service_content = f"""[Unit]
 Description=Remind2Rest Application
-After=network.target graphical-session.target
+After=graphical-session.target
+PartOf=graphical-session.target
 
 [Service]
 Type=simple
 ExecStart={python_executable} {app_path}
 Environment="REMINDER_CONFIG={config_path}"
-{env_content}
 Restart=always
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target
 """
     os.makedirs(os.path.dirname(SERVICE_PATH), exist_ok=True)
     with open(SERVICE_PATH, "w") as f:
