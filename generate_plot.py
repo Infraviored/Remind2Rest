@@ -9,29 +9,8 @@ from scipy.interpolate import Akima1DInterpolator
 from io import BytesIO
 from PIL import Image
 from matplotlib.patches import Polygon
+from matplotlib.colors import LinearSegmentedColormap
 import logging
-import colorsys
-
-def rating_to_color(rating):
-    # Clip rating to standard [1.0, 5.0] range
-    r = max(1.0, min(5.0, rating))
-    
-    # Interpolate Hue (0 to 240 degrees) in HSV space
-    if r < 2.0:
-        h = 0.0 + (r - 1.0) * 30.0
-    elif r < 3.0:
-        h = 30.0 + (r - 2.0) * 30.0
-    elif r < 4.0:
-        h = 60.0 + (r - 3.0) * 60.0
-    else:
-        h = 120.0 + (r - 4.0) * 120.0
-        
-    # Convert Hue from degrees (0-360) to [0.0, 1.0] for colorsys
-    h_val = h / 360.0
-    
-    # Return RGBA color with full saturation and brightness (Value = 1.0)
-    return colorsys.hsv_to_rgb(h_val, 1.0, 1.0) + (1.0,)
-
 
 def generate_plot(ratings_file, figsize=(10, 6), dpi=100):
     try:
@@ -72,15 +51,22 @@ def generate_plot(ratings_file, figsize=(10, 6), dpi=100):
 
         fig, ax = plt.subplots(figsize=figsize, frameon=False)
 
-        # Build a 1-row RGBA image that varies only along x, then stretch vertically.
-        rgba = np.array([rating_to_color(y) for y in ynew], dtype=float)[None, :, :]  # shape (1, W, 4)
+        # 1. Define a rich, highly saturated but non-neon palette (Royal Jewel upgraded)
+        # 1: Ruby Red, 2: Amber Orange, 3: Marigold Yellow, 4: Emerald Green, 5: Cobalt Blue
+        custom_colors = ["#c90c29", "#e85d04", "#fca311", "#0f9f47", "#1c51a3"]
+        cmap = LinearSegmentedColormap.from_list("posture_cmap", custom_colors)
 
+        # Map the 1-5 rating directly to 0.0-1.0 for the colormap
+        normalized_y = (ynew - 1) / 4.0
+        rgba = cmap(normalized_y)[None, :, :]  # shape (1, W, 4)
+
+        # Draw the gradient image
         im = ax.imshow(
             rgba,
             extent=[xnew.min(), xnew.max(), 0, 5.1],
             origin="lower",
             aspect="auto",
-            interpolation="bicubic",   # smooths horizontal transitions perfectly
+            interpolation="bicubic",
             zorder=1
         )
 
@@ -91,23 +77,36 @@ def generate_plot(ratings_file, figsize=(10, 6), dpi=100):
         ax.add_patch(clip_patch)
         im.set_clip_path(clip_patch)
 
-        # Foreground line and sample points
-        ax.plot(xnew, ynew, color="white", linewidth=1.2, zorder=3)
-        ax.scatter(time_nums, ratings, color="white", s=20, zorder=4)
+        # Add subtle horizontal gridlines to easily read the rating level
+        ax.yaxis.grid(True, color="#444444", linestyle="--", linewidth=0.5, zorder=0)
+
+        # Foreground line with a softer, broader glow
+        ax.plot(xnew, ynew, color="white", linewidth=8, alpha=0.08, zorder=2) # Broad soft glow
+        ax.plot(xnew, ynew, color="white", linewidth=2.5, alpha=0.9, zorder=3) # Main line (slightly softened)
+        ax.scatter(time_nums, ratings, color="#ffffff", s=50, edgecolors="#222222", linewidths=1.5, zorder=4)
 
         ax.set_xlim(xnew.min(), xnew.max())
         ax.set_ylim(0, 5.1)
-        ax.set_ylabel("Rating", color="white", fontsize=20)
+        ax.set_ylabel("Rating", color="#aaaaaa", fontsize=16, labelpad=10)
+        
+        # Hide top, right, and left spines
+        for spine in ["top", "right", "left"]:
+            ax.spines[spine].set_visible(False)
+        ax.spines["bottom"].set_color("#444444")
+        ax.spines["bottom"].set_linewidth(1.2)
+
         ax.xaxis.set_major_locator(plt.MaxNLocator(15))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-        ax.tick_params(axis="both", colors="white", labelsize=16)
+        
+        # Remove tick marks (the little lines) but keep the labels for a cleaner UI
+        ax.tick_params(axis="both", colors="#aaaaaa", labelsize=12, length=0, pad=8)
         plt.xticks(rotation=45)
 
         fig.patch.set_alpha(0)
         ax.set_facecolor((0, 0, 0, 0))
 
         plt.tight_layout()
-        plt.subplots_adjust(bottom=0.11)
+        plt.subplots_adjust(bottom=0.15)
 
         buf = BytesIO()
         plt.savefig(buf, format="png", dpi=dpi, transparent=True)
@@ -119,9 +118,7 @@ def generate_plot(ratings_file, figsize=(10, 6), dpi=100):
         logging.error(f"Error generating plot: {e}")
         return None
 
-
 if __name__ == "__main__":
-    # For testing purposes
     script_dir = os.path.dirname(os.path.realpath(__file__))
     ratings_file_path = os.path.join(script_dir, "posture_ratings.txt")
     img = generate_plot(ratings_file_path)
