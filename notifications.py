@@ -168,12 +168,6 @@ if HAS_GTK:
         win = Gtk.Window()
         apply_aggressive_fullscreen(win)
         
-        # Get screen dimensions
-        screen = Gdk.Screen.get_default()
-        sw = screen.get_width()
-        sh = screen.get_height()
-        logging.info(f"GTK Detected Resolution: {sw}x{sh} (Default Screen)")
-        
         main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
         main_box.set_valign(Gtk.Align.CENTER)
         main_box.set_halign(Gtk.Align.CENTER)
@@ -188,38 +182,61 @@ if HAS_GTK:
         image_widget = Gtk.Image()
         main_box.pack_start(image_widget, False, False, 0)
         
-        css = """
-            window { background-color: black; }
-            #title { font: bold 60px Arial; color: white; }
-            #prompt { font: 40px Arial; color: white; }
+        # Calculate fluid font sizes (calibrated for FHD: 60px/40px)
+        title_fs = max(30, int(sh * 0.055))
+        prompt_fs = max(20, int(sh * 0.037))
+
+        css = f"""
+            window {{ background-color: black; }}
+            #title {{ font: bold {title_fs}px Arial; color: white; }}
+            #prompt {{ font: {prompt_fs}px Arial; color: white; }}
         """
         apply_css(win, css)
         
-        # Calculate sensible plot size (80% width, 55% height max to avoid cutoff)
-        plot_w = int(sw * 0.8)
-        plot_h = int(sh * 0.55)
-        
-        # Calculate DPI to fit within both width and height constraints
-        # figsize is (10, 6)
-        dpi_w = plot_w / 10
-        dpi_h = plot_h / 6
-        dynamic_dpi = int(min(dpi_w, dpi_h))
-        
-        logging.info(f"GTK Detected: {sw}x{sh}. Constraints: {plot_w}x{plot_h}. Chosen DPI: {dynamic_dpi}")
-        
-        # Generate plot at higher resolution natively
-        plot_img = generate_plot(ratings_file_path, figsize=(10, 6), dpi=dynamic_dpi)
-        if plot_img:
-            # Resize plot to fit accurately
-            plot_img.thumbnail((plot_w, plot_h), Image.Resampling.LANCZOS)
+        def generate_and_show_plot():
+            # Get actual window dimensions after realization
+            sw = win.get_allocated_width()
+            sh = win.get_allocated_height()
+            logging.info(f"GTK Detected Resolution: {sw}x{sh} (Allocated Area)")
+
+            # Recalculate fonts for actual allocation
+            title_fs_alloc = max(30, int(sh * 0.055))
+            prompt_fs_alloc = max(20, int(sh * 0.037))
             
-            from gi.repository import GdkPixbuf
-            buf = io.BytesIO()
-            plot_img.save(buf, format='PNG')
-            loader = GdkPixbuf.PixbufLoader.new_with_type('png')
-            loader.write(buf.getvalue())
-            loader.close()
-            image_widget.set_from_pixbuf(loader.get_pixbuf())
+            css_alloc = f"""
+                window {{ background-color: black; }}
+                #title {{ font: bold {title_fs_alloc}px Arial; color: white; }}
+                #prompt {{ font: {prompt_fs_alloc}px Arial; color: white; }}
+            """
+            apply_css(win, css_alloc)
+
+            # Calculate sensible plot size (90% width, 70% height max)
+            plot_w = int(sw * 0.9)
+            plot_h = int(sh * 0.7)
+            
+            # Calculate DPI to fit within both width and height constraints
+            # figsize is (10, 6)
+            dpi_w = plot_w / 10
+            dpi_h = plot_h / 6
+            dynamic_dpi = int(min(dpi_w, dpi_h))
+            
+            logging.info(f"GTK Constraints: {plot_w}x{plot_h}. Chosen DPI: {dynamic_dpi}")
+            
+            plot_img = generate_plot(ratings_file_path, figsize=(10, 6), dpi=dynamic_dpi)
+            if plot_img:
+                # Resize plot to fit accurately
+                plot_img.thumbnail((plot_w, plot_h), Image.Resampling.LANCZOS)
+                
+                from gi.repository import GdkPixbuf
+                buf = io.BytesIO()
+                plot_img.save(buf, format='PNG')
+                loader = GdkPixbuf.PixbufLoader.new_with_type('png')
+                loader.write(buf.getvalue())
+                loader.close()
+                image_widget.set_from_pixbuf(loader.get_pixbuf())
+            return False # Stop timeout
+            
+        win.connect("realize", lambda w: GLib.timeout_add(200, generate_and_show_plot))
             
         state = {"accept_keypress": False}
         def enable_input():
@@ -331,34 +348,46 @@ if HAS_TK:
         setup_tk_fullscreen(root)
         root.configure(background="black")
         
-        sw = root.winfo_screenwidth()
-        sh = root.winfo_screenheight()
-        logging.info(f"Tkinter Detected Resolution: {sw}x{sh} (Root Window)")
+        # Allow window manager to settle and enter fullscreen
+        root.update()
         
-        msg_l = tk.Label(root, text="How is your posture?", font=('Arial', 60), fg="white", bg="black")
+        # Get actual monitor dimensions instead of virtual screen
+        sw = root.winfo_width()
+        sh = root.winfo_height()
+        logging.info(f"Tkinter Detected Resolution: {sw}x{sh} (Monitor Context)")
+        
+        # Calculate fluid font sizes (calibrated for FHD: 60px/40px)
+        title_fs = max(30, int(sh * 0.055))
+        prompt_fs = max(20, int(sh * 0.037))
+
+        msg_l = tk.Label(root, text="How is your posture?", font=('Arial', title_fs), fg="white", bg="black")
         msg_l.place(relx=0.5, rely=0.08, anchor=tk.CENTER)
-        prompt_l = tk.Label(root, text="Wait...", font=('Arial', 40), fg="white", bg="black")
+        prompt_l = tk.Label(root, text="Wait...", font=('Arial', prompt_fs), fg="white", bg="black")
         prompt_l.place(relx=0.5, rely=0.16, anchor=tk.CENTER)
         
-        # Calculate sensible plot size (80% width, 55% height max)
-        plot_w = int(sw * 0.8)
-        plot_h = int(sh * 0.55)
+        # Calculate sensible plot size (90% width, 70% height max)
+        plot_w = int(sw * 0.9)
+        plot_h = int(sh * 0.7)
         
         # Calculate DPI to fit both constraints
         dpi_w = plot_w / 10
         dpi_h = plot_h / 6
         dynamic_dpi = int(min(dpi_w, dpi_h))
         
-        logging.info(f"Tkinter Detected: {sw}x{sh}. Constraints: {plot_w}x{plot_h}. Chosen DPI: {dynamic_dpi}")
+        logging.info(f"Tkinter Constraints: {plot_w}x{plot_h}. Chosen DPI: {dynamic_dpi}")
         
-        plot_img = generate_plot(ratings_file_path, figsize=(10, 6), dpi=dynamic_dpi)
-        if plot_img:
-            # Resize plot to fit accurately
-            plot_img.thumbnail((plot_w, plot_h), Image.Resampling.LANCZOS)
-            photo = ImageTk.PhotoImage(plot_img)
-            img_l = tk.Label(root, image=photo, bg="black")
-            img_l.image = photo
-            img_l.place(relx=0.5, rely=0.55, anchor=tk.CENTER)
+        def show_plot():
+            plot_img = generate_plot(ratings_file_path, figsize=(10, 6), dpi=dynamic_dpi)
+            if plot_img:
+                # Resize plot to fit accurately
+                plot_img.thumbnail((plot_w, plot_h), Image.Resampling.LANCZOS)
+                photo = ImageTk.PhotoImage(plot_img)
+                img_l = tk.Label(root, image=photo, bg="black")
+                img_l.image = photo
+                img_l.place(relx=0.5, rely=0.6, anchor=tk.CENTER)
+        
+        # Defer plot generation slightly to ensure UI responsiveness
+        root.after(100, show_plot)
             
         state = {"accept": False}
         def enable():

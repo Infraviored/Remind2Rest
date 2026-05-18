@@ -3,3 +3,4 @@ posture_ratings.txt
 ratings_plot.png
 __pycache__
 myenv/
+*.log

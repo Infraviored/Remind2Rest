@@ -35,11 +35,14 @@ def generate_plot(ratings_file, figsize=(10, 6), dpi=100):
         data_dict = {}
         with open(ratings_file, "r") as file:
             for line in file:
+                line = line.strip()
+                if not line or " - Rating: " not in line:
+                    continue
                 try:
-                    time_str, rating_str = line.strip().split(" - Rating: ")
+                    time_str, rating_str = line.split(" - Rating: ")
                     timestamp = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
                     data_dict[timestamp] = int(rating_str)
-                except ValueError as e:
+                except (ValueError, IndexError) as e:
                     logging.error(
                         f"Error parsing line in ratings file: {line}. Error: {str(e)}"
                     )
@@ -88,7 +91,6 @@ def generate_plot(ratings_file, figsize=(10, 6), dpi=100):
         ax.set_xlim(min(xnew), max(xnew))
         ax.set_ylim(0, 5.1)
         ax.set_ylabel("Rating", color="white", fontsize=20)
-        ax.set_title("Ratings Over Time", color="white", fontsize=24)
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
         ax.tick_params(axis="both", colors="white", labelsize=16)
         plt.xticks(rotation=45)
