@@ -168,8 +168,8 @@ if HAS_GTK:
         win = Gtk.Window()
         apply_aggressive_fullscreen(win)
         
-        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=20)
-        main_box.set_valign(Gtk.Align.CENTER)
+        main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
+        main_box.set_valign(Gtk.Align.FILL)
         main_box.set_halign(Gtk.Align.CENTER)
         win.add(main_box)
         
@@ -180,7 +180,8 @@ if HAS_GTK:
         rating_prompt.set_name("prompt")
         main_box.pack_start(rating_prompt, False, False, 0)
         image_widget = Gtk.Image()
-        main_box.pack_start(image_widget, False, False, 0)
+        image_widget.set_valign(Gtk.Align.END)
+        main_box.pack_start(image_widget, True, True, 0)
         
         # Get screen dimensions initially to avoid NameError
         screen = Gdk.Screen.get_default()
@@ -204,6 +205,10 @@ if HAS_GTK:
             sh = win.get_allocated_height()
             scale = win.get_scale_factor()
             logging.info(f"GTK Detected Resolution: {sw}x{sh} (Allocated Area), Scale Factor: {scale}")
+
+            # Position elements dynamically using screen-height percentage margins
+            title_label.set_margin_top(int(sh * 0.06))       # elegant gap at top (6% of screen height)
+            image_widget.set_margin_bottom(int(sh * 0.008))   # extremely close to bottom (0.8% gap)
 
             # Recalculate fonts for actual allocation
             title_fs_alloc = max(30, int(sh * 0.055))

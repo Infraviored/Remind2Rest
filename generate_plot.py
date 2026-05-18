@@ -87,7 +87,7 @@ def generate_plot(ratings_file, figsize=(10, 6), dpi=100):
 
         ax.set_xlim(xnew.min(), xnew.max())
         ax.set_ylim(0, 5.1)
-        ax.set_ylabel("Rating", color="#aaaaaa", fontsize=16, labelpad=10)
+        ax.set_ylabel("Rating", color="white", fontsize=16, labelpad=10)
         
         # Hide top, right, and left spines
         for spine in ["top", "right", "left"]:
@@ -95,18 +95,18 @@ def generate_plot(ratings_file, figsize=(10, 6), dpi=100):
         ax.spines["bottom"].set_color("#444444")
         ax.spines["bottom"].set_linewidth(1.2)
 
-        ax.xaxis.set_major_locator(plt.MaxNLocator(15))
+        ax.xaxis.set_major_locator(plt.MaxNLocator(8))
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
         
         # Remove tick marks (the little lines) but keep the labels for a cleaner UI
-        ax.tick_params(axis="both", colors="#aaaaaa", labelsize=12, length=0, pad=8)
-        plt.xticks(rotation=45)
+        ax.tick_params(axis="both", colors="white", labelsize=12, length=0, pad=8)
+        plt.xticks(rotation=0)
 
         fig.patch.set_alpha(0)
         ax.set_facecolor((0, 0, 0, 0))
 
         plt.tight_layout()
-        plt.subplots_adjust(bottom=0.15)
+        plt.subplots_adjust(bottom=0.10)
 
         buf = BytesIO()
         plt.savefig(buf, format="png", dpi=dpi, transparent=True)
