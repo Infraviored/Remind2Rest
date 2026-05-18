@@ -199,10 +199,11 @@ if HAS_GTK:
         apply_css(win, css)
         
         def generate_and_show_plot():
-            # Get actual window dimensions after realization
+            # Get actual window dimensions and scale factor after realization
             sw = win.get_allocated_width()
             sh = win.get_allocated_height()
-            logging.info(f"GTK Detected Resolution: {sw}x{sh} (Allocated Area)")
+            scale = win.get_scale_factor()
+            logging.info(f"GTK Detected Resolution: {sw}x{sh} (Allocated Area), Scale Factor: {scale}")
 
             # Recalculate fonts for actual allocation
             title_fs_alloc = max(30, int(sh * 0.055))
@@ -223,22 +224,34 @@ if HAS_GTK:
             # figsize is (10, 6)
             dpi_w = plot_w / 10
             dpi_h = plot_h / 6
-            dynamic_dpi = int(min(dpi_w, dpi_h))
+            # Multiply DPI by window scale factor to render high-resolution pixels
+            dynamic_dpi = int(min(dpi_w, dpi_h)) * scale
             
             logging.info(f"GTK Constraints: {plot_w}x{plot_h}. Chosen DPI: {dynamic_dpi}")
             
             plot_img = generate_plot(ratings_file_path, figsize=(10, 6), dpi=dynamic_dpi)
             if plot_img:
-                # Resize plot to fit accurately
-                plot_img.thumbnail((plot_w, plot_h), Image.Resampling.LANCZOS)
-                
-                from gi.repository import GdkPixbuf
-                buf = io.BytesIO()
-                plot_img.save(buf, format='PNG')
-                loader = GdkPixbuf.PixbufLoader.new_with_type('png')
-                loader.write(buf.getvalue())
-                loader.close()
-                image_widget.set_from_pixbuf(loader.get_pixbuf())
+                try:
+                    import cairo
+                    # Resize high-res plot to keep exact dimensions scaled by scale
+                    plot_img.thumbnail((plot_w * scale, plot_h * scale), Image.Resampling.LANCZOS)
+                    buf = io.BytesIO()
+                    plot_img.save(buf, format='PNG')
+                    buf.seek(0)
+                    
+                    surface = cairo.ImageSurface.create_from_png(buf)
+                    surface.set_device_scale(scale, scale)
+                    image_widget.set_from_surface(surface)
+                except ImportError:
+                    # Fallback to standard Pixbuf loader if cairo is not available
+                    plot_img.thumbnail((plot_w, plot_h), Image.Resampling.LANCZOS)
+                    from gi.repository import GdkPixbuf
+                    buf = io.BytesIO()
+                    plot_img.save(buf, format='PNG')
+                    loader = GdkPixbuf.PixbufLoader.new_with_type('png')
+                    loader.write(buf.getvalue())
+                    loader.close()
+                    image_widget.set_from_pixbuf(loader.get_pixbuf())
             return False # Stop timeout
             
         win.connect("realize", lambda w: GLib.timeout_add(200, generate_and_show_plot))
