@@ -26,6 +26,29 @@ logging.getLogger().setLevel(logging.INFO)
 logging.getLogger().addHandler(handler)
 ratings_file_path = os.path.join(script_dir, 'posture_ratings.txt')
 
+def update_env_from_systemd():
+    if os.name == 'nt':
+        return
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['systemctl', '--user', 'show-environment'],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=1.0
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if '=' in line:
+                    key, val = line.split('=', 1)
+                    if key in ['DISPLAY', 'WAYLAND_DISPLAY', 'XDG_SESSION_TYPE', 'XAUTHORITY', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS']:
+                        os.environ[key] = val
+    except Exception:
+        pass
+
+update_env_from_systemd()
+
 # Detection logic
 IS_WINDOWS = os.name == 'nt'
 XDG_SESSION = os.environ.get('XDG_SESSION_TYPE', '').lower()
@@ -213,7 +236,7 @@ if HAS_GTK:
             sw = win.get_allocated_width()
             sh = win.get_allocated_height()
             scale = win.get_scale_factor()
-            logging.info(f"GTK Detected Resolution: {sw}x{sh} (Allocated Area), Scale Factor: {scale}")
+            logging.debug(f"GTK Detected Resolution: {sw}x{sh} (Allocated Area), Scale Factor: {scale}")
 
             # Position elements dynamically using screen-height percentage margins
             title_label.set_margin_top(int(sh * 0.06))       # elegant gap at top (6% of screen height)
@@ -241,7 +264,7 @@ if HAS_GTK:
             # Multiply DPI by window scale factor to render high-resolution pixels
             dynamic_dpi = int(min(dpi_w, dpi_h)) * scale
             
-            logging.info(f"GTK Constraints: {plot_w}x{plot_h}. Chosen DPI: {dynamic_dpi}")
+            logging.debug(f"GTK Constraints: {plot_w}x{plot_h}. Chosen DPI: {dynamic_dpi}")
             
             plot_img = generate_plot(ratings_file_path, figsize=(10, 6), dpi=dynamic_dpi)
             if plot_img:
@@ -386,7 +409,7 @@ if HAS_TK:
         # Get actual monitor dimensions instead of virtual screen
         sw = root.winfo_width()
         sh = root.winfo_height()
-        logging.info(f"Tkinter Detected Resolution: {sw}x{sh} (Monitor Context)")
+        logging.debug(f"Tkinter Detected Resolution: {sw}x{sh} (Monitor Context)")
         
         # Calculate fluid font sizes (calibrated for FHD: 60px/40px)
         title_fs = max(30, int(sh * 0.055))
@@ -406,7 +429,7 @@ if HAS_TK:
         dpi_h = plot_h / 6
         dynamic_dpi = int(min(dpi_w, dpi_h))
         
-        logging.info(f"Tkinter Constraints: {plot_w}x{plot_h}. Chosen DPI: {dynamic_dpi}")
+        logging.debug(f"Tkinter Constraints: {plot_w}x{plot_h}. Chosen DPI: {dynamic_dpi}")
         
         def show_plot():
             plot_img = generate_plot(ratings_file_path, figsize=(10, 6), dpi=dynamic_dpi)
@@ -442,7 +465,7 @@ if HAS_TK:
 
 # --- Dispatcher ---
 def eye_relax_reminder(freq, duration):
-    logging.info(f"eye_relax: freq={freq}, dur={duration}, backend={'GTK' if USE_GTK else 'Tk'}")
+    logging.debug(f"eye_relax: freq={freq}, dur={duration}, backend={'GTK' if USE_GTK else 'Tk'}")
     if USE_GTK: eye_relax_reminder_gtk(freq, duration)
     elif HAS_TK: eye_relax_reminder_tk(freq, duration)
     else: logging.error("No UI backend available")
@@ -454,7 +477,7 @@ def show_custom_reminder(message, flashing, duration, cancel_key, freq=2, color=
     else: logging.error("No UI backend available")
 
 def posture_reminder(wait, timeout=10):
-    logging.info(f"posture: wait={wait}, backend={'GTK' if USE_GTK else 'Tk'}")
+    logging.debug(f"posture: wait={wait}, backend={'GTK' if USE_GTK else 'Tk'}")
     if USE_GTK: posture_reminder_gtk(wait, timeout)
     elif HAS_TK: posture_reminder_tk(wait, timeout)
     else: logging.error("No UI backend available")
