@@ -119,7 +119,7 @@ def generate_plot(ratings_file, figsize=(10, 6), dpi=100):
         return None
 
 if __name__ == "__main__":
-    script_dir = os.path.dirname(os.path.realpath(__file__))
+    script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     ratings_file_path = os.path.join(script_dir, "posture_ratings.txt")
     img = generate_plot(ratings_file_path)
     if img:

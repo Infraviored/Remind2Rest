@@ -3,7 +3,7 @@ import os
 import logging
 from datetime import datetime
 from PIL import Image
-from generate_plot import generate_plot
+from src.generate_plot import generate_plot
 from src.config import RATINGS_FILE_PATH
 from src.ui_utils import USE_GTK, HAS_TK, setup_tk_fullscreen
 
