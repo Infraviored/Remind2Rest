@@ -22,7 +22,7 @@ try:
 except ImportError:
     pass
 
-def posture_reminder_gtk(wait_duration, timeout=10):
+def posture_reminder_gtk(wait_duration=0, timeout=10):
     win = Gtk.Window()
     apply_aggressive_fullscreen(win)
     
@@ -35,7 +35,7 @@ def posture_reminder_gtk(wait_duration, timeout=10):
     title_label.set_name("title")
     main_box.pack_start(title_label, False, False, 0)
     
-    rating_prompt = Gtk.Label(label="Wait...")
+    rating_prompt = Gtk.Label(label="Rate 1-5")
     rating_prompt.set_name("prompt")
     main_box.pack_start(rating_prompt, False, False, 0)
     
@@ -44,7 +44,7 @@ def posture_reminder_gtk(wait_duration, timeout=10):
     main_box.pack_start(image_widget, True, True, 0)
     
     # State tracker to prevent redundant plot updates
-    state = {"width": 0, "height": 0, "accept_keypress": False}
+    state = {"width": 0, "height": 0, "accept_keypress": True}
     
     def on_size_allocate(widget, allocation):
         sw = allocation.width
@@ -109,11 +109,6 @@ def posture_reminder_gtk(wait_duration, timeout=10):
                 image_widget.set_from_pixbuf(loader.get_pixbuf())
                 
     win.connect("size-allocate", on_size_allocate)
-    
-    def enable_input():
-        state["accept_keypress"] = True
-        rating_prompt.set_text("Rate 1-5")
-        return False
         
     def on_key_press(w, event):
         if not state["accept_keypress"]:
@@ -130,13 +125,12 @@ def posture_reminder_gtk(wait_duration, timeout=10):
         return True
         
     win.connect("key-press-event", on_key_press)
-    GLib.timeout_add(int(wait_duration * 1000), enable_input)
     GLib.timeout_add_seconds(timeout, lambda: (win.destroy(), Gtk.main_quit(), False)[-1])
     
     win.show_all()
     Gtk.main()
 
-def posture_reminder_tk(wait_duration, timeout=10):
+def posture_reminder_tk(wait_duration=0, timeout=10):
     root = tk.Tk()
     setup_tk_fullscreen(root)
     root.configure(background="black")
@@ -144,13 +138,13 @@ def posture_reminder_tk(wait_duration, timeout=10):
     msg_l = tk.Label(root, text="How is your posture?", font=('Arial', 30), fg="white", bg="black")
     msg_l.place(relx=0.5, rely=0.08, anchor=tk.CENTER)
     
-    prompt_l = tk.Label(root, text="Wait...", font=('Arial', 20), fg="white", bg="black")
+    prompt_l = tk.Label(root, text="Rate 1-5", font=('Arial', 20), fg="white", bg="black")
     prompt_l.place(relx=0.5, rely=0.16, anchor=tk.CENTER)
     
     img_l = tk.Label(root, bg="black")
     img_l.place(relx=0.5, rely=0.97, anchor=tk.S)
     
-    state = {"accept": False, "width": 0, "height": 0}
+    state = {"accept": True, "width": 0, "height": 0}
     
     def on_configure(event):
         if event.widget != root:
@@ -188,10 +182,6 @@ def posture_reminder_tk(wait_duration, timeout=10):
             img_l.image = photo
             
     root.bind("<Configure>", on_configure)
-    
-    def enable():
-        state["accept"] = True
-        prompt_l.configure(text="Rate 1-5")
         
     def on_key(event):
         if not state["accept"]:
@@ -205,11 +195,10 @@ def posture_reminder_tk(wait_duration, timeout=10):
             root.destroy()
             
     root.bind("<Key>", on_key)
-    root.after(int(wait_duration * 1000), enable)
     root.after(timeout * 1000, root.destroy)
     root.mainloop()
 
-def posture_reminder(wait, timeout=10):
+def posture_reminder(wait=0, timeout=10):
     logging.debug(f"posture: wait={wait}, backend={'GTK' if USE_GTK else 'Tk'}")
     if USE_GTK: posture_reminder_gtk(wait, timeout)
     elif HAS_TK: posture_reminder_tk(wait, timeout)
