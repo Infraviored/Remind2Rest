@@ -25,7 +25,21 @@ def update_status(status):
         )
     current_status = status
 
+def is_conference_active() -> bool:
+    try:
+        state_file = "/tmp/conference_mode.txt"
+        if os.path.exists(state_file):
+            with open(state_file, "r") as f:
+                return f.read().strip().lower() == "on"
+    except Exception as e:
+        logging.error(f"Error reading conference mode state file: {e}")
+    return False
+
 def trigger_reminder(module, settings):
+    if is_conference_active():
+        logging.info(f"Skipping {module} reminder during active video conference")
+        return
+
     logging.info(f"Triggering {module} reminder")
     current_time = datetime.now()
     trigger_key = f"{module}_{current_time.minute}"
