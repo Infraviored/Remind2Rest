@@ -96,7 +96,9 @@ def create_virtual_environment():
     """Create a virtual environment for the application"""
     if not os.path.exists(APP_VENV_DIR):
         print(f"\nCreating virtual environment at {APP_VENV_DIR}...")
-        venv.create(APP_VENV_DIR, with_pip=True, system_site_packages=True)
+        # Symlink the interpreter: a copied binary breaks when the system Python is
+        # upgraded underneath it (e.g. Ubuntu release upgrades).
+        venv.create(APP_VENV_DIR, with_pip=True, system_site_packages=True, symlinks=(os.name != "nt"))
     else:
         print(f"\nUsing existing virtual environment at {APP_VENV_DIR}")
     
@@ -305,7 +307,7 @@ def main():
     # Install system dependencies
     print("\nInstalling system dependencies...")
     subprocess.run(
-        ["sudo", "apt-get", "install", "-y", "python3-tk", "python3-pil.imagetk", "libgirepository1.0-dev", "python3-gi", "libgtk-3-dev", "libcairo2-dev", "pkg-config"]
+        ["sudo", "apt-get", "install", "-y", "python3-tk", "python3-pil.imagetk", "libgirepository1.0-dev", "libgirepository-2.0-dev", "python3-gi", "libgtk-3-dev", "libcairo2-dev", "pkg-config"]
     )
 
     # Get the current directory and check for Remind2Rest.py
