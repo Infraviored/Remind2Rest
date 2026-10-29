@@ -41,8 +41,8 @@ const NS = 'http://www.w3.org/2000/svg';
         scale.classList.add('done');
         document.getElementById('title').textContent = `Saved: ${n}, ${WORDS[n - 1].toLowerCase()}`;
         sub.textContent = n >= 4 ? 'Keep it that way.' : 'Roll your shoulders back and sit tall.';
-        await api.save_rating(n);
-        await R2R.wait(1400);
+        // The filled button shows for half a second (saving runs meanwhile), then the page closes.
+        await Promise.all([api.save_rating(n), R2R.wait(500)]);
         api.close();
     }
 

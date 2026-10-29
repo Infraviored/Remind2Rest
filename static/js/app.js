@@ -17,9 +17,16 @@ new Vue({
             serviceStatus: 'Unknown',
             isServiceRunning: false,
             isServiceEnabled: false,
-            slider: null,
+            // Last result of distributeReminders(), drawn by the timeline preview.
+            schedule: { cycle: null, every: {}, reminders: {} },
             saveStatus: { show: false, success: false, message: '' }
         };
+    },
+    computed: {
+        // Enabled types that have computed times, in library order, for the timeline preview.
+        scheduledModules() {
+            return this.modules.filter(m => this.config[m.key].enabled && this.schedule.reminders[m.key]);
+        }
     },
     methods: {
         saveConfig() {
@@ -46,119 +53,26 @@ new Vue({
         },
         toggleModule(module, event) {
             this.config[module].enabled = event.target.checked;
-            this.$nextTick(() => {
-                this.updateSlider();
-            });
+            this.redistribute();
         },
-        updateSlider() {
-            if (this.slider) {
-                this.slider.destroy();
-            }
-
-            const allReminders = this.modules
-                .filter(m => this.config[m.key].enabled)
-                .flatMap(m => this.config[m.key].reminders.map(time => ({ time, module: m.key })));
-            const colors = Object.fromEntries(this.modules.map(m => [m.key, m.color]));
-
-            const sliderElement = document.getElementById('interval-slider');
-
-            if (allReminders.length === 0) {
-                sliderElement.innerHTML = '';
-                return;
-            }
-
-            this.slider = noUiSlider.create(sliderElement, {
-                start: allReminders.map(r => r.time),
-                connect: false,
-                range: {
-                    'min': 0,
-                    'max': this.config.global_interval || 60
-                },
-                step: 1,
-                tooltips: true,
-                behaviour: 'unconstrained-tap',
-                crossable: true
-            });
-
-            let activeHandle = null;
-
-            const handles = sliderElement.querySelectorAll('.noUi-handle');
-            handles.forEach((handle, index) => {
-                handle.style.backgroundColor = colors[allReminders[index].module];
-                
-                const deleteButton = document.createElement('button');
-                deleteButton.className = 'delete-button';
-                deleteButton.innerHTML = '<svg class="delete-icon" viewBox="0 0 24 24"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
-                handle.appendChild(deleteButton);
-
-                handle.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const wasActive = handle.classList.contains('active');
-                    handles.forEach(h => h.classList.remove('active'));
-                    if (!wasActive) {
-                        handle.classList.add('active');
-                    }
-                });
-
-                deleteButton.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    const moduleIndex = allReminders[index].module;
-                    const reminderIndex = this.config[moduleIndex].reminders.indexOf(allReminders[index].time);
-                    this.deleteReminder(moduleIndex, reminderIndex);
-                });
-            });
-
-            // Close active handle when clicking outside
-            document.addEventListener('click', (e) => {
-                if (!e.target.closest('.noUi-handle')) {
-                    handles.forEach(handle => handle.classList.remove('active'));
-                }
-            });
-
-            this.slider.on('update', (values) => {
-                allReminders.forEach((reminder, index) => {
-                    reminder.time = Math.round(values[index]);
-                });
-
-                this.modules.forEach(({ key: module }) => {
-                    if (this.config[module].enabled) {
-                        this.config[module].reminders = allReminders
-                            .filter(r => r.module === module)
-                            .map(r => r.time)
-                            .sort((a, b) => a - b);
-                    }
-                });
-            });
+        // Spreads the enabled types over the cycle (static/js/distribute.js) and writes the result
+        // into the daemon's config: global_interval and config[type].reminders.
+        redistribute() {
+            const enabled = this.modules.filter(m => this.config[m.key].enabled);
+            // While a field is being typed in (empty, 0), keep the last schedule.
+            if (enabled.some(m => !(this.config[m.key].every >= 1))) return;
+            const result = distributeReminders(enabled.map(m => ({ key: m.key, every: this.config[m.key].every })));
+            if (result.cycle) this.config.global_interval = result.cycle;
+            enabled.forEach(m => { this.config[m.key].reminders = result.reminders[m.key]; });
+            this.schedule = result;
         },
-        addReminder(module) {
-            this.config[module].reminders.push(0);
-            this.$nextTick(() => {
-                this.updateSlider();
-                const handles = document.querySelectorAll('.noUi-handle');
-                const lastHandle = handles[handles.length - 1];
-                if (lastHandle) {
-                    lastHandle.classList.add('active');
-                }
-            });
+        // Where a minute sits on the preview track, in percent of the cycle.
+        position(minute) {
+            return (minute / this.schedule.cycle) * 100 + '%';
         },
         testReminder(module) {
             call('test_reminder', module, this.config[module])
                 .catch(error => alert(`Error triggering test reminder: ${error.message || error}`));
-        },
-        deleteReminder(module, index) {
-            console.log('Deleting reminder:', module, index);
-            const moduleConfig = this.config[module];
-            if (moduleConfig && Array.isArray(moduleConfig.reminders)) {
-                moduleConfig.reminders.splice(index, 1);
-                console.log('Remaining reminders:', moduleConfig.reminders);
-                this.$nextTick(() => {
-                    this.updateSlider();
-                });
-            }
-        },
-        updateTotalInterval() {
-            this.config.global_interval = parseInt(this.config.global_interval) || 60;
-            this.updateSlider();
         },
         showSaveStatus(success, message) {
             this.saveStatus.show = true;
@@ -173,10 +87,11 @@ new Vue({
     mounted() {
         Promise.all([call('get_library'), call('get_config')])
             .then(([library, saved]) => {
-                const defaults = Object.fromEntries(library.map(m => [m.key, JSON.parse(JSON.stringify(m.defaults))]));
-                this.config = { ...this.config, ...defaults, ...(saved || {}) };
+                saved = saved || {};
+                const types = Object.fromEntries(library.map(m => [m.key, { ...JSON.parse(JSON.stringify(m.defaults)), ...saved[m.key] }]));
+                this.config = { ...this.config, ...saved, ...types };
                 this.modules = library;
-                this.$nextTick(() => this.updateSlider());
+                this.redistribute();
             })
             .catch(error => this.showSaveStatus(false, `Could not load config: ${error.message || error}`));
 

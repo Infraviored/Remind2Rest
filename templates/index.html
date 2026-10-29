@@ -13,10 +13,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.min.js"></script>
 
-    <!-- noUiSlider -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/14.6.3/nouislider.min.css">
-
     <script id="tailwind-config">
         tailwind.config = {
             darkMode: "class",
@@ -100,105 +96,6 @@
         .primary-gradient {
             background: linear-gradient(135deg, #adc6ff 0%, #4d8efe 100%);
         }
-
-        /* noUiSlider Overrides */
-        #interval-slider {
-            height: 6px;
-            background: #0d0e11;
-            border: none;
-            box-shadow: none;
-            margin: 0;
-        }
-
-        #interval-slider .noUi-connect {
-            background: transparent;
-        }
-
-        #interval-slider .noUi-handle {
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            border: none;
-            box-shadow: none;
-            right: -9px;
-            top: -6px;
-            cursor: grab;
-            background: currentColor;
-        }
-
-        #interval-slider .noUi-handle:active {
-            cursor: grabbing;
-        }
-
-        #interval-slider .noUi-handle::before,
-        #interval-slider .noUi-handle::after {
-            display: none;
-        }
-
-        #interval-slider .noUi-tooltip {
-            background: #1e2022;
-            color: #ffffff;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 0.5rem;
-            padding: 6px 12px;
-            font-size: 14px;
-            font-weight: 800;
-            bottom: 26px;
-            left: 50%;
-            transform: translateX(-65%);
-            display: none;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
-        }
-
-        .delete-button {
-            position: absolute;
-            bottom: 26px;
-            left: 50%;
-            transform: translateX(65%);
-            background: #343538;
-            color: #e3e2e6;
-            border-radius: 50%;
-            width: 32px;
-            height: 32px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            opacity: 0;
-            pointer-events: none;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            border: 2px solid #121316;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-        }
-
-        .delete-button:hover {
-            background: #4a4b4e;
-            color: #ffffff;
-            transform: translateX(65%) scale(1.1);
-        }
-
-        .noUi-handle.active .delete-button {
-            opacity: 1;
-            pointer-events: auto;
-            bottom: 26px;
-        }
-
-        /* Hide delete button while dragging */
-        .noUi-handle.noUi-active .delete-button {
-            opacity: 0 !important;
-            pointer-events: none !important;
-        }
-
-        /* Show tooltip while dragging or active */
-        .noUi-handle.noUi-active .noUi-tooltip,
-        .noUi-handle.active .noUi-tooltip {
-            display: block !important;
-        }
-
-        .delete-icon {
-            width: 12px;
-            height: 12px;
-        }
     </style>
 </head>
 
@@ -238,63 +135,73 @@
         <!-- Module cards -->
         <div class="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
             <div v-for="m in modules" :key="m.key" :style="cardStyle(m)"
-                class="glass-card rounded-2xl p-5 border border-outline-variant/10 transition-colors">
-                <div class="flex items-center gap-3 mb-4">
+                class="glass-card rounded-2xl p-4 border border-outline-variant/10 transition-colors">
+                <div class="flex items-center gap-3 mb-3">
                     <span class="material-symbols-outlined text-2xl" :style="{ color: m.color }">{{ m.icon }}</span>
                     <h3 class="text-lg font-bold tracking-tight flex-1">{{ m.title }}</h3>
+                    <button v-if="config[m.key].enabled" @click.prevent="testReminder(m.key)" title="Show this reminder now"
+                        class="w-8 h-8 rounded-lg bg-surface-container-highest hover:bg-white/5" :style="{ color: m.color }">
+                        <span class="material-symbols-outlined text-lg">notifications_active</span>
+                    </button>
                     <input type="checkbox" :checked="config[m.key].enabled" @change="toggleModule(m.key, $event)"
                         class="w-5 h-5 rounded border-outline-variant bg-surface-container-lowest" :style="{ color: m.color }" />
                 </div>
-                <div v-if="config[m.key].enabled" class="space-y-3">
-                    <div class="grid grid-cols-2 gap-3">
-                        <label v-for="f in m.fields" :key="f.key" class="space-y-1">
-                            <span class="text-[10px] font-bold tracking-widest uppercase text-outline">{{ f.label }}</span>
-                            <input v-model.number="config[m.key][f.key]" type="number"
-                                class="w-full bg-surface-container-lowest border-none rounded-lg text-on-surface px-3 py-2" />
-                        </label>
-                    </div>
-                    <div class="flex gap-2">
-                        <button @click.prevent="addReminder(m.key)"
-                            class="flex-1 h-9 rounded-lg bg-surface-container-highest font-semibold hover:bg-white/5 active:scale-95 transition-all" :style="{ color: m.color }">
-                            <span class="material-symbols-outlined text-lg">add</span> Add to timeline
-                        </button>
-                        <button @click.prevent="testReminder(m.key)" title="Show this reminder now"
-                            class="px-4 h-9 rounded-lg bg-surface-container-highest hover:bg-white/5" :style="{ color: m.color }">
-                            <span class="material-symbols-outlined text-lg">notifications_active</span>
-                        </button>
-                    </div>
+                <div v-if="config[m.key].enabled" class="grid grid-cols-3 gap-2">
+                    <label class="space-y-1">
+                        <span class="block text-[10px] font-bold tracking-wider uppercase whitespace-nowrap" :style="{ color: m.color }">Every (min)</span>
+                        <input v-model.number="config[m.key].every" @input="redistribute" type="number" min="1"
+                            class="w-full bg-surface-container-lowest border-none rounded-lg text-on-surface px-2 py-1.5" />
+                    </label>
+                    <label v-for="f in m.fields" :key="f.key" class="space-y-1">
+                        <span class="block text-[10px] font-bold tracking-wider uppercase text-outline whitespace-nowrap">{{ f.label }}</span>
+                        <input v-model.number="config[m.key][f.key]" type="number"
+                            class="w-full bg-surface-container-lowest border-none rounded-lg text-on-surface px-2 py-1.5" />
+                    </label>
                 </div>
                 <p v-else class="text-outline/50 italic">Disabled.</p>
             </div>
         </div>
 
-        <!-- Reminder timeline -->
-        <section class="glass-card rounded-2xl p-5 border border-outline-variant/10">
-            <div class="flex items-center justify-between mb-8">
-                <div>
-                    <h3 class="text-lg font-bold tracking-tight">Reminder Timeline</h3>
-                    <p class="text-xs text-on-surface-variant">Drag handles to place reminders in the interval. Click a handle to show its delete button.</p>
-                </div>
-                <label class="flex items-center gap-2 bg-surface-container-lowest rounded-lg px-3 py-1.5">
-                    <span class="text-[10px] font-bold tracking-widest uppercase text-outline">Interval</span>
-                    <input v-model.number="config.global_interval" @change="updateTotalInterval" type="number"
-                        class="w-14 bg-transparent border-none p-0 text-lg font-black text-primary focus:ring-0" />
-                    <span class="text-xs text-on-surface-variant">min</span>
-                </label>
+        <!-- Read-only preview of the times computed by static/js/distribute.js -->
+        <section class="glass-card rounded-2xl px-5 py-4 border border-outline-variant/10">
+            <div class="flex items-baseline justify-between mb-2">
+                <h3 class="text-lg font-bold tracking-tight">Timeline</h3>
+                <p v-if="schedule.cycle" class="text-xs text-on-surface-variant">
+                    Spread automatically. One cycle is <span class="font-bold text-primary">{{ schedule.cycle }} min</span> and repeats all day.
+                </p>
             </div>
-            <div class="px-2">
-                <div id="interval-slider"></div>
-                <div class="flex justify-between mt-3 text-[11px] font-semibold tracking-wider text-outline">
-                    <span>0</span>
-                    <span>{{ Math.round(config.global_interval * 0.25) }}</span>
-                    <span>{{ Math.round(config.global_interval * 0.5) }}</span>
-                    <span>{{ Math.round(config.global_interval * 0.75) }}</span>
-                    <span>{{ config.global_interval }} min</span>
+            <p v-if="!schedule.cycle" class="text-outline/50 italic">No reminder type enabled.</p>
+            <div v-else class="space-y-1">
+                <div v-for="m in scheduledModules" :key="m.key"
+                    class="grid grid-cols-[120px_1fr] items-center gap-3">
+                    <div class="leading-tight">
+                        <div class="text-xs font-bold" :style="{ color: m.color }">{{ m.title }}</div>
+                        <div class="text-[10px] text-outline">
+                            every {{ schedule.every[m.key] }} min
+                            <span v-if="schedule.every[m.key] !== config[m.key].every" title="Rounded so all types fit one cycle">(asked {{ config[m.key].every }})</span>
+                        </div>
+                    </div>
+                    <div class="relative h-7 mx-2">
+                        <div class="absolute left-0 right-0 bottom-[5px] h-px bg-outline-variant/60"></div>
+                        <div v-for="t in schedule.reminders[m.key]" :key="t" :style="{ left: position(t) }"
+                            :title="m.title + ' at minute ' + t" class="absolute bottom-0 -translate-x-1/2 flex flex-col items-center">
+                            <span v-if="schedule.reminders[m.key].length <= 16" class="text-[10px] font-semibold text-on-surface-variant leading-none mb-0.5">{{ t }}</span>
+                            <span class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: m.color }"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-[120px_1fr] gap-3">
+                    <div></div>
+                    <div class="relative h-4 mx-2 text-[10px] font-semibold tracking-wider text-outline">
+                        <span v-for="q in [0, 0.25, 0.5, 0.75, 1]" :key="q" :style="{ left: q * 100 + '%' }"
+                            class="absolute -translate-x-1/2">{{ Math.round(schedule.cycle * q) }}</span>
+                    </div>
                 </div>
             </div>
         </section>
     </div>
 
+    <script src="../static/js/distribute.js"></script>
     <script src="../static/js/app.js"></script>
 </body>
 

@@ -33,12 +33,28 @@ def read_ratings(days):
     return [{"time": t.strftime(TIME_FORMAT), "rating": r} for t, r in ratings]
 
 
-def count_water_today():
+# Lines before the switch to amounts hold only a timestamp; they count as one 250 ml glass.
+LEGACY_GLASS_ML = 250
+MAX_WATER_ML = 2000
+
+
+def water_today_ml():
+    """Sum of the water logged today, in ml."""
     if not os.path.exists(WATER_LOG_PATH):
         return 0
     today = datetime.now().strftime("%Y-%m-%d")
+    total = 0
     with open(WATER_LOG_PATH, "r") as file:
-        return sum(1 for line in file if line.startswith(today))
+        for line in file:
+            if not line.startswith(today):
+                continue
+            # "YYYY-MM-DD HH:MM:SS <ml>" or, in old logs, "YYYY-MM-DD HH:MM:SS"
+            parts = line.split()
+            if len(parts) == 2:
+                total += LEGACY_GLASS_ML
+            elif len(parts) == 3 and parts[2].isdigit():
+                total += int(parts[2])
+    return total
 
 
 class OverlayApi:
@@ -73,14 +89,22 @@ class OverlayApi:
     def get_ratings(self, days):
         return read_ratings(float(days))
 
-    def log_water(self):
+    def log_water(self, ml):
+        if isinstance(ml, bool) or not isinstance(ml, (int, float, str)):
+            raise ValueError(f"Amount must be a whole number of ml, got {ml!r}")
+        try:
+            amount = int(ml)
+        except (ValueError, OverflowError):
+            raise ValueError(f"Amount must be a whole number of ml, got {ml!r}") from None
+        if amount != float(ml) or not 0 < amount <= MAX_WATER_ML:
+            raise ValueError(f"Amount must be 1-{MAX_WATER_ML} ml, got {ml!r}")
         os.makedirs(os.path.dirname(WATER_LOG_PATH), exist_ok=True)
         with open(WATER_LOG_PATH, "a") as file:
-            file.write(datetime.now().strftime(TIME_FORMAT) + "\n")
+            file.write(f"{datetime.now().strftime(TIME_FORMAT)} {amount}\n")
         return self.get_water_today()
 
     def get_water_today(self):
-        return {"today": count_water_today(), "goal": self._settings.get("daily_goal")}
+        return {"today_ml": water_today_ml(), "goal_ml": self._settings.get("daily_goal_ml", 2000)}
 
 
 def show_reminder(module, settings):

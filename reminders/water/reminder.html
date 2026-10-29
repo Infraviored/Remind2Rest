@@ -9,34 +9,18 @@
 <body>
 <div class="veil"></div>
 
-<button class="glass" id="glass" aria-label="Drank a glass">
-    <svg viewBox="0 0 120 160" aria-hidden="true">
-        <defs>
-            <clipPath id="inside"><path d="M14 10 L106 10 L96 146 Q95 152 89 152 L31 152 Q25 152 24 146 Z"/></clipPath>
-            <linearGradient id="waterFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stop-color="#38bdf8" stop-opacity="0.85"/>
-                <stop offset="1" stop-color="#818cf8" stop-opacity="0.75"/>
-            </linearGradient>
-        </defs>
-        <g clip-path="url(#inside)">
-            <rect x="0" y="0" width="120" height="160" fill="rgba(255,255,255,0.04)"/>
-            <g id="water">
-                <path id="waveBack" fill="#38bdf8" fill-opacity="0.35"/>
-                <path id="wave" fill="url(#waterFill)"/>
-            </g>
-        </g>
-        <path d="M14 10 L106 10 L96 146 Q95 152 89 152 L31 152 Q25 152 24 146 Z"
-              fill="none" stroke="rgba(226,232,255,0.75)" stroke-width="3" stroke-linejoin="round"/>
-        <path d="M28 24 L23.5 90" stroke="rgba(255,255,255,0.35)" stroke-width="4" stroke-linecap="round"/>
-    </svg>
-</button>
+<!-- One button per amount; water.js draws the glass inside each. -->
+<div class="glasses" id="glasses">
+    <button class="glass" data-ml="200" aria-label="Drank 200 ml"></button>
+    <button class="glass" data-ml="300" aria-label="Drank 300 ml"></button>
+    <button class="glass" data-ml="500" aria-label="Drank 500 ml"></button>
+</div>
 
 <main>
     <h1 id="title">Time for some water</h1>
     <p class="status" id="status">&nbsp;</p>
-    <div class="glasses" id="glasses"></div>
+    <div class="progress"><div class="fill" id="fill"></div></div>
     <div class="actions" id="actions">
-        <button class="primary" id="drank">Drank a glass</button>
         <button class="secondary" id="later">Later</button>
     </div>
 </main>

@@ -29,29 +29,23 @@ h1 { font-size: clamp(36px, 4.4vw, 96px); }
     color: var(--muted);
 }
 
-/* today / goal as a row of small drops */
-.glasses {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: clamp(6px, 0.6vw, 12px);
-    margin-top: clamp(14px, 2.4vh, 28px);
+/* today / goal in ml */
+.progress {
+    width: min(70vw, 560px);
+    height: clamp(8px, 0.8vh, 12px);
+    margin: clamp(14px, 2.4vh, 28px) auto 0;
+    border-radius: 999px;
+    background: rgba(56, 189, 248, 0.12);
+    overflow: hidden;
 }
-.glasses i {
-    width: clamp(14px, 1.1vw, 22px);
-    height: clamp(18px, 1.5vw, 30px);
-    border: 2px solid rgba(56, 189, 248, 0.35);
-    border-top-width: 0;
-    border-radius: 2px 2px 6px 6px;
-    transition: background 400ms, border-color 400ms, box-shadow 400ms;
+.progress .fill {
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: linear-gradient(to right, var(--indigo), var(--sky));
+    box-shadow: 0 0 14px rgba(56, 189, 248, 0.6);
+    transition: width 450ms cubic-bezier(.2, .8, .2, 1);
 }
-.glasses i.full {
-    background: linear-gradient(to top, var(--indigo), var(--sky));
-    border-color: var(--sky);
-    box-shadow: 0 0 12px rgba(56, 189, 248, 0.55);
-}
-.glasses i.new { animation: pop 600ms ease-out; }
-@keyframes pop { 40% { transform: scale(1.5); } }
 
 .actions {
     display: flex;
@@ -71,33 +65,67 @@ h1 { font-size: clamp(36px, 4.4vw, 96px); }
     cursor: pointer;
     transition: transform 150ms, box-shadow 150ms, background 150ms;
 }
-.primary {
-    background: var(--sky);
-    color: var(--bg);
-    box-shadow: 0 0 36px rgba(56, 189, 248, 0.35);
-}
-.primary:hover { transform: translateY(-2px); box-shadow: 0 0 56px rgba(56, 189, 248, 0.55); }
 .secondary {
     background: rgba(255, 255, 255, 0.07);
     color: var(--ink);
 }
 .secondary:hover { background: rgba(255, 255, 255, 0.13); }
 
-/* The glass: positioned by JS (lerp towards the cursor). */
-.glass {
+/* Three glasses. The buttons stay put (precise click targets); only the drawing
+   inside leans towards the cursor (JS) and lifts on hover (CSS). */
+.glasses {
     position: fixed;
-    left: 0;
-    top: 0;
+    left: 50%;
+    top: clamp(40px, 13vh, 200px);
+    transform: translateX(-50%);
     z-index: 1;
-    width: clamp(120px, 12vw, 260px);
-    aspect-ratio: 120 / 160;
-    padding: 0;
+    display: flex;
+    align-items: flex-end;
+    gap: clamp(12px, 2.5vw, 56px);
+    animation: in 900ms 100ms ease-out both;
+}
+.glass {
+    --base: clamp(100px, 9.5vw, 210px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(8px, 1.2vh, 16px);
+    padding: clamp(14px, 1.4vw, 28px) clamp(14px, 1.4vw, 28px) clamp(10px, 1vw, 18px);
     border: 0;
+    border-radius: 28px;
     background: none;
     cursor: pointer;
-    filter: drop-shadow(0 0 30px rgba(56, 189, 248, 0.35));
-    transition: filter 200ms;
-    will-change: transform;
+    transition: background 200ms, opacity 250ms;
 }
-.glass:hover { filter: drop-shadow(0 0 46px rgba(56, 189, 248, 0.7)); }
-.glass svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.glass:hover { background: rgba(56, 189, 248, 0.06); }
+.glass[data-ml="200"] { --s: 0.68; }
+.glass[data-ml="300"] { --s: 0.82; }
+.glass[data-ml="500"] { --s: 1; }
+
+.glass .lift {
+    width: calc(var(--base) * var(--s));
+    transition: transform 220ms cubic-bezier(.2, .8, .2, 1), filter 200ms;
+    filter: drop-shadow(0 0 26px rgba(56, 189, 248, 0.3));
+}
+.glass:hover .lift {
+    transform: translateY(-12px) scale(1.05);
+    filter: drop-shadow(0 0 44px rgba(56, 189, 248, 0.7));
+}
+.glass .art { will-change: transform; }
+.glass svg { width: 100%; aspect-ratio: 120 / 160; display: block; overflow: visible; }
+
+.glass .label {
+    font-size: clamp(15px, 1.25vw, 26px);
+    font-weight: 700;
+    color: var(--muted);
+    transition: color 200ms;
+}
+.glass:hover .label { color: var(--ink); }
+
+.glasses.done { pointer-events: none; }
+.glasses.done .glass:not(.chosen) { opacity: 0.2; }
+.glass.chosen .lift {
+    transform: translateY(-12px) scale(1.08);
+    filter: drop-shadow(0 0 60px rgba(56, 189, 248, 0.95));
+}
+.glass.chosen .label { color: var(--sky); }
