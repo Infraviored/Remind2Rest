@@ -1,0 +1,88 @@
+:root { --accent: #c084fc; }
+
+body {
+    background:
+        radial-gradient(circle at 50% 54%, rgba(192, 132, 252, 0.10), transparent 55%),
+        var(--bg);
+}
+
+header {
+    position: fixed;
+    top: clamp(24px, 5vh, 64px);
+    left: 0;
+    right: 0;
+    text-align: center;
+}
+h1 { font-size: clamp(26px, 2.6vw, 54px); }
+header p {
+    margin: 0.5em 0 0;
+    font-size: clamp(14px, 1.1vw, 22px);
+    color: var(--muted);
+}
+
+/* Square box in the middle; the orb scales inside it. */
+.breath {
+    --size: min(62vh, 46vw);
+    position: fixed;
+    left: 50%;
+    top: 54%;
+    width: var(--size);
+    height: var(--size);
+    transform: translate(-50%, -50%);
+}
+.ring { position: absolute; inset: 0; overflow: visible; transform: rotate(-90deg); }
+.ring circle { fill: none; stroke-width: 0.8; }
+.ring .track { stroke: rgba(192, 132, 252, 0.16); }
+.ring .arc {
+    stroke: var(--accent);
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    filter: drop-shadow(0 0 1.5px rgba(192, 132, 252, 0.8));
+}
+
+.orb {
+    position: absolute;
+    inset: 4%;
+    border-radius: 50%;
+    background: radial-gradient(circle at 38% 30%, #d8b4fe 0%, #a855f7 42%, #5b21b6 100%);
+    box-shadow: 0 0 calc(var(--size) * 0.18) rgba(192, 132, 252, 0.45);
+    transform: scale(0.35);
+    will-change: transform;
+}
+
+.label {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    text-align: center;
+    color: #fff;
+    text-shadow: 0 1px 12px rgba(30, 10, 60, 0.55);
+}
+.label p { margin: 0; }
+.phase {
+    font-size: calc(var(--size) * 0.075);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+.left {
+    font-size: calc(var(--size) * 0.2);
+    font-weight: 800;
+    letter-spacing: -0.05em;
+    line-height: 1;
+}
+
+.skip {
+    position: fixed;
+    right: clamp(16px, 2.5vw, 40px);
+    bottom: clamp(44px, 6vh, 84px);
+    border: 0;
+    border-radius: 999px;
+    padding: 0.75em 1.7em;
+    font-size: clamp(15px, 1.15vw, 22px);
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.07);
+    cursor: pointer;
+}
+.skip:hover { background: rgba(255, 255, 255, 0.13); }

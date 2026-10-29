@@ -1,0 +1,89 @@
+:root { --accent: #4ade80; }
+
+body {
+    background:
+        radial-gradient(ellipse 50% 65% at 30% 50%, rgba(74, 222, 128, 0.08), transparent 70%),
+        var(--bg);
+}
+
+main {
+    height: 100vh;
+    width: min(88vw, 160vh);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 6vw;
+}
+
+/* --- the window --- */
+.window { height: 68vh; overflow: visible; }
+.window .frame { fill: none; stroke: #cbd5e1; stroke-width: 8; stroke-linejoin: round; }
+.window .sash { fill: rgba(203, 213, 225, 0.05); stroke: #e2e8f0; stroke-width: 6; stroke-linejoin: round; }
+.window .sash.open { fill: rgba(148, 163, 184, 0.16); }
+.window .bar { stroke: #e2e8f0; stroke-width: 5; }
+.window .handle { fill: #e2e8f0; }
+.window .sill { fill: #64748b; }
+.window .hills { fill: #14532d; opacity: 0.8; }
+.window .hills.near { fill: #166534; opacity: 1; }
+
+/* Day sky by default; body.night swaps it (set by airing.js from the context time). */
+.window .sky-top { stop-color: #38bdf8; }
+.window .sky-bottom { stop-color: #bae6fd; }
+.window .sun { fill: #fde68a; filter: drop-shadow(0 0 12px rgba(253, 230, 138, 0.8)); }
+.window .stars { display: none; fill: #f8fafc; }
+.night .window .sky-top { stop-color: #0b1030; }
+.night .window .sky-bottom { stop-color: #1e3a8a; }
+.night .window .sun { fill: #f1f5f9; filter: drop-shadow(0 0 10px rgba(241, 245, 249, 0.6)); }
+.night .window .stars { display: inline; }
+.night .window .hills { fill: #052e16; }
+.night .window .hills.near { fill: #0b3d20; }
+
+/* Air drifting in through the opening. */
+.window .air path {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.75);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 70 260;
+    animation: drift 4.5s linear infinite;
+}
+.window .air path:nth-child(2) { animation-delay: -1.5s; stroke-opacity: 0.6; }
+.window .air path:nth-child(3) { animation-delay: -3s; stroke-opacity: 0.45; }
+@keyframes drift {
+    from { stroke-dashoffset: 330; }
+    to { stroke-dashoffset: 0; }
+}
+
+/* --- text --- */
+h1 { font-size: clamp(40px, 4.6vw, 104px); text-wrap: balance; }
+.sub {
+    margin: 0.8em 0 0;
+    max-width: 32ch;
+    font-size: clamp(17px, 1.5vw, 30px);
+    line-height: 1.4;
+    color: var(--muted);
+}
+
+.actions {
+    display: flex;
+    gap: clamp(10px, 1vw, 18px);
+    margin-top: 5vh;
+}
+.actions button {
+    border: 0;
+    border-radius: 999px;
+    padding: 0.8em 1.9em;
+    font-size: clamp(16px, 1.3vw, 26px);
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 150ms, box-shadow 150ms, background 150ms;
+}
+.primary {
+    background: var(--accent);
+    color: var(--bg);
+    box-shadow: 0 0 36px rgba(74, 222, 128, 0.3);
+}
+.primary:hover { transform: translateY(-2px); box-shadow: 0 0 52px rgba(74, 222, 128, 0.5); }
+.secondary { background: rgba(255, 255, 255, 0.07); }
+.secondary:hover { background: rgba(255, 255, 255, 0.13); }

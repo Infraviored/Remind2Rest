@@ -18,6 +18,13 @@ Gio._promisify(Gio.Subprocess.prototype, 'wait_async');
 
 const SOCKET_PATH = GLib.build_filenamev([GLib.get_home_dir(), '.Remind2Rest.sock']);
 
+// Daemons from before STATUS reported `types` get these trigger items.
+const FALLBACK_TYPES = [
+    {key: 'eye_relax', title: 'Eye Relax'},
+    {key: 'posture', title: 'Posture'},
+    {key: 'water', title: 'Water'},
+];
+
 // Sends one command and returns the daemon's whole reply; throws if the daemon is not running.
 async function sendCommand(command, cancellable = null) {
     const client = new Gio.SocketClient();
@@ -61,6 +68,9 @@ class Indicator extends PanelMenu.Button {
 
         this._statusItem = new PopupMenu.PopupMenuItem('', {reactive: false});
         this.menu.addMenuItem(this._statusItem);
+        this._waterItem = new PopupMenu.PopupMenuItem('', {reactive: false});
+        this._waterItem.visible = false;
+        this.menu.addMenuItem(this._waterItem);
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
         this._pauseItems = [
@@ -68,11 +78,10 @@ class Indicator extends PanelMenu.Button {
             this._addAction('Pause 1 hour', () => sendCommand('PAUSE 60')),
         ];
         this._resumeItem = this._addAction('Resume', () => sendCommand('RESUME'));
-        this._triggerItems = [
-            this._addAction('Eye break now', () => sendCommand('TRIGGER eye_relax')),
-            this._addAction('Posture check now', () => sendCommand('TRIGGER posture')),
-            this._addAction('Water now', () => sendCommand('TRIGGER water')),
-        ];
+        // "<title> now" for each enabled type, rebuilt from STATUS `types` in _setTriggers().
+        this._triggerSection = new PopupMenu.PopupMenuSection();
+        this.menu.addMenuItem(this._triggerSection);
+        this._triggerKeys = null;
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._serviceItem = this._addAction('', () => systemctl(this._running ? 'stop' : 'start'));
         this._addAction('Settings…', () => {
@@ -97,15 +106,26 @@ class Indicator extends PanelMenu.Button {
         this._pollDaemon();
     }
 
-    _addAction(label, action) {
+    _addAction(label, action, menu = this.menu) {
         const item = new PopupMenu.PopupMenuItem(label);
         item.connect('activate', () => {
             Promise.resolve().then(action)
                 .catch(e => logError(e, 'Remind2Rest'))
                 .finally(() => this._pollDaemon());
         });
-        this.menu.addMenuItem(item);
+        menu.addMenuItem(item);
         return item;
+    }
+
+    // types: [{key, title}] of the enabled reminder types; [] hides the section.
+    _setTriggers(types) {
+        const keys = types.map(t => `${t.key}=${t.title}`).join(',');
+        if (keys === this._triggerKeys)
+            return;
+        this._triggerKeys = keys;
+        this._triggerSection.removeAll();
+        for (const {key, title} of types)
+            this._addAction(`${title} now`, () => sendCommand(`TRIGGER ${key}`), this._triggerSection);
     }
 
     _tick() {
@@ -190,7 +210,12 @@ class Indicator extends PanelMenu.Button {
 
         this._pauseItems.forEach(item => (item.visible = this._running && !this._paused));
         this._resumeItem.visible = this._running && this._paused;
-        this._triggerItems.forEach(item => (item.visible = this._running));
+        const types = Array.isArray(status?.types) ? status.types : FALLBACK_TYPES;
+        this._setTriggers(this._running ? types : []);
+        const hasWater = this._running && Number.isFinite(status?.water_today_ml);
+        this._waterItem.visible = hasWater;
+        if (hasWater)
+            this._waterItem.label.text = `Water today: ${status.water_today_ml} / ${status.water_goal_ml} ml`;
         this._serviceItem.label.text = this._running ? 'Stop service' : 'Start service';
     }
 

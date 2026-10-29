@@ -1,0 +1,138 @@
+:root { --accent: #fb923c; }
+
+body {
+    background:
+        radial-gradient(ellipse 55% 70% at 28% 55%, rgba(251, 146, 60, 0.10), transparent 70%),
+        var(--bg);
+}
+
+main {
+    height: 100vh;
+    width: min(90vw, 165vh);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: center;
+    gap: 5vw;
+}
+
+/* --- figure --- */
+.stage {
+    height: 74vh;
+    display: grid;
+    place-items: center;
+}
+#figure { height: 72vh; width: calc(72vh * 2 / 3); overflow: visible; }
+#figure path, #figure circle, #figure line {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 11;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+#figure .head circle { fill: var(--ink); }
+#figure .floor { stroke: rgba(148, 163, 184, 0.25); stroke-width: 3; }
+#figure g:not(.legs) { filter: drop-shadow(0 0 14px rgba(251, 146, 60, 0.35)); }
+
+/* Pivots in figure coordinates. */
+#figure .upper     { transform-origin: 100px 170px; }
+#figure .arm.left  { transform-origin: 80px 98px; }
+#figure .arm.right { transform-origin: 120px 98px; }
+#figure g { transition: transform 600ms ease; }
+
+/* Neck rolls: the head circles on the shoulders. */
+.neck .head { animation: neck 4s ease-in-out infinite; }
+@keyframes neck {
+    0%, 100% { transform: translate(0, 0); }
+    25% { transform: translate(9px, 5px); }
+    50% { transform: translate(0, 9px); }
+    75% { transform: translate(-9px, 5px); }
+}
+
+/* Shoulder shrugs: shoulders and head lift, then drop. */
+.shrug .shoulders, .shrug .head { animation: shrug 2s ease-in-out infinite; }
+@keyframes shrug {
+    0%, 100% { transform: translateY(0); }
+    40%, 60% { transform: translateY(-12px); }
+}
+
+/* Reach up: both arms overhead, gently pushing higher. */
+.reach .arm.left  { animation: reach-l 3s ease-in-out infinite; }
+.reach .arm.right { animation: reach-r 3s ease-in-out infinite; }
+@keyframes reach-l { 0%, 100% { transform: rotate(150deg); } 50% { transform: rotate(166deg) translateY(4px); } }
+@keyframes reach-r { 0%, 100% { transform: rotate(-150deg); } 50% { transform: rotate(-166deg) translateY(4px); } }
+
+/* Side bends: arms overhead, the upper body leans left and right from the hips. */
+.side .arm.left  { transform: rotate(160deg); }
+.side .arm.right { transform: rotate(-160deg); }
+.side .upper { animation: side 5s ease-in-out infinite; }
+@keyframes side {
+    0%, 100% { transform: rotate(0); }
+    25% { transform: rotate(-16deg); }
+    75% { transform: rotate(16deg); }
+}
+
+/* --- text --- */
+.kicker {
+    margin: 0 0 0.8em;
+    font-size: clamp(15px, 1.3vw, 26px);
+    font-weight: 600;
+    color: var(--accent);
+}
+h1 { font-size: clamp(44px, 5.6vw, 124px); }
+.how {
+    margin: 0.7em 0 0;
+    max-width: 30ch;
+    font-size: clamp(17px, 1.6vw, 32px);
+    line-height: 1.35;
+    color: var(--muted);
+}
+.count {
+    margin-top: 4vh;
+    font-size: clamp(56px, 7vw, 150px);
+    font-weight: 800;
+    letter-spacing: -0.05em;
+    line-height: 1;
+    color: var(--accent);
+}
+.count small { font-size: 0.3em; font-weight: 600; letter-spacing: 0; margin-left: 0.1em; }
+
+/* The sequence: one segment per move, the current one fills with time. */
+.steps {
+    list-style: none;
+    margin: 4vh 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(var(--n, 4), 1fr);
+    gap: clamp(8px, 0.9vw, 16px);
+    max-width: 38vw;
+}
+.steps li {
+    font-size: clamp(12px, 0.95vw, 18px);
+    font-weight: 600;
+    color: rgba(148, 163, 184, 0.6);
+}
+.steps li::before {
+    content: "";
+    display: block;
+    height: 6px;
+    margin-bottom: 0.7em;
+    border-radius: 3px;
+    background: linear-gradient(to right, var(--accent) var(--p, 0%), rgba(148, 163, 184, 0.18) var(--p, 0%));
+}
+.steps li.past { color: var(--muted); --p: 100%; }
+.steps li.now  { color: var(--ink); }
+
+.done {
+    position: fixed;
+    right: clamp(16px, 2.5vw, 40px);
+    bottom: clamp(44px, 6vh, 84px);
+    border: 0;
+    border-radius: 999px;
+    padding: 0.75em 1.7em;
+    font-size: clamp(15px, 1.15vw, 22px);
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.07);
+    cursor: pointer;
+}
+.done:hover { background: rgba(255, 255, 255, 0.13); }

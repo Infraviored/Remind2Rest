@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fresh air</title>
+<link rel="stylesheet" href="../common.css">
+<link rel="stylesheet" href="airing.css">
+</head>
+<body>
+<main>
+    <!-- A window with the right sash swung open; the sky outside follows the time of day (airing.js). -->
+    <svg class="window" id="window" viewBox="0 0 400 440" aria-hidden="true">
+        <defs>
+            <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" class="sky-top"/>
+                <stop offset="1" class="sky-bottom"/>
+            </linearGradient>
+            <clipPath id="opening"><rect x="40" y="40" width="320" height="340" rx="4"/></clipPath>
+        </defs>
+
+        <!-- outside, seen through the opening -->
+        <g clip-path="url(#opening)">
+            <rect x="40" y="40" width="320" height="340" fill="url(#sky)"/>
+            <g class="stars">
+                <circle cx="90" cy="80" r="1.6"/><circle cx="150" cy="120" r="1.2"/><circle cx="250" cy="70" r="1.5"/>
+                <circle cx="310" cy="130" r="1.2"/><circle cx="210" cy="160" r="1"/><circle cx="120" cy="190" r="1.1"/>
+            </g>
+            <circle class="sun" cx="270" cy="120" r="26"/>
+            <path class="hills" d="M40 330 Q120 270 200 312 T360 300 L360 380 L40 380 Z"/>
+            <path class="hills near" d="M40 352 Q150 318 250 346 T360 340 L360 380 L40 380 Z"/>
+            <!-- moving air -->
+            <g class="air">
+                <path d="M60 170 C120 150 170 190 230 170 S320 150 380 168"/>
+                <path d="M30 230 C100 212 150 250 220 230 S310 210 380 228"/>
+                <path d="M70 290 C130 274 180 306 240 290 S320 272 380 286"/>
+            </g>
+        </g>
+
+        <!-- frame -->
+        <rect class="frame" x="30" y="30" width="340" height="360" rx="10"/>
+        <line class="frame" x1="200" y1="30" x2="200" y2="390"/>
+        <!-- closed left sash -->
+        <rect class="sash" x="42" y="42" width="152" height="336" rx="4"/>
+        <line class="bar" x1="42" y1="210" x2="194" y2="210"/>
+        <!-- open right sash, swung into the room -->
+        <path class="sash open" d="M206 42 L306 18 L306 402 L206 378 Z"/>
+        <line class="bar" x1="206" y1="210" x2="306" y2="210"/>
+        <rect class="handle" x="290" y="196" width="6" height="28" rx="3"/>
+        <!-- sill -->
+        <rect class="sill" x="14" y="390" width="372" height="18" rx="5"/>
+    </svg>
+
+    <section class="text">
+        <h1>Let some fresh air in</h1>
+        <p class="sub">Open the window for a few minutes. Fresh air helps you stay awake and think clearly.</p>
+        <div class="actions">
+            <button class="primary" id="done">Done</button>
+            <button class="secondary" id="later">Later</button>
+        </div>
+    </section>
+</main>
+<div class="esc-hint"><kbd>Esc</kbd> closes</div>
+
+<script src="../common.js"></script>
+<script src="airing.js"></script>
+</body>
+</html>

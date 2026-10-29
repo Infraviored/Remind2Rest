@@ -32,6 +32,31 @@ LIBRARY = {
         "defaults": {"enabled": False, "every": 40, "reminders": [], "daily_goal_ml": 2000},
         "fields": [{"key": "daily_goal_ml", "label": "Goal (ml/day)"}],
     },
+    "stretch": {
+        "title": "Stretch",
+        "icon": "sports_gymnastics",
+        "symbolic_icon": "emoji-body-symbolic",
+        "color": "#fb923c",
+        # reminders [5] is what distribute.js gives next to the eye relax and posture defaults.
+        "defaults": {"enabled": True, "every": 60, "reminders": [5], "move_duration": 20},
+        "fields": [{"key": "move_duration", "label": "Per move (s)"}],
+    },
+    "breathing": {
+        "title": "Breathing",
+        "icon": "self_improvement",
+        "symbolic_icon": "emoji-nature-symbolic",
+        "color": "#c084fc",
+        "defaults": {"enabled": False, "every": 90, "reminders": [], "cycles": 3},
+        "fields": [{"key": "cycles", "label": "Cycles"}],
+    },
+    "airing": {
+        "title": "Fresh Air",
+        "icon": "air",
+        "symbolic_icon": "weather-windy-symbolic",
+        "color": "#4ade80",
+        "defaults": {"enabled": False, "every": 120, "reminders": []},
+        "fields": [],
+    },
 }
 
 

@@ -10,6 +10,9 @@ pywebview window (`src/overlay.py`).
 Every reminder opens as a frameless, fullscreen, focused window (tested on GNOME Wayland: started
 from the systemd service, it comes to the front with focus). The page decides how intrusive it is:
 eye relax flashes, water shows a shelf of three glasses (200, 300, 500 ml) and a carafe that fills up to the daily goal: tip a glass into the carafe (it sloshes while carried) or press 1/2/3 to log it.
+Stretch walks through four moves with an animated figure, breathing paces 4-7-8 breaths with a
+growing and shrinking circle, fresh air shows an open window. Pages close right after the user's
+action or when their sequence ends.
 
 `Escape` must always close the page (call `api.close()`).
 
@@ -43,8 +46,24 @@ All methods return promises.
 | `eye_relax` | `relax_duration` s, `flash_frequency` Hz |
 | `posture` | `wait_duration` s before the rating buttons react (stops accidental key presses) |
 | `water` | `daily_goal_ml` ml per day (default 2000) |
+| `stretch` | `move_duration` s per move (default 20); four moves, then the page closes |
+| `breathing` | `cycles` 4-7-8 breaths (default 3); closes after the last exhale |
+| `airing` | none. "Done" closes, "Later" snoozes 10 min |
 
-Each type's config entry also has `enabled` and `reminders` (minutes within the global interval).
+Each type's config entry also has `enabled`, `every` (minutes between two reminders of the type) and
+`reminders` (minutes within the global interval, computed from `every` by the settings window).
+
+## Adding a type
+
+1. Add an entry to `LIBRARY` in `src/library.py`: `title`, `icon` (Material Symbols name for the
+   settings window), `symbolic_icon` (GNOME icon for the top bar), `color`, `defaults` (with
+   `enabled`, `every`, `reminders` and the type's settings) and `fields` (settings shown in its card).
+2. Add `reminders/<type>/reminder.html`, using `../common.css` and `../common.js`.
+
+The settings window, the scheduler and the GNOME top bar pick the type up from the library. The
+daemon's `STATUS` reply lists the enabled types as `types: [{key, title}]`; the top bar builds its
+"<title> now" items from it. When water is enabled, `STATUS` also has `water_today_ml` and
+`water_goal_ml`, which the top bar shows as "Water today: 1200 / 2000 ml".
 
 ## Testing a page without Python
 

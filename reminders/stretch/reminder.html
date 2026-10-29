@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stretch</title>
+<link rel="stylesheet" href="../common.css">
+<link rel="stylesheet" href="stretch.css">
+</head>
+<body>
+<main>
+    <!-- The figure; stretch.css animates its parts per move (class on #figure). -->
+    <div class="stage">
+        <svg id="figure" viewBox="0 0 200 300" aria-hidden="true">
+            <line class="floor" x1="20" y1="282" x2="180" y2="282"/>
+            <g class="legs">
+                <path d="M100 170 L86 278"/>
+                <path d="M100 170 L114 278"/>
+            </g>
+            <g class="upper">
+                <path class="torso" d="M100 92 L100 170"/>
+                <g class="shoulders">
+                    <g class="arm left"><path d="M80 98 L72 168"/></g>
+                    <g class="arm right"><path d="M120 98 L128 168"/></g>
+                    <path class="collar" d="M80 98 L120 98"/>
+                </g>
+                <g class="head"><circle cx="100" cy="62" r="17"/></g>
+            </g>
+        </svg>
+    </div>
+
+    <section class="text">
+        <p class="kicker" id="kicker">Stand up and move</p>
+        <h1 id="name">&nbsp;</h1>
+        <p class="how" id="how">&nbsp;</p>
+        <div class="count"><span id="count">0</span><small>s</small></div>
+        <ol class="steps" id="steps"></ol>
+    </section>
+</main>
+
+<button class="done" id="done">Done</button>
+<div class="esc-hint"><kbd>Esc</kbd> skips</div>
+
+<script src="../common.js"></script>
+<script src="stretch.js"></script>
+</body>
+</html>

@@ -7,11 +7,13 @@ from datetime import datetime, timedelta
 from apscheduler.triggers.interval import IntervalTrigger
 
 from src.library import LIBRARY, page_settings
+from src.logs import water_today_ml
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 current_status = {}
+current_config = None
 paused_until = None
 
 
@@ -19,6 +21,14 @@ def get_current_status():
     status = dict(current_status)
     if is_paused():
         status["paused_until"] = paused_until.isoformat(timespec="seconds")
+    config = current_config or {}
+    # Enabled types, so the top bar can offer "<title> now" for each without knowing the library.
+    status["types"] = [{"key": key, "title": entry["title"]}
+                       for key, entry in LIBRARY.items() if config.get(key, {}).get("enabled")]
+    water = config.get("water", {})
+    if water.get("enabled"):
+        status["water_today_ml"] = water_today_ml()
+        status["water_goal_ml"] = page_settings("water", water).get("daily_goal_ml", 2000)
     return status
 
 
@@ -96,6 +106,8 @@ def schedule_reminders(scheduler, config):
         logging.error("schedule_reminders called with invalid config; skipping schedule")
         return
 
+    global current_config
+    current_config = config
     scheduler.remove_all_jobs()
     interval_minutes = config["global_interval"]
     logging.info(f"Scheduling reminders with {interval_minutes} minute intervals")
