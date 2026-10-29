@@ -19,19 +19,29 @@ const ease = t => 0.5 - Math.cos(Math.PI * t) / 2;
     const phaseEl = document.getElementById('phase');
     const leftEl = document.getElementById('left');
     const cycleEl = document.getElementById('cycle');
-    document.getElementById('skip').addEventListener('click', () => api.close());
+    let closed = false;
+    let rafId = null;
+    const close = () => {
+        if (closed) return;
+        closed = true;
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        R2R.close();
+    };
+
+    document.getElementById('skip').addEventListener('click', close);
 
     const start = performance.now();
     const tick = () => {
+        if (closed || R2R._closing) return;
         const t = (performance.now() - start) / 1000;
         const cycle = Math.floor(t / CYCLE_S);
         if (cycle >= cycles) {
-            api.close();
+            close();
             return;
         }
         // Which phase, and how far into it (0..1).
         let inCycle = t - cycle * CYCLE_S, phase = 0;
-        while (inCycle >= PHASES[phase].s) inCycle -= PHASES[phase++].s;
+        while (phase < PHASES.length - 1 && inCycle >= PHASES[phase].s) inCycle -= PHASES[phase++].s;
         const p = inCycle / PHASES[phase].s;
 
         const scale = phase === 0 ? SMALL + (1 - SMALL) * ease(p)
@@ -42,7 +52,7 @@ const ease = t => 0.5 - Math.cos(Math.PI * t) / 2;
         phaseEl.textContent = PHASES[phase].name;
         leftEl.textContent = Math.ceil(PHASES[phase].s - inCycle);
         cycleEl.textContent = `Breath ${cycle + 1} of ${cycles}`;
-        requestAnimationFrame(tick);
+        rafId = requestAnimationFrame(tick);
     };
-    tick();
+    rafId = requestAnimationFrame(tick);
 })();

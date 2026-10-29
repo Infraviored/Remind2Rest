@@ -2,9 +2,22 @@
     const api = await R2R.api;
     const {now} = await api.get_context();
     // Night sky outside before 7:00 and from 19:00 (local time of the context).
-    const hour = now ? Number(now.slice(11, 13)) : new Date().getHours();
-    document.body.classList.toggle('night', hour < 7 || hour >= 19);
+    const updateSky = (isoTime) => {
+        const hour = isoTime ? Number(isoTime.slice(11, 13)) : new Date().getHours();
+        document.body.classList.toggle('night', hour < 7 || hour >= 19);
+    };
+    updateSky(now);
 
-    document.getElementById('done').addEventListener('click', () => api.close());
-    document.getElementById('later').addEventListener('click', () => api.snooze(10));
+    let snoozed = false;
+    window.addEventListener('remind2rest:resume', () => {
+        snoozed = false;
+        updateSky();
+    });
+
+    document.getElementById('done').addEventListener('click', () => R2R.close());
+    document.getElementById('later').addEventListener('click', () => {
+        if (snoozed || R2R._closing) return;
+        snoozed = true;
+        api.snooze(10);
+    });
 })();

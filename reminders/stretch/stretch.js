@@ -24,15 +24,25 @@ const MOVES = [
         return li;
     });
 
-    document.getElementById('done').addEventListener('click', () => api.close());
+    let closed = false;
+    let rafId = null;
+    const close = () => {
+        if (closed) return;
+        closed = true;
+        if (rafId !== null) cancelAnimationFrame(rafId);
+        R2R.close();
+    };
+
+    document.getElementById('done').addEventListener('click', close);
 
     let current = -1;
     const start = performance.now();
     const tick = () => {
+        if (closed || R2R._closing) return;
         const elapsed = performance.now() - start;
         const i = Math.floor(elapsed / perMove);
         if (i >= MOVES.length) {
-            api.close();
+            close();
             return;
         }
         if (i !== current) {
@@ -45,7 +55,7 @@ const MOVES = [
         const inMove = elapsed - i * perMove;
         count.textContent = Math.ceil((perMove - inMove) / 1000);
         items[i].style.setProperty('--p', `${(inMove / perMove) * 100}%`);
-        requestAnimationFrame(tick);
+        rafId = requestAnimationFrame(tick);
     };
-    tick();
+    rafId = requestAnimationFrame(tick);
 })();

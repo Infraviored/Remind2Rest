@@ -38,8 +38,7 @@ LIBRARY = {
         "icon": "sports_gymnastics",
         "symbolic_icon": "emoji-body-symbolic",
         "color": "#fb923c",
-        # reminders [5] is what distribute.js gives next to the eye relax and posture defaults.
-        "defaults": {"enabled": True, "every": 60, "reminders": [5], "move_duration": 20},
+        "defaults": {"enabled": False, "every": 60, "reminders": [], "move_duration": 20},
         "fields": [{"key": "move_duration", "label": "Per move (s)"}],
     },
     "breathing": {
