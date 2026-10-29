@@ -1,9 +1,9 @@
 // static/js/distribute.js
 // Spreads reminder types over one cycle so they fire as far apart from each other as possible.
-// Pure function, no DOM: the settings page (app.js) and node tests both load it.
+// Used by the settings page's Auto-arrange button (app.js); pure function, no DOM, so node tests load it too.
 
 // Longest cycle we build from the LCM of the "every" values. Beyond that (e.g. every 35 and 45 min,
-// LCM 315) the preview would be unreadable, so the cycle is the largest "every" and every other
+// LCM 315) the timeline would be unreadable, so the cycle is the largest "every" and every other
 // "every" is rounded to the nearest divisor of it (ties round down, so a reminder rather comes too
 // often than too rarely).
 const MAX_CYCLE = 240;

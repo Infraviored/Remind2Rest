@@ -7,6 +7,13 @@ const bridge = new Promise(resolve => {
 });
 const call = (name, ...args) => bridge.then(api => api[name](...args));
 
+// Two reminders of different types this close (minutes, around the cycle) are marked as a collision.
+const COLLISION_MINUTES = 2;
+// Pointer travel (px) below which pressing a marker counts as a click (remove), not a drag.
+const DRAG_THRESHOLD = 4;
+
+// distributeReminders() and circularDistance() come from static/js/distribute.js, loaded before this file.
+
 new Vue({
     el: '#app',
     data: function() {
@@ -17,22 +24,58 @@ new Vue({
             serviceStatus: 'Unknown',
             isServiceRunning: false,
             isServiceEnabled: false,
-            // Last result of distributeReminders(), drawn by the timeline preview.
-            schedule: { cycle: null, every: {}, reminders: {} },
-            saveStatus: { show: false, success: false, message: '' }
+            // Marker being dragged: { key, index, startX, moved }.
+            drag: null,
+            // Marker under the mouse or keyboard focus, for its minute label: { key, index }.
+            hover: null,
+            // Position of "now" in the cycle, in minutes (fractional), refreshed by a timer.
+            now: 0,
+            status: { show: false, success: false, message: '' }
         };
     },
     computed: {
-        // Enabled types that have computed times, in library order, for the timeline preview.
-        scheduledModules() {
-            return this.modules.filter(m => this.config[m.key].enabled && this.schedule.reminders[m.key]);
+        cycle() {
+            return this.config.global_interval;
+        },
+        enabledModules() {
+            return this.modules.filter(m => this.config[m.key].enabled);
+        },
+        // Axis labels: every 10 min for short cycles, every 15 (or 30 for very long ones) otherwise.
+        ticks() {
+            const step = this.cycle <= 60 ? 10 : this.cycle <= 240 ? 15 : 30;
+            const ticks = [];
+            for (let t = 0; t <= this.cycle; t += step) ticks.push(t);
+            return ticks;
+        },
+        // Minute ranges where reminders of different types come within COLLISION_MINUTES of each other.
+        collisions() {
+            const all = this.enabledModules.flatMap(m => this.config[m.key].reminders.map(t => ({ key: m.key, t })));
+            const ranges = [];
+            for (const a of all) {
+                if (all.some(b => b.key !== a.key && circularDistance(a.t, b.t, this.cycle) <= COLLISION_MINUTES)) {
+                    ranges.push([Math.max(0, a.t - 1), Math.min(this.cycle, a.t + 1)]);
+                }
+            }
+            ranges.sort((x, y) => x[0] - y[0]);
+            const merged = [];
+            for (const r of ranges) {
+                const last = merged[merged.length - 1];
+                if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+                else merged.push([...r]);
+            }
+            return merged;
+        },
+        // Enabled types whose times are not "every N min" over the cycle any more (edited by hand,
+        // or "every" changed): Auto-arrange would change them.
+        offPattern() {
+            return this.enabledModules.filter(m => !this.matchesEvery(m.key)).map(m => m.key);
         }
     },
     methods: {
         saveConfig() {
             call('save_config', this.config)
-                .then(result => this.showSaveStatus(result.status === 'success', result.message))
-                .catch(error => this.showSaveStatus(false, `Save failed: ${error.message || error}`));
+                .then(result => this.showStatus(result.status === 'success', result.message))
+                .catch(error => this.showStatus(false, `Save failed: ${error.message || error}`));
         },
         toggleService() {
             call('toggle_service')
@@ -47,42 +90,139 @@ new Vue({
                 .then(result => { this.isServiceEnabled = result.enabled; })
                 .catch(error => alert(`Error toggling autostart: ${error.message || error}`));
         },
-        // Card border and tint in the type's library color (hex + alpha).
-        cardStyle(m) {
-            return this.config[m.key].enabled ? { borderColor: m.color + '4d', backgroundColor: m.color + '0d' } : {};
-        },
-        toggleModule(module, event) {
-            this.config[module].enabled = event.target.checked;
-            this.redistribute();
-        },
-        // Spreads the enabled types over the cycle (static/js/distribute.js) and writes the result
-        // into the daemon's config: global_interval and config[type].reminders.
-        redistribute() {
-            const enabled = this.modules.filter(m => this.config[m.key].enabled);
-            // While a field is being typed in (empty, 0), keep the last schedule.
-            if (enabled.some(m => !(this.config[m.key].every >= 1))) return;
-            const result = distributeReminders(enabled.map(m => ({ key: m.key, every: this.config[m.key].every })));
-            if (result.cycle) this.config.global_interval = result.cycle;
-            enabled.forEach(m => { this.config[m.key].reminders = result.reminders[m.key]; });
-            this.schedule = result;
-        },
-        // Where a minute sits on the preview track, in percent of the cycle.
-        position(minute) {
-            return (minute / this.schedule.cycle) * 100 + '%';
-        },
         testReminder(module) {
             call('test_reminder', module, this.config[module])
                 .catch(error => alert(`Error triggering test reminder: ${error.message || error}`));
         },
-        showSaveStatus(success, message) {
-            this.saveStatus.show = true;
-            this.saveStatus.success = success;
-            this.saveStatus.message = message;
-            
-            setTimeout(() => {
-                this.saveStatus.show = false;
-            }, 3000);
+        // Library labels look like "Duration (s)": the name before the brackets, the unit inside.
+        fieldName(label) {
+            return label.replace(/\s*\(.*\)$/, '');
+        },
+        fieldUnit(label) {
+            const unit = label.match(/\((.*)\)$/);
+            return unit ? unit[1] : '';
+        },
+        // Number inputs as wide as their value, so the unit sits right after it.
+        fitWidth(value) {
+            return { width: String(value === undefined ? '' : value).length + 0.6 + 'ch' };
+        },
+        // Card border and tint in the type's library color (hex + alpha).
+        cardStyle(m) {
+            return this.config[m.key].enabled ? { borderColor: m.color + '4d', backgroundColor: m.color + '0d' } : {};
+        },
+
+        // Spreads the enabled types over a cycle built from their "every" (static/js/distribute.js).
+        autoArrange() {
+            const types = this.enabledModules.map(m => ({ key: m.key, every: this.config[m.key].every }));
+            const result = distributeReminders(types);
+            if (!result.cycle) return;
+            this.config.global_interval = result.cycle;
+            this.enabledModules.forEach(m => { this.config[m.key].reminders = result.reminders[m.key]; });
+            const rounded = this.enabledModules
+                .filter(m => result.every[m.key] !== this.config[m.key].every)
+                .map(m => `${m.title} every ${result.every[m.key]} min`);
+            this.showStatus(true, rounded.length
+                ? `Arranged in a ${result.cycle} min cycle. Rounded to fit: ${rounded.join(', ')}.`
+                : `Arranged in a ${result.cycle} min cycle.`);
+        },
+        // True if the type's times are exactly offset, offset + every, ... around the cycle.
+        matchesEvery(key) {
+            const every = this.config[key].every;
+            const times = this.config[key].reminders;
+            if (!(every >= 1) || this.cycle % every !== 0 || times.length !== this.cycle / every) return false;
+            return times.every(t => (t - times[0]) % every === 0);
+        },
+
+        // Cycle length typed in by hand. Times that no longer fit in the cycle are dropped.
+        setCycle(event) {
+            const value = Math.round(Number(event.target.value));
+            if (!(value >= 1 && value <= 1440)) {
+                event.target.value = this.cycle;
+                return;
+            }
+            this.config.global_interval = value;
+            this.modules.forEach(m => {
+                this.config[m.key].reminders = this.config[m.key].reminders.filter(t => t < value);
+            });
+        },
+
+        // ---- Timeline editing ----
+        percent(minute) {
+            return (minute / this.cycle) * 100 + '%';
+        },
+        // Whole minute under the pointer on a lane, 0..cycle-1.
+        minuteAt(event, lane) {
+            const rect = lane.getBoundingClientRect();
+            const minute = Math.round(((event.clientX - rect.left) / rect.width) * this.cycle);
+            return Math.min(this.cycle - 1, Math.max(0, minute));
+        },
+        setTimes(key, times) {
+            this.config[key].reminders = [...new Set(times)].sort((a, b) => a - b);
+        },
+        addAt(key, event) {
+            this.setTimes(key, [...this.config[key].reminders, this.minuteAt(event, event.currentTarget)]);
+        },
+        remove(key, index) {
+            this.setTimes(key, this.config[key].reminders.filter((_, i) => i !== index));
+            this.hover = null;
+        },
+        startDrag(key, index, event) {
+            if (event.button !== 0) return;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            this.drag = { key, index, startX: event.clientX, moved: false };
+        },
+        moveDrag(event) {
+            const d = this.drag;
+            if (!d) return;
+            if (!d.moved && Math.abs(event.clientX - d.startX) < DRAG_THRESHOLD) return;
+            d.moved = true;
+            const lane = event.currentTarget.parentElement;
+            this.$set(this.config[d.key].reminders, d.index, this.minuteAt(event, lane));
+        },
+        endDrag() {
+            const d = this.drag;
+            if (!d) return;
+            this.drag = null;
+            if (!d.moved) this.remove(d.key, d.index);   // a plain click removes the marker
+            else this.setTimes(d.key, this.config[d.key].reminders);   // sort, merge duplicates
+        },
+        // Arrow keys move a focused marker by 1 min (Shift: 5), Delete/Backspace removes it.
+        nudge(key, index, event) {
+            const times = this.config[key].reminders;
+            if (event.key === 'Delete' || event.key === 'Backspace') {
+                this.remove(key, index);
+                return;
+            }
+            const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+            if (!step) return;
+            event.preventDefault();
+            const moved = (times[index] + step * (event.shiftKey ? 5 : 1) + this.cycle) % this.cycle;
+            if (times.includes(moved)) return;
+            this.setTimes(key, times.map((t, i) => (i === index ? moved : t)));
+            const newIndex = this.config[key].reminders.indexOf(moved);
+            this.hover = { key, index: newIndex };
+            this.$nextTick(() => {
+                const marker = document.querySelector(`[data-marker="${key}-${newIndex}"]`);
+                if (marker) marker.focus();
+            });
+        },
+        showsLabel(key, index) {
+            const target = this.drag || this.hover;
+            return !!target && target.key === key && target.index === index;
+        },
+        updateNow() {
+            const d = new Date();
+            this.now = ((d.getHours() * 60 + d.getMinutes()) % this.cycle) + d.getSeconds() / 60;
+        },
+
+        showStatus(success, message) {
+            this.status = { show: true, success, message };
+            clearTimeout(this.statusTimer);
+            this.statusTimer = setTimeout(() => { this.status.show = false; }, 4000);
         }
+    },
+    watch: {
+        cycle() { this.updateNow(); }
     },
     mounted() {
         Promise.all([call('get_library'), call('get_config')])
@@ -91,9 +231,9 @@ new Vue({
                 const types = Object.fromEntries(library.map(m => [m.key, { ...JSON.parse(JSON.stringify(m.defaults)), ...saved[m.key] }]));
                 this.config = { ...this.config, ...saved, ...types };
                 this.modules = library;
-                this.redistribute();
+                this.updateNow();
             })
-            .catch(error => this.showSaveStatus(false, `Could not load config: ${error.message || error}`));
+            .catch(error => this.showStatus(false, `Could not load config: ${error.message || error}`));
 
         call('service_info')
             .then(info => {
@@ -102,5 +242,7 @@ new Vue({
                 this.isServiceEnabled = info.enabled;
             })
             .catch(error => console.error('Error fetching service info:', error));
+
+        setInterval(() => this.updateNow(), 15000);
     }
 });

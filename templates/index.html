@@ -96,11 +96,98 @@
         .primary-gradient {
             background: linear-gradient(135deg, #adc6ff 0%, #4d8efe 100%);
         }
+
+        /* Card fields: "Name [value] unit" in one dark box */
+        .field {
+            flex: 0 1 auto;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            height: 28px;
+            padding: 0 8px;
+            border-radius: 0.5rem;
+            background: #0d0e11;
+            font-size: 11px;
+            color: #8c909f;
+            white-space: nowrap;
+        }
+
+        .field > span:first-child {
+            font-weight: 600;
+        }
+
+        .field.off-pattern {
+            box-shadow: inset 0 0 0 1px rgba(252, 211, 77, 0.45);
+        }
+
+        .field input {
+            flex-shrink: 0;
+            min-width: 1.4ch;
+            padding: 0;
+            border: none;
+            background: transparent;
+            text-align: right;
+            font-size: 13px;
+            font-weight: 600;
+            color: #e3e2e6;
+            -moz-appearance: textfield;
+        }
+
+        .field input:focus {
+            box-shadow: none;
+        }
+
+        .field input::-webkit-inner-spin-button,
+        .field input::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .field:focus-within {
+            box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.5);
+        }
+
+        /* Schedule lanes: a faint tint of the type's color, a little stronger on hover */
+        .lane {
+            background: color-mix(in srgb, var(--lane) 7%, transparent);
+            transition: background-color 0.15s;
+        }
+
+        .lane:hover {
+            background: color-mix(in srgb, var(--lane) 13%, transparent);
+        }
+
+        .marker {
+            width: 12px;
+            height: 12px;
+            border-radius: 9999px;
+            box-shadow: 0 0 0 2px #1b1c1f;
+            cursor: grab;
+            touch-action: none;
+            transition: transform 0.1s;
+            outline: none;
+        }
+
+        .marker:hover,
+        .marker:focus-visible,
+        .marker.dragging {
+            transform: translate(-50%, -50%) scale(1.3);
+            z-index: 20;
+        }
+
+        .marker:focus-visible {
+            box-shadow: 0 0 0 2px #1b1c1f, 0 0 0 3.5px rgba(255, 255, 255, 0.7);
+        }
+
+        .marker.dragging {
+            cursor: grabbing;
+        }
     </style>
 </head>
 
 <body class="bg-background text-on-background font-body selection:bg-primary/30 text-sm">
-    <div id="app" class="max-w-5xl mx-auto px-6 py-5 space-y-4">
+    <div id="app" class="max-w-5xl mx-auto px-6 py-4 space-y-3">
         <!-- Header: logo, service controls, save -->
         <header class="flex flex-wrap items-center justify-between gap-3">
             <!-- "Remind" docks to the top of the big 2, "Rest" to its baseline -->
@@ -130,71 +217,103 @@
                 </button>
             </div>
         </header>
-        <p v-if="saveStatus.show" :class="['text-xs', saveStatus.success ? 'text-tertiary' : 'text-error']">{{ saveStatus.message }}</p>
+        <p v-if="status.show" :class="['fixed bottom-4 right-6 z-30 max-w-md px-3 py-2 rounded-lg text-xs shadow-lg bg-surface-container-highest border border-white/10', status.success ? 'text-tertiary' : 'text-error']">{{ status.message }}</p>
 
         <!-- Module cards -->
-        <div class="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-4">
+        <div class="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
             <div v-for="m in modules" :key="m.key" :style="cardStyle(m)"
-                class="glass-card rounded-2xl p-4 border border-outline-variant/10 transition-colors">
-                <div class="flex items-center gap-3 mb-3">
-                    <span class="material-symbols-outlined text-2xl" :style="{ color: m.color }">{{ m.icon }}</span>
-                    <h3 class="text-lg font-bold tracking-tight flex-1">{{ m.title }}</h3>
+                class="glass-card rounded-2xl px-3 py-2.5 border border-outline-variant/10 transition-colors">
+                <div class="flex items-center gap-2">
+                    <span class="material-symbols-outlined text-xl" :style="{ color: m.color }">{{ m.icon }}</span>
+                    <h3 :class="['text-base font-bold tracking-tight flex-1', config[m.key].enabled ? '' : 'text-outline']">{{ m.title }}</h3>
                     <button v-if="config[m.key].enabled" @click.prevent="testReminder(m.key)" title="Show this reminder now"
-                        class="w-8 h-8 rounded-lg bg-surface-container-highest hover:bg-white/5" :style="{ color: m.color }">
-                        <span class="material-symbols-outlined text-lg">notifications_active</span>
+                        class="w-7 h-7 rounded-lg bg-surface-container-highest hover:bg-white/5" :style="{ color: m.color }">
+                        <span class="material-symbols-outlined text-base">notifications_active</span>
                     </button>
-                    <input type="checkbox" :checked="config[m.key].enabled" @change="toggleModule(m.key, $event)"
+                    <input type="checkbox" v-model="config[m.key].enabled"
                         class="w-5 h-5 rounded border-outline-variant bg-surface-container-lowest" :style="{ color: m.color }" />
                 </div>
-                <div v-if="config[m.key].enabled" class="grid grid-cols-3 gap-2">
-                    <label class="space-y-1">
-                        <span class="block text-[10px] font-bold tracking-wider uppercase whitespace-nowrap" :style="{ color: m.color }">Every (min)</span>
-                        <input v-model.number="config[m.key].every" @input="redistribute" type="number" min="1"
-                            class="w-full bg-surface-container-lowest border-none rounded-lg text-on-surface px-2 py-1.5" />
+                <!-- One-line fields: name, value, unit in one box (keeps six cards and six lanes in 1000x500) -->
+                <div v-if="config[m.key].enabled" class="flex gap-1.5 mt-2">
+                    <!-- Amber outline: the times on the timeline are not "every N min" (Auto-arrange would change them) -->
+                    <label :class="['field', offPattern.includes(m.key) ? 'off-pattern' : '']"
+                        :title="offPattern.includes(m.key) ? 'The times on the timeline are not every ' + config[m.key].every + ' min. Auto-arrange would change them.' : 'How often this reminder should come; used by Auto-arrange'">
+                        <span :style="{ color: m.color }">Every</span>
+                        <input v-model.number="config[m.key].every" type="number" min="1" :style="fitWidth(config[m.key].every)" />
+                        <span>min</span>
                     </label>
-                    <label v-for="f in m.fields" :key="f.key" class="space-y-1">
-                        <span class="block text-[10px] font-bold tracking-wider uppercase text-outline whitespace-nowrap">{{ f.label }}</span>
-                        <input v-model.number="config[m.key][f.key]" type="number"
-                            class="w-full bg-surface-container-lowest border-none rounded-lg text-on-surface px-2 py-1.5" />
+                    <label v-for="f in m.fields" :key="f.key" class="field" :title="f.label">
+                        <span>{{ fieldName(f.label) }}</span>
+                        <input v-model.number="config[m.key][f.key]" type="number" :style="fitWidth(config[m.key][f.key])" />
+                        <span>{{ fieldUnit(f.label) }}</span>
                     </label>
                 </div>
-                <p v-else class="text-outline/50 italic">Disabled.</p>
             </div>
         </div>
 
-        <!-- Read-only preview of the times computed by static/js/distribute.js -->
-        <section class="glass-card rounded-2xl px-5 py-4 border border-outline-variant/10">
-            <div class="flex items-baseline justify-between mb-2">
-                <h3 class="text-lg font-bold tracking-tight">Timeline</h3>
-                <p v-if="schedule.cycle" class="text-xs text-on-surface-variant">
-                    Spread automatically. One cycle is <span class="font-bold text-primary">{{ schedule.cycle }} min</span> and repeats all day.
-                </p>
+        <!-- Schedule: one lane per enabled type on a shared 0..cycle axis, edited by hand -->
+        <section class="glass-card rounded-2xl px-4 pt-3 pb-2 border border-outline-variant/10 select-none">
+            <div class="flex items-center gap-3 mb-2">
+                <h3 class="text-base font-bold tracking-tight">Schedule</h3>
+                <label class="flex items-center gap-1.5 bg-surface-container-lowest rounded-lg pl-2.5 pr-2 h-7" title="Length of one cycle; it repeats all day">
+                    <span class="text-[10px] font-bold tracking-wider uppercase text-outline">Cycle</span>
+                    <input :value="cycle" @change="setCycle" type="number" min="1" max="1440"
+                        class="w-12 bg-transparent border-none p-0 text-sm font-bold text-primary focus:ring-0" />
+                    <span class="text-xs text-outline">min</span>
+                </label>
+                <p class="flex-1 text-[11px] text-outline truncate">Drag to move &middot; click a lane to add &middot; click a marker to remove</p>
+                <button @click="autoArrange" :disabled="!enabledModules.length"
+                    :title="offPattern.length ? 'Some times are not every N min. Spread all enabled types by their Every value.' : 'Spread all enabled types by their Every value'"
+                    class="relative flex items-center gap-1 px-3 h-7 rounded-lg text-xs font-semibold text-slate-200 bg-surface-container-highest hover:bg-white/10 active:scale-95 transition-all disabled:opacity-40">
+                    <span class="material-symbols-outlined text-base">auto_awesome</span> Auto-arrange
+                    <span v-if="offPattern.length" class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-300/80"></span>
+                </button>
             </div>
-            <p v-if="!schedule.cycle" class="text-outline/50 italic">No reminder type enabled.</p>
-            <div v-else class="space-y-1">
-                <div v-for="m in scheduledModules" :key="m.key"
-                    class="grid grid-cols-[120px_1fr] items-center gap-3">
-                    <div class="leading-tight">
-                        <div class="text-xs font-bold" :style="{ color: m.color }">{{ m.title }}</div>
-                        <div class="text-[10px] text-outline">
-                            every {{ schedule.every[m.key] }} min
-                            <span v-if="schedule.every[m.key] !== config[m.key].every" title="Rounded so all types fit one cycle">(asked {{ config[m.key].every }})</span>
-                        </div>
-                    </div>
-                    <div class="relative h-7 mx-2">
-                        <div class="absolute left-0 right-0 bottom-[5px] h-px bg-outline-variant/60"></div>
-                        <div v-for="t in schedule.reminders[m.key]" :key="t" :style="{ left: position(t) }"
-                            :title="m.title + ' at minute ' + t" class="absolute bottom-0 -translate-x-1/2 flex flex-col items-center">
-                            <span v-if="schedule.reminders[m.key].length <= 16" class="text-[10px] font-semibold text-on-surface-variant leading-none mb-0.5">{{ t }}</span>
-                            <span class="w-2.5 h-2.5 rounded-full" :style="{ backgroundColor: m.color }"></span>
-                        </div>
+
+            <p v-if="!enabledModules.length" class="text-outline/60 italic py-2">Enable a reminder type above to schedule it.</p>
+            <div v-else class="grid grid-cols-[104px_1fr] gap-x-3">
+                <div class="flex flex-col gap-1">
+                    <div v-for="m in enabledModules" :key="m.key" class="h-4 flex items-center gap-1.5 min-w-0">
+                        <span class="material-symbols-outlined text-[15px]" :style="{ color: m.color }">{{ m.icon }}</span>
+                        <span class="text-[11px] font-semibold text-on-surface-variant truncate">{{ m.title }}</span>
                     </div>
                 </div>
-                <div class="grid grid-cols-[120px_1fr] gap-3">
-                    <div></div>
-                    <div class="relative h-4 mx-2 text-[10px] font-semibold tracking-wider text-outline">
-                        <span v-for="q in [0, 0.25, 0.5, 0.75, 1]" :key="q" :style="{ left: q * 100 + '%' }"
-                            class="absolute -translate-x-1/2">{{ Math.round(schedule.cycle * q) }}</span>
+                <div class="relative mx-1.5">
+                    <!-- Grid lines, collisions and "now", behind the lanes -->
+                    <div class="absolute inset-x-0 top-0 bottom-5 pointer-events-none">
+                        <div v-for="t in ticks" :key="'g' + t" class="absolute top-0 bottom-0 w-px bg-white/[0.04]" :style="{ left: percent(t) }"></div>
+                        <div v-for="(c, i) in collisions" :key="'c' + i" title="Reminders of different types close together"
+                            class="absolute -top-0.5 -bottom-0.5 rounded bg-amber-400/[0.09]"
+                            :style="{ left: percent(c[0]), width: percent(c[1] - c[0]) }"></div>
+                    </div>
+                    <div class="relative flex flex-col gap-1">
+                        <div v-for="m in enabledModules" :key="m.key" @click="addAt(m.key, $event)"
+                            :title="'Click to add a ' + m.title + ' reminder'"
+                            class="lane relative h-4 rounded-full cursor-copy" :style="{ '--lane': m.color }">
+                            <div v-for="(t, i) in config[m.key].reminders" :key="i" tabindex="0"
+                                :data-marker="m.key + '-' + i" :aria-label="m.title + ' at minute ' + t"
+                                @pointerdown="startDrag(m.key, i, $event)" @pointermove="moveDrag" @pointerup="endDrag" @pointercancel="endDrag"
+                                @click.stop @contextmenu.prevent.stop="remove(m.key, i)" @keydown="nudge(m.key, i, $event)"
+                                @mouseenter="hover = { key: m.key, index: i }" @mouseleave="hover = null"
+                                @focus="hover = { key: m.key, index: i }" @blur="hover = null"
+                                :class="['marker absolute top-1/2 -translate-x-1/2 -translate-y-1/2', drag && drag.key === m.key && drag.index === i ? 'dragging' : '']"
+                                :style="{ left: percent(t), backgroundColor: m.color }">
+                                <span v-if="showsLabel(m.key, i)"
+                                    class="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-1.5 py-0.5 rounded-md text-[10px] font-bold whitespace-nowrap bg-surface-container-highest border border-white/10 text-on-surface shadow">
+                                    {{ t }} min
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Axis -->
+                    <div class="relative h-5 text-[10px] font-semibold text-outline">
+                        <span v-for="t in ticks" :key="'t' + t" class="absolute top-1 -translate-x-1/2" :style="{ left: percent(t) }">{{ t }}</span>
+                    </div>
+                    <!-- Now: thin line through the lanes, a small label on the axis -->
+                    <div class="absolute top-0 bottom-0 pointer-events-none z-10" :style="{ left: percent(now) }"
+                        :title="'Now, minute ' + Math.floor(now) + ' of the cycle'">
+                        <div class="absolute top-0 bottom-5 w-px -translate-x-1/2 bg-rose-400/70"></div>
+                        <span class="absolute bottom-0 -translate-x-1/2 px-1 rounded text-[9px] font-bold uppercase tracking-wider text-rose-300 bg-background">now</span>
                     </div>
                 </div>
             </div>

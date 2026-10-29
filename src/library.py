@@ -2,8 +2,9 @@ import copy
 
 # One entry per reminder type; the page lives in reminders/<type>/reminder.html (see reminders/README.md).
 # icon: Material Symbols name for the settings window, symbolic_icon: GNOME icon for the top bar.
-# defaults["every"]: how often the type fires (minutes). The settings window spreads the types over the
-# cycle (static/js/distribute.js) and writes the result to config[type]["reminders"], which the daemon reads.
+# defaults["every"]: how often the type should fire (minutes). It is only the input of the settings window's
+# Auto-arrange button (static/js/distribute.js); the daemon reads config[type]["reminders"], which the user
+# can also edit by hand on the timeline.
 LIBRARY = {
     "eye_relax": {
         "title": "Eye Relax",
