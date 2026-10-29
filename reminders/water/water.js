@@ -272,9 +272,40 @@ const rot = (p, deg) => {
         api.close();
     }
 
-    document.getElementById('later').addEventListener('click', () => api.snooze(5));
+    document.getElementById('later').addEventListener('click', () => {
+        actions.classList.add('gone');
+        if (held) letGo(held);
+        for (const g of glasses) {
+            if (g.mode !== 'rest') {
+                g.mode = 'rest';
+                g.off = {x: 0, y: 0};
+                g.vel = {x: 0, y: 0};
+                g.tilt = 0;
+                g.slosh = 0;
+                g.sloshVel = 0;
+            }
+        }
+        animating = false;
+        api.snooze(5);
+    });
+
+    window.addEventListener('remind2rest:resume', async () => {
+        try {
+            state = await api.get_water_today();
+            shownMl = Number(state.today_ml) || 0;
+            showAmount(shownMl);
+            if (shownMl >= goal()) title.textContent = 'Goal reached';
+        } catch (e) {}
+        actions.classList.remove('gone');
+        if (!animating) {
+            animating = true;
+            last = performance.now();
+            requestAnimationFrame(frame);
+        }
+    });
 
     // --- physics, in small fixed steps so it is stable at any frame rate ---
+    let animating = true;
     const SPRING = {held: [900, 60], back: [220, 26], fly: [260, 32], pour: [260, 32], rest: [220, 26]};
     function step(g, dt) {
         if (g.mode === 'fly' || g.mode === 'pour') g.want = pourOffset(g);
@@ -357,7 +388,7 @@ const rot = (p, deg) => {
         carafeWater.setAttribute('d', carafePath(y, s * 1.1, 0.7 + wobble));
         carafeBack.setAttribute('d', carafePath(y - 1.5, -s * 1.4 + 2, 0.9 + wobble));
 
-        requestAnimationFrame(frame);
+        if (animating) requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
 })();

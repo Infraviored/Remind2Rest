@@ -4,8 +4,11 @@ window.R2R = {
         if (window.pywebview && window.pywebview.api) resolve(window.pywebview.api);
         else window.addEventListener('pywebviewready', () => resolve(window.pywebview.api));
     }),
+    _closing: false,
     close() {
-        return R2R.api.then(api => api.close());
+        if (R2R._closing) return Promise.resolve();
+        R2R._closing = true;
+        return R2R.api.then(api => api.close()).catch(() => {});
     },
     wait(ms) {
         return new Promise(r => setTimeout(r, ms));

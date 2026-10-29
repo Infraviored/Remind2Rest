@@ -100,13 +100,22 @@ def schedule_reminders(scheduler, config):
     interval_minutes = config["global_interval"]
     logging.info(f"Scheduling reminders with {interval_minutes} minute intervals")
 
+    # Normalise reminder offsets modulo global_interval to keep them consistent
+    for module in LIBRARY:
+        if config.get(module, {}).get("enabled"):
+            raw_reminders = config[module].get("reminders", [])
+            normalised = sorted(set(int(r) % interval_minutes for r in raw_reminders if isinstance(r, (int, float))))
+            if normalised != raw_reminders:
+                logging.info(f"Normalised {module} reminders to interval {interval_minutes}m: {normalised}")
+                config[module]["reminders"] = normalised
+
     current_time = datetime.now()
     elapsed_minutes = (current_time.hour * 60 + current_time.minute) % interval_minutes
 
     next_times = []
     for module in LIBRARY:
-        if config[module]["enabled"]:
-            for reminder in config[module]["reminders"]:
+        if config.get(module, {}).get("enabled"):
+            for reminder in config[module].get("reminders", []):
                 minutes_until = (reminder - elapsed_minutes) % interval_minutes
                 next_times.append((minutes_until, module))
 
@@ -130,17 +139,20 @@ def schedule_reminders(scheduler, config):
         time_to_next = float("inf")
 
         for module in LIBRARY:
-            if config[module]["enabled"]:
-                for reminder in config[module]["reminders"]:
+            if config.get(module, {}).get("enabled"):
+                for reminder in config[module].get("reminders", []):
                     time_to_reminder = (
                         (reminder - elapsed_minutes) % interval_minutes
                     ) * 60 - elapsed_seconds
+                    if time_to_reminder < 0:
+                        time_to_reminder += interval_minutes * 60
+
                     if 0 <= time_to_reminder < time_to_next:
                         time_to_next = time_to_reminder
                         next_reminder = reminder
                         next_reminder_type = module
 
-                    if elapsed_minutes == reminder and elapsed_seconds < 1:
+                    if elapsed_minutes == (reminder % interval_minutes) and elapsed_seconds < 1:
                         trigger_reminder(module, config[module])
 
         if time_to_next == float("inf"):

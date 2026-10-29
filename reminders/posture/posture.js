@@ -42,8 +42,14 @@ const NS = 'http://www.w3.org/2000/svg';
         document.getElementById('title').textContent = `Saved: ${n}, ${WORDS[n - 1].toLowerCase()}`;
         sub.textContent = n >= 4 ? 'Keep it that way.' : 'Roll your shoulders back and sit tall.';
         // The filled button shows for half a second (saving runs meanwhile), then the page closes.
-        await Promise.all([api.save_rating(n), R2R.wait(500)]);
-        api.close();
+        try {
+            await Promise.all([api.save_rating(n), R2R.wait(500)]);
+        } catch (e) {
+            console.error('Failed to save rating:', e);
+            await R2R.wait(500);
+        } finally {
+            api.close();
+        }
     }
 
     addEventListener('keydown', e => {

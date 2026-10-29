@@ -70,7 +70,7 @@ class Api:
         return {"status": "warning", "message": "Configuration saved but service is not running"}
 
     def test_reminder(self, module, settings):
-        launch_reminder(module, settings or load_config().get(module, {}))
+        launch_reminder(module, settings or (load_config() or {}).get(module, {}))
         return {"status": "success"}
 
     def service_info(self):

@@ -33,7 +33,7 @@ function distributeReminders(types) {
 
     let cycle = wanted.map(t => t.every).reduce(lcm);
     if (cycle > MAX_CYCLE) {
-        cycle = Math.max(...wanted.map(t => t.every));
+        cycle = Math.min(MAX_CYCLE, Math.max(...wanted.map(t => t.every)));
         wanted.forEach(t => { t.every = nearestDivisor(cycle, t.every); });
     }
 

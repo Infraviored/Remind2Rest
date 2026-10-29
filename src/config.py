@@ -34,8 +34,9 @@ def load_config():
             return default_config
         with open(CONFIG_PATH, "r") as file:
             config = json.load(file)
+        config = fill_defaults(config)
         validate_config(config)
-        return fill_defaults(config)
+        return config
     except Exception as e:
         logging.error(f"Error loading configuration: {e}")
     return None
@@ -49,6 +50,8 @@ def save_config(config):
         logging.error(f"Error saving configuration: {e}")
 
 def validate_config(config):
-    if "global_interval" not in config:
-        raise ValueError("Missing 'global_interval' in config")
+    if not isinstance(config, dict):
+        raise ValueError("Config must be a dictionary")
+    if "global_interval" not in config or not isinstance(config["global_interval"], (int, float)) or config["global_interval"] <= 0:
+        raise ValueError("Missing or invalid 'global_interval' in config")
     # Missing reminder types or keys are filled from the library by load_config.

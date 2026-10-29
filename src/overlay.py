@@ -65,29 +65,64 @@ class OverlayApi:
         self._module = module
         self._settings = settings
         self._window = None
+        self._closed = False
 
     def get_context(self):
         return {"type": self._module, "settings": self._settings,
                 "now": datetime.now().isoformat(timespec="seconds")}
 
     def close(self):
-        self._window.destroy()
+        if self._closed:
+            return
+        self._closed = True
+        if self._window:
+            self._window.destroy()
 
     def snooze(self, minutes):
+        if isinstance(minutes, bool) or not isinstance(minutes, (int, float, str)):
+            raise ValueError(f"Minutes must be a number, got {minutes!r}")
+        try:
+            mins = float(minutes)
+        except (ValueError, OverflowError):
+            raise ValueError(f"Minutes must be a number, got {minutes!r}") from None
+        if not (0 < mins < 1440):
+            raise ValueError(f"Minutes must be between 0 and 1440, got {minutes!r}")
         self._window.hide()
-        timer = threading.Timer(float(minutes) * 60, self._window.show)
+
+        def wake():
+            self._window.show()
+            try:
+                self._window.evaluate_js("window.dispatchEvent(new CustomEvent('remind2rest:resume'))")
+            except Exception:
+                pass
+
+        timer = threading.Timer(mins * 60, wake)
         timer.daemon = True
         timer.start()
 
     def save_rating(self, rating):
-        rating = int(rating)
-        if not 1 <= rating <= 5:
-            raise ValueError(f"Rating must be 1-5, got {rating}")
+        if isinstance(rating, bool) or not isinstance(rating, (int, float, str)):
+            raise ValueError(f"Rating must be 1-5, got {rating!r}")
+        try:
+            r = int(rating)
+        except (ValueError, OverflowError):
+            raise ValueError(f"Rating must be 1-5, got {rating!r}") from None
+        if r != float(rating) or not 1 <= r <= 5:
+            raise ValueError(f"Rating must be 1-5, got {rating!r}")
+        os.makedirs(os.path.dirname(RATINGS_FILE_PATH), exist_ok=True)
         with open(RATINGS_FILE_PATH, "a") as file:
-            file.write(f"{datetime.now().strftime(TIME_FORMAT)} - Rating: {rating}\n")
+            file.write(f"{datetime.now().strftime(TIME_FORMAT)} - Rating: {r}\n")
 
     def get_ratings(self, days):
-        return read_ratings(float(days))
+        if isinstance(days, bool) or not isinstance(days, (int, float, str)):
+            raise ValueError(f"Days must be a number, got {days!r}")
+        try:
+            d = float(days)
+        except (ValueError, OverflowError):
+            raise ValueError(f"Days must be a number, got {days!r}") from None
+        if d <= 0 or d > 3650:
+            return []
+        return read_ratings(d)
 
     def log_water(self, ml):
         if isinstance(ml, bool) or not isinstance(ml, (int, float, str)):
