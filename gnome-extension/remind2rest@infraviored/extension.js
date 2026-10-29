@@ -82,6 +82,14 @@ class Indicator extends PanelMenu.Button {
         this._triggerSection = new PopupMenu.PopupMenuSection();
         this.menu.addMenuItem(this._triggerSection);
         this._triggerKeys = null;
+        this._pendingTypes = null;
+        this.menu.connect('open-state-changed', (menu, isOpen) => {
+            if (!isOpen && this._pendingTypes !== null) {
+                const types = this._pendingTypes;
+                this._pendingTypes = null;
+                this._setTriggers(types);
+            }
+        });
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._serviceItem = this._addAction('', () => systemctl(this._running ? 'stop' : 'start'));
         this._addAction('Settings…', () => {
@@ -119,6 +127,11 @@ class Indicator extends PanelMenu.Button {
 
     // types: [{key, title}] of the enabled reminder types; [] hides the section.
     _setTriggers(types) {
+        if (this.menu.isOpen) {
+            this._pendingTypes = types;
+            return;
+        }
+        this._pendingTypes = null;
         const keys = types.map(t => `${t.key}=${t.title}`).join(',');
         if (keys === this._triggerKeys)
             return;

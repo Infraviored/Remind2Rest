@@ -32,21 +32,50 @@ def read_ratings(days):
 LEGACY_GLASS_ML = 250
 MAX_WATER_ML = 2000
 
+_water_cache = {
+    "mtime_ns": None,
+    "size": None,
+    "day": None,
+    "total": 0,
+}
+
 
 def water_today_ml():
     """Sum of the water logged today, in ml."""
-    if not os.path.exists(WATER_LOG_PATH):
+    try:
+        stat = os.stat(WATER_LOG_PATH)
+    except OSError:
+        _water_cache["mtime_ns"] = None
+        _water_cache["size"] = None
+        _water_cache["day"] = None
+        _water_cache["total"] = 0
         return 0
+
     today = datetime.now().strftime("%Y-%m-%d")
+    if (
+        _water_cache["day"] == today
+        and _water_cache["mtime_ns"] == stat.st_mtime_ns
+        and _water_cache["size"] == stat.st_size
+    ):
+        return _water_cache["total"]
+
     total = 0
-    with open(WATER_LOG_PATH, "r") as file:
-        for line in file:
-            if not line.startswith(today):
-                continue
-            # "YYYY-MM-DD HH:MM:SS <ml>" or, in old logs, "YYYY-MM-DD HH:MM:SS"
-            parts = line.split()
-            if len(parts) == 2:
-                total += LEGACY_GLASS_ML
-            elif len(parts) == 3 and parts[2].isdigit():
-                total += int(parts[2])
+    try:
+        with open(WATER_LOG_PATH, "r") as file:
+            for line in file:
+                if not line.startswith(today):
+                    continue
+                # "YYYY-MM-DD HH:MM:SS <ml>" or, in old logs, "YYYY-MM-DD HH:MM:SS"
+                parts = line.split()
+                if len(parts) == 2:
+                    total += LEGACY_GLASS_ML
+                elif len(parts) == 3 and parts[2].isdigit():
+                    total += int(parts[2])
+    except OSError:
+        return 0
+
+    _water_cache["mtime_ns"] = stat.st_mtime_ns
+    _water_cache["size"] = stat.st_size
+    _water_cache["day"] = today
+    _water_cache["total"] = total
     return total
