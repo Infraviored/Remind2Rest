@@ -9,21 +9,34 @@
 <body>
 <div class="veil"></div>
 
-<!-- One button per amount; water.js draws the glass inside each. -->
-<div class="glasses" id="glasses">
-    <button class="glass" data-ml="200" aria-label="Drank 200 ml"></button>
-    <button class="glass" data-ml="300" aria-label="Drank 300 ml"></button>
-    <button class="glass" data-ml="500" aria-label="Drank 500 ml"></button>
-</div>
+<div class="stage">
+    <header>
+        <h1 id="title">Time for some water</h1>
+        <p class="status" id="status">&nbsp;</p>
+        <div class="progress"><div class="fill" id="fill"></div></div>
+    </header>
 
-<main>
-    <h1 id="title">Time for some water</h1>
-    <p class="status" id="status">&nbsp;</p>
-    <div class="progress"><div class="fill" id="fill"></div></div>
+    <!-- Drop a glass here to drink it. -->
+    <div class="target-wrap">
+        <div class="target" id="target">
+            <span class="ripple"></span>
+            <span class="ripple r2"></span>
+            <span class="target-text">Drink here</span>
+        </div>
+    </div>
+
+    <!-- water.js draws the glass inside each slot. -->
+    <div class="glasses" id="glasses">
+        <div class="glass" data-ml="200" data-key="1" role="button" aria-label="200 ml glass, key 1"></div>
+        <div class="glass" data-ml="300" data-key="2" role="button" aria-label="300 ml glass, key 2"></div>
+        <div class="glass" data-ml="500" data-key="3" role="button" aria-label="500 ml glass, key 3"></div>
+    </div>
+
     <div class="actions" id="actions">
+        <span class="hint">Drag a glass to the circle, or press 1, 2 or 3</span>
         <button class="secondary" id="later">Later</button>
     </div>
-</main>
+</div>
 <div class="esc-hint"><kbd>Esc</kbd> closes</div>
 
 <script src="../common.js"></script>
