@@ -16,7 +16,7 @@
     </header>
 
     <div class="scene">
-        <!-- The shelf: water.js draws a glass into each row. -->
+        <!-- The shelf: water.js draws a glass into each slot. -->
         <div class="shelf" id="glasses">
             <div class="glass" data-ml="200" data-key="1" role="button" aria-label="200 ml glass, key 1"></div>
             <div class="glass" data-ml="300" data-key="2" role="button" aria-label="300 ml glass, key 2"></div>
@@ -28,7 +28,7 @@
             <svg class="carafe" id="carafe" viewBox="0 0 200 360" aria-hidden="true">
                 <defs>
                     <clipPath id="carafeInside">
-                        <path d="M80 14 L120 14 L120 70 C120 96 176 110 178 150 L178 320 Q178 342 156 342 L44 342 Q22 342 22 320 L22 150 C24 110 80 96 80 70 Z"/>
+                        <path d="M44 14 L156 14 L156 44 C156 66 178 76 178 102 L178 320 Q178 342 156 342 L44 342 Q22 342 22 320 L22 102 C22 76 44 66 44 44 Z"/>
                     </clipPath>
                     <linearGradient id="carafeFill" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0" stop-color="#38bdf8" stop-opacity="0.8"/>
@@ -41,10 +41,10 @@
                     <path id="carafeWater" fill="url(#carafeFill)"/>
                 </g>
                 <g id="ticks"></g>
-                <path d="M78 12 L122 12 L122 70 C122 95 178 110 180 150 L180 320 Q180 344 156 344 L44 344 Q20 344 20 320 L20 150 C22 110 78 95 78 70 Z"
+                <path d="M42 12 L158 12 L158 44 C158 66 180 75 180 102 L180 320 Q180 344 156 344 L44 344 Q20 344 20 320 L20 102 C20 75 42 66 42 44 Z"
                       fill="none" stroke="rgba(226,232,255,0.75)" stroke-width="3" stroke-linejoin="round"/>
-                <path d="M74 12 L126 12" stroke="rgba(226,232,255,0.85)" stroke-width="4" stroke-linecap="round"/>
-                <path d="M34 160 L34 300" stroke="rgba(255,255,255,0.25)" stroke-width="5" stroke-linecap="round"/>
+                <path d="M36 12 L164 12" stroke="rgba(226,232,255,0.85)" stroke-width="4" stroke-linecap="round"/>
+                <path d="M34 125 L34 300" stroke="rgba(255,255,255,0.25)" stroke-width="5" stroke-linecap="round"/>
             </svg>
             <p class="amount" id="amount">&nbsp;</p>
         </div>

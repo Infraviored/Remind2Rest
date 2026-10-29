@@ -7,7 +7,7 @@ const CLOSE_AFTER = 250; // after the pour, then close
 const POUR_TILT = 104;  // degrees, glass rim pointing down into the carafe
 const MAX_CARRY_TILT = 86;
 // Carafe geometry in its viewBox (0 0 200 360): opening at the top, water between EMPTY_Y and FULL_Y.
-const CARAFE = {openX: 100, openY: 12, neckHalf: 20, emptyY: 342, fullY: 128};
+const CARAFE = {openX: 100, openY: 12, neckHalf: 56, emptyY: 342, fullY: 112};
 
 function glassSvg(id) {
     return `
@@ -138,7 +138,8 @@ const rot = (p, deg) => {
     };
     const nearOpening = (g, factor = 1) => {
         const p = lip(g);
-        return Math.hypot(p.x - geo.open.x, p.y - (geo.open.y - 20 * geo.s)) < 55 * geo.s * factor;
+        return Math.abs(p.x - geo.open.x) < (CARAFE.neckHalf + 18) * geo.s * factor
+            && p.y > geo.open.y - 90 * geo.s * factor && p.y < geo.open.y + 30 * geo.s;
     };
 
     // --- pick up, carry, pour ---
@@ -224,16 +225,16 @@ const rot = (p, deg) => {
 
         // Tilt: carried, it tips further the closer it gets to the carafe; pouring, all the way.
         let tiltGoal = 0, rate = 10;
-        if (g.mode === 'held') tiltGoal = MAX_CARRY_TILT * smooth(approach(g)) + clamp(g.vel.x * 0.01, -12, 12);
+        if (g.mode === 'held') tiltGoal = MAX_CARRY_TILT * smooth(approach(g)) + clamp(g.vel.x * 0.006, -7, 7);
         else if (g.mode === 'back') tiltGoal = MAX_CARRY_TILT * smooth(approach(g));
         else if (g.mode === 'fly') { tiltGoal = MAX_CARRY_TILT * smooth(approach(g)); rate = 14; }
         else if (g.mode === 'pour') { tiltGoal = POUR_TILT; rate = 9; }
         g.tilt += (tiltGoal - g.tilt) * (1 - Math.exp(-dt * rate));
 
         // Surface angle (world frame, + = clockwise): underdamped spring driven by the acceleration.
-        const push = g.mode === 'rest' ? 0 : ax * 0.5;  // accelerating right piles water up on the left
-        g.sloshVel += (-130 * g.slosh - 4.5 * g.sloshVel + push) * dt;
-        g.slosh = clamp(g.slosh + g.sloshVel * dt, -30, 30);
+        const push = g.mode === 'rest' ? 0 : ax * 0.16;  // accelerating right piles water up on the left
+        g.sloshVel += (-160 * g.slosh - 16 * g.sloshVel + push) * dt;  // well damped: settles in ~0.4 s
+        g.slosh = clamp(g.slosh + g.sloshVel * dt, -9, 9);
 
         if (g.mode === 'back' && Math.hypot(g.off.x, g.off.y) < 0.5 && Math.hypot(g.vel.x, g.vel.y) < 5) {
             g.mode = 'rest'; g.off = {x: 0, y: 0}; g.vel = {x: 0, y: 0}; g.tilt = 0;
@@ -282,18 +283,18 @@ const rot = (p, deg) => {
                 : `translate(${g.off.x}px, ${g.off.y}px) rotate(${g.tilt}deg)`;
             // Water rotated back by the glass tilt (stays level) plus the slosh.
             g.water.setAttribute('transform', `rotate(${(g.slosh - g.tilt).toFixed(2)} 60 90)`);
-            const amp = Math.min(5, Math.abs(g.sloshVel) * 0.02);
-            g.wave.setAttribute('d', wavePath(g.level, s + g.phase, 2.4 + amp));
-            g.waveBack.setAttribute('d', wavePath(g.level + 0.015, -s * 1.3 + 1 + g.phase, 3 + amp));
+            const amp = Math.min(1.5, Math.abs(g.sloshVel) * 0.006);
+            g.wave.setAttribute('d', wavePath(g.level, s + g.phase, 1 + amp));
+            g.waveBack.setAttribute('d', wavePath(g.level + 0.012, -s * 1.3 + 1 + g.phase, 1.3 + amp));
         }
 
         // Carafe: eases to today's amount; the stream stirs the surface.
         const f = Math.min(1, shownMl / goal());
         carafeLevel += (f - carafeLevel) * (1 - Math.exp(-dt * (pour ? 14 : 3)));
-        wobble += ((streamOn ? 5 : 0) - wobble) * (1 - Math.exp(-dt * (streamOn ? 12 : 2.5)));
+        wobble += ((streamOn ? 1.6 : 0) - wobble) * (1 - Math.exp(-dt * (streamOn ? 10 : 4)));
         const y = CARAFE.emptyY - carafeLevel * (CARAFE.emptyY - CARAFE.fullY);
-        carafeWater.setAttribute('d', carafePath(y, s * 1.4, 1.6 + wobble));
-        carafeBack.setAttribute('d', carafePath(y - 2, -s * 1.8 + 2, 2.2 + wobble * 1.2));
+        carafeWater.setAttribute('d', carafePath(y, s * 1.1, 0.7 + wobble));
+        carafeBack.setAttribute('d', carafePath(y - 1.5, -s * 1.4 + 2, 0.9 + wobble));
 
         requestAnimationFrame(frame);
     };
