@@ -7,7 +7,58 @@ const CLOSE_AFTER = 250; // after the pour, then close
 const POUR_TILT = 104;  // degrees, glass rim pointing down into the carafe
 const MAX_CARRY_TILT = 86;
 // Carafe geometry in its viewBox (0 0 200 360): opening at the top, water between EMPTY_Y and FULL_Y.
-const CARAFE = {openX: 100, openY: 12, neckHalf: 56, emptyY: 342, fullY: 112};
+const CARAFE = {openX: 100, openY: 12, neckHalf: 56, emptyY: 342, fullY: 72};
+
+// --- volumes: both vessels are solids of revolution; profiles = inner outline, [radius, y] from the bottom up ---
+const curve = (n, f) => Array.from({length: n + 1}, (_, i) => f(i / n));
+const lerp2 = (a, b) => t => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+const quad = (a, b, c) => t => [0, 1].map(i => (1 - t) ** 2 * a[i] + 2 * (1 - t) * t * b[i] + t * t * c[i]);
+const cubic = (a, b, c, d) => t => [0, 1].map(i =>
+    (1 - t) ** 3 * a[i] + 3 * (1 - t) ** 2 * t * b[i] + 3 * (1 - t) * t * t * c[i] + t ** 3 * d[i]);
+// Carafe clip path (centre x=100): flat bottom r=56, rounded corner, body r=78, shoulders, wide neck r=56.
+const CARAFE_PROFILE = [
+    ...curve(200, quad([56, 342], [78, 342], [78, 320])),
+    ...curve(50, lerp2([78, 320], [78, 102])),
+    ...curve(200, cubic([78, 102], [78, 76], [56, 66], [56, 44])),
+    ...curve(20, lerp2([56, 44], [56, 14])),
+];
+// Glass clip path (centre x=60): bottom r=29, rounded corner, then a frustum up to r=46 at the rim.
+const GLASS_PROFILE = [
+    ...curve(100, quad([29, 152], [35, 152], [36, 146])),
+    ...curve(50, lerp2([36, 146], [46, 10])),
+];
+// Cumulative volume from the bottom: sum of conical frustums pi*h*(r0^2 + r0*r1 + r1^2)/3.
+function volumeTable(profile) {
+    const ys = [profile[0][1]], vs = [0];
+    for (let i = 1; i < profile.length; i++) {
+        const [r0, y0] = profile[i - 1], [r1, y1] = profile[i];
+        if (y1 >= y0) continue;
+        ys.push(y1);
+        vs.push(vs.at(-1) + Math.PI * (y0 - y1) * (r0 * r0 + r0 * r1 + r1 * r1) / 3);
+    }
+    const volumeBelow = y => {   // volume between the bottom and height y
+        if (y >= ys[0]) return 0;
+        for (let i = 1; i < ys.length; i++) {
+            if (ys[i] <= y) return vs[i - 1] + (vs[i] - vs[i - 1]) * (ys[i - 1] - y) / (ys[i - 1] - ys[i]);
+        }
+        return vs.at(-1);
+    };
+    const heightOf = v => {      // inverse: the y where the volume below is v
+        if (v <= 0) return ys[0];
+        for (let i = 1; i < vs.length; i++) {
+            if (vs[i] >= v) return ys[i - 1] - (ys[i - 1] - ys[i]) * (v - vs[i - 1]) / (vs[i] - vs[i - 1]);
+        }
+        return ys.at(-1);
+    };
+    return {volumeBelow, heightOf};
+}
+const CARAFE_VOL = volumeTable(CARAFE_PROFILE);
+const GLASS_VOL = volumeTable(GLASS_PROFILE);
+const CARAFE_GOAL_VOL = CARAFE_VOL.volumeBelow(CARAFE.fullY);        // the goal mark
+const CARAFE_MAX_FILL = CARAFE_VOL.volumeBelow(24) / CARAFE_GOAL_VOL; // above the goal it fills the neck
+const GLASS_WATER_VOL = GLASS_VOL.volumeBelow(152 - FULL * 142);      // a full glass = its nominal ml
+// Carafe y (viewBox) for a fraction of the goal, by volume.
+const carafeY = f => CARAFE_VOL.heightOf(clamp(f, 0, CARAFE_MAX_FILL) * CARAFE_GOAL_VOL);
 
 function glassSvg(id) {
     return `
@@ -78,7 +129,7 @@ const rot = (p, deg) => {
     // Subtle quarter marks on the carafe, labelled in ml.
     const ticks = document.getElementById('ticks');
     for (const q of [0.25, 0.5, 0.75, 1]) {
-        const y = CARAFE.emptyY - q * (CARAFE.emptyY - CARAFE.fullY);
+        const y = carafeY(q);
         ticks.insertAdjacentHTML('beforeend',
             `<line x1="160" x2="174" y1="${y}" y2="${y}"/>`
             + `<text x="188" y="${y + 4}">${Math.round(goal() * q)}</text>`);
@@ -102,7 +153,17 @@ const rot = (p, deg) => {
             home: null, k: 1, grab: null,
         };
     });
+    // True to scale by volume: carafe (to the goal mark) : glass water = goal : ml.
+    // The carafe keeps its CSS size; the glasses are sized from it.
+    function sizeGlasses() {
+        const carafeH = carafe.getBoundingClientRect().height;
+        for (const g of glasses) {
+            const linear = Math.cbrt(g.ml / goal() * CARAFE_GOAL_VOL / GLASS_WATER_VOL);
+            g.el.style.setProperty('--h', `${carafeH / 360 * 160 * linear}px`);
+        }
+    }
     function measure() {
+        sizeGlasses();
         for (const g of glasses) {
             if (g.mode !== 'rest') continue;
             const r = g.art.getBoundingClientRect();
@@ -114,7 +175,7 @@ const rot = (p, deg) => {
         geo = {
             s, top: r.top, left: r.left,
             open: {x: r.left + CARAFE.openX * s, y: r.top + CARAFE.openY * s},
-            surfaceY: f => r.top + (CARAFE.emptyY - f * (CARAFE.emptyY - CARAFE.fullY)) * s,
+            surfaceY: f => r.top + carafeY(f) * s,
         };
     }
     measure();
@@ -263,7 +324,7 @@ const rot = (p, deg) => {
             streamOn = head > tail;
             if (streamOn) {
                 const a = lip(pour.g);
-                const fillF = Math.min(1, shownMl / goal());
+                const fillF = shownMl / goal();
                 const end = {x: geo.open.x + Math.sin(t / 60) * 1.5, y: geo.surfaceY(fillF) + 4};
                 const d = `M${a.x} ${a.y} Q${a.x + 10 * geo.s} ${a.y + 10 * geo.s} ${end.x} ${Math.max(end.y, a.y + 10)}`;
                 const w = (3.5 + pour.g.ml / 140) * geo.s * (1 - 0.6 * tail);
@@ -289,10 +350,10 @@ const rot = (p, deg) => {
         }
 
         // Carafe: eases to today's amount; the stream stirs the surface.
-        const f = Math.min(1, shownMl / goal());
+        const f = Math.min(CARAFE_MAX_FILL, shownMl / goal());
         carafeLevel += (f - carafeLevel) * (1 - Math.exp(-dt * (pour ? 14 : 3)));
         wobble += ((streamOn ? 1.6 : 0) - wobble) * (1 - Math.exp(-dt * (streamOn ? 10 : 4)));
-        const y = CARAFE.emptyY - carafeLevel * (CARAFE.emptyY - CARAFE.fullY);
+        const y = carafeY(carafeLevel);
         carafeWater.setAttribute('d', carafePath(y, s * 1.1, 0.7 + wobble));
         carafeBack.setAttribute('d', carafePath(y - 1.5, -s * 1.4 + 2, 0.9 + wobble));
 
