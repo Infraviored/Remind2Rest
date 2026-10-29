@@ -2,16 +2,37 @@ import os
 import sys
 import logging
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.triggers.interval import IntervalTrigger
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 current_status = {}
+paused_until = None
+
 
 def get_current_status():
-    return current_status
+    status = dict(current_status)
+    if is_paused():
+        status["paused_until"] = paused_until.isoformat(timespec="seconds")
+    return status
+
+
+def pause(minutes):
+    global paused_until
+    paused_until = datetime.now() + timedelta(minutes=minutes)
+    logging.info(f"Reminders paused until {paused_until:%H:%M}")
+
+
+def resume():
+    global paused_until
+    paused_until = None
+    logging.info("Reminders resumed")
+
+
+def is_paused() -> bool:
+    return paused_until is not None and datetime.now() < paused_until
 
 def update_status(status):
     global current_status
@@ -39,6 +60,9 @@ def trigger_reminder(module, settings):
     if is_conference_active():
         logging.info(f"Skipping {module} reminder during active video conference")
         return
+    if is_paused():
+        logging.info(f"Skipping {module} reminder while paused")
+        return
 
     logging.info(f"Triggering {module} reminder")
     current_time = datetime.now()
@@ -53,24 +77,21 @@ def trigger_reminder(module, settings):
 
     trigger_reminder.last_trigger = trigger_key
 
-    # We call the notifications.py wrapper located in the root script directory
-    notifications_script = os.path.join(script_dir, "notifications.py")
+    launch_reminder(module, settings)
 
+
+def launch_reminder(module, settings):
+    """Start the overlay for one reminder in its own process."""
+    notifications_script = os.path.join(script_dir, "notifications.py")
     if module == "eye_relax":
-        subprocess.Popen([
-            sys.executable,
-            notifications_script,
-            "eye_relax",
-            "--freq", str(settings.get("flash_frequency", 2.0)),
-            "--duration", str(settings.get("relax_duration", 20))
-        ])
+        args = ["eye_relax",
+                "--freq", str(settings.get("flash_frequency", 2.0)),
+                "--duration", str(settings.get("relax_duration", 20))]
     elif module == "posture":
-        subprocess.Popen([
-            sys.executable,
-            notifications_script,
-            "posture",
-            "--wait", str(settings.get("wait_duration", 3.0))
-        ])
+        args = ["posture", "--wait", str(settings.get("wait_duration", 3.0))]
+    else:
+        raise ValueError(f"Unknown reminder module: {module}")
+    subprocess.Popen([sys.executable, notifications_script, *args])
 
 def schedule_reminders(scheduler, config):
     if not config or not isinstance(config, dict):

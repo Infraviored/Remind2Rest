@@ -48,7 +48,7 @@ $Shortcut.Save()
 $DesktopPath = "$env:USERPROFILE\Desktop\Remind2Rest Configurator.lnk"
 $ConfigShortcut = $WshShell.CreateShortcut($DesktopPath)
 $ConfigShortcut.TargetPath = $PythonExe
-$ConfigShortcut.Arguments = "`"$ScriptDir\web_configurator.py`""
+$ConfigShortcut.Arguments = "`"$ScriptDir\configurator.py`""
 $ConfigShortcut.WorkingDirectory = $ScriptDir
 $ConfigShortcut.IconLocation = "$AppDir\Remind2Rest.png"
 $ConfigShortcut.Save()

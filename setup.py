@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import ast
 import os
 import shutil
 import subprocess
@@ -18,6 +19,9 @@ APP_DATA_DIR = os.path.join(XDG_DATA_HOME, "Remind2Rest")
 APP_ICONS_DIR = os.path.join(APP_DATA_DIR, "icons")
 APP_VENV_DIR = os.path.join(APP_DATA_DIR, "venv")
 SERVICE_PATH = os.path.expanduser("~/.config/systemd/user/Remind2Rest.service")
+EXTENSION_UUID = "remind2rest@infraviored"
+EXTENSION_PATH = os.path.join(XDG_DATA_HOME, "gnome-shell", "extensions", EXTENSION_UUID)
+TRAY_AUTOSTART_PATH = os.path.expanduser("~/.config/autostart/Remind2Rest-Tray.desktop")
 
 
 def get_input(prompt):
@@ -134,6 +138,10 @@ def uninstall():
         except Exception as e:
             print(f"Error removing desktop shortcut: {e}")
 
+    for path in [TRAY_AUTOSTART_PATH, EXTENSION_PATH]:
+        if remove_path(path):
+            print(f"Removed: {path}")
+
     # Reload systemd
     subprocess.run(["systemctl", "--user", "daemon-reload"])
     subprocess.run(["systemctl", "--user", "reset-failed"])
@@ -180,7 +188,10 @@ def install_service(app_path):
         and get_input("\nCreate desktop shortcut and enable autostart? (y/n): ") == "y"
     ):
         create_desktop_shortcut(current_dir, icon_dst, python_path)
-        enable_autostart(current_dir, python_path)
+        if is_gnome():
+            install_gnome_extension(current_dir)
+        else:
+            enable_autostart(current_dir, python_path)
 
     # Prompt for systemd service
     install_service_choice = get_input("\nInstall and enable systemd user service? (y/n): ")
@@ -195,10 +206,9 @@ def install_service(app_path):
     else:
         print("\nSkipping systemd service installation.")
 
-    # Launch web configurator in background
-    print("\nLaunching web configurator...")
+    print("\nLaunching configurator...")
     subprocess.Popen(
-        [python_path, os.path.join(current_dir, "web_configurator.py")]
+        [python_path, os.path.join(current_dir, "configurator.py")]
     )
 
     print("\nInstallation completed!")
@@ -235,13 +245,14 @@ def create_desktop_shortcut(current_dir, icon_dst, python_path):
     desktop_file_path = os.path.expanduser(
         "~/.local/share/applications/Remind2Rest.desktop"
     )
-    web_configurator_path = os.path.join(current_dir, "web_configurator.py")
+    configurator_path = os.path.join(current_dir, "configurator.py")
 
     desktop_entry = f"""[Desktop Entry]
 Name=Remind2Rest
-Comment=Remind2Rest Web Configurator
-Exec={python_path} {web_configurator_path}
+Comment=Remind2Rest settings
+Exec={python_path} {configurator_path}
 Icon={icon_dst}
+StartupWMClass=Remind2Rest
 Terminal=false
 Type=Application
 Categories=Utility;
@@ -252,6 +263,43 @@ Categories=Utility;
         f.write(desktop_entry)
     os.chmod(desktop_file_path, 0o755)
     print(f"Desktop shortcut created at: {desktop_file_path}")
+
+def remove_path(path):
+    """Remove a file, symlink or directory; returns whether something was there."""
+    if os.path.islink(path) or os.path.isfile(path):
+        os.remove(path)
+    elif os.path.isdir(path):
+        shutil.rmtree(path)
+    else:
+        return False
+    return True
+
+
+def is_gnome():
+    return "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper()
+
+
+def install_gnome_extension(current_dir):
+    """Link the top bar extension into GNOME Shell and enable it (replaces the tray icon)."""
+    source = os.path.join(current_dir, "gnome-extension", EXTENSION_UUID)
+    os.makedirs(os.path.dirname(EXTENSION_PATH), exist_ok=True)
+    remove_path(EXTENSION_PATH)
+    os.symlink(source, EXTENSION_PATH)
+
+    # Writing the setting directly also works before GNOME Shell has seen the new extension.
+    result = subprocess.run(
+        ["gsettings", "get", "org.gnome.shell", "enabled-extensions"],
+        capture_output=True, text=True,
+    )
+    enabled = ast.literal_eval(result.stdout.replace("@as ", "").strip() or "[]")
+    if EXTENSION_UUID not in enabled:
+        enabled.append(EXTENSION_UUID)
+        subprocess.run(["gsettings", "set", "org.gnome.shell", "enabled-extensions", str(enabled)])
+
+    remove_path(TRAY_AUTOSTART_PATH)
+    print(f"GNOME extension linked at: {EXTENSION_PATH}")
+    print("Log out and back in once (Wayland) so GNOME Shell loads it.")
+
 
 def enable_autostart(current_dir, python_path):
     """Create autostart entry for the tray icon"""
@@ -307,7 +355,7 @@ def main():
     # Install system dependencies
     print("\nInstalling system dependencies...")
     subprocess.run(
-        ["sudo", "apt-get", "install", "-y", "python3-tk", "python3-pil.imagetk", "libgirepository1.0-dev", "libgirepository-2.0-dev", "python3-gi", "libgtk-3-dev", "libcairo2-dev", "pkg-config"]
+        ["sudo", "apt-get", "install", "-y", "python3-tk", "python3-pil.imagetk", "libgirepository1.0-dev", "libgirepository-2.0-dev", "python3-gi", "libgtk-3-dev", "libcairo2-dev", "pkg-config", "gir1.2-webkit2-4.1"]
     )
 
     # Get the current directory and check for Remind2Rest.py

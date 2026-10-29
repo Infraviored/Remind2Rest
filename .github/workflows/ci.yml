@@ -25,14 +25,14 @@ jobs:
 
       - name: Lint and syntax check
         run: |
-          python -m py_compile Remind2Rest.py notifications.py tray_icon.py web_configurator.py || true
+          python -m py_compile Remind2Rest.py notifications.py tray_icon.py configurator.py || true
 
       - name: Smoke import (skip tray_icon if gi missing)
         run: |
           python - <<PY
           import importlib.util, sys
 
-          files = ["Remind2Rest.py", "notifications.py", "web_configurator.py"]
+          files = ["Remind2Rest.py", "notifications.py", "configurator.py"]
 
           try:
               import gi  # Optional dependency for tray_icon

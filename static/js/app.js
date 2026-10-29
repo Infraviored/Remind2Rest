@@ -1,110 +1,65 @@
 // static/js/app.js
 
+// Resolves once pywebview has injected the Python API (window.pywebview.api).
+const bridge = new Promise(resolve => {
+    if (window.pywebview && window.pywebview.api) resolve(window.pywebview.api);
+    else window.addEventListener('pywebviewready', () => resolve(window.pywebview.api));
+});
+const call = (name, ...args) => bridge.then(api => api[name](...args));
+
 new Vue({
     el: '#app',
     data: function() {
-        const initialData = JSON.parse(document.getElementById('initial-data').textContent);
         return {
-            config: initialData.config || {
+            config: {
                 global_interval: 60,
-                eye_relax: {
-                    enabled: false,
-                    relax_duration: 20,
-                    flash_frequency: 1,
-                    reminders: []
-                },
-                posture: {
-                    enabled: false,
-                    wait_duration: 3,
-                    reminders: []
-                }
+                eye_relax: { enabled: false, relax_duration: 20, flash_frequency: 1, reminders: [] },
+                posture: { enabled: false, wait_duration: 3, reminders: [] }
             },
+            modules: [
+                {
+                    key: 'eye_relax', title: 'Eye Relax', icon: 'visibility',
+                    text: 'text-primary', activeCard: 'border-primary/30 bg-primary/5',
+                    fields: [
+                        { key: 'relax_duration', label: 'Duration (s)' },
+                        { key: 'flash_frequency', label: 'Flash (Hz)' }
+                    ]
+                },
+                {
+                    key: 'posture', title: 'Posture', icon: 'accessibility_new',
+                    text: 'text-tertiary', activeCard: 'border-tertiary/30 bg-tertiary/5',
+                    fields: [{ key: 'wait_duration', label: 'Wait (s)' }]
+                }
+            ],
             serviceStatus: 'Unknown',
             isServiceRunning: false,
             isServiceEnabled: false,
-            autostartStatus: '',
             slider: null,
             colors: {
                 eye_relax: '#818cf8', // Indigo-400
                 posture: '#2dd4bf'   // Teal-400
             },
-            saveStatus: initialData.saveStatus || {
-                show: false,
-                success: false,
-                message: ''
-            }
+            saveStatus: { show: false, success: false, message: '' }
         };
     },
     methods: {
         saveConfig() {
-            const button = document.querySelector('button[type="submit"]');
-            
-            axios.post('/save_config', this.config)
-                .then(response => {
-                    if (response.data.status === 'success') {
-                        button.classList.add('saving-success');
-                        setTimeout(() => button.classList.remove('saving-success'), 3000);
-                    } else {
-                        button.classList.add('saving-error');
-                        setTimeout(() => button.classList.remove('saving-error'), 3000);
-                        console.error('Save error:', response.data.message);
-                    }
-                })
-                .catch(error => {
-                    button.classList.add('saving-error');
-                    setTimeout(() => button.classList.remove('saving-error'), 3000);
-                    console.error('Save error:', error.response?.data?.message || error);
-                });
+            call('save_config', this.config)
+                .then(result => this.showSaveStatus(result.status === 'success', result.message))
+                .catch(error => this.showSaveStatus(false, `Save failed: ${error.message || error}`));
         },
         toggleService() {
-            axios.post('/toggle_service')
-                .then(response => {
-                    this.isServiceRunning = response.data.running;
-                    this.serviceStatus = response.data.status;
+            call('toggle_service')
+                .then(result => {
+                    this.isServiceRunning = result.running;
+                    this.serviceStatus = result.status;
                 })
-                .catch(error => {
-                    console.error('Error toggling service:', error);
-                    alert('Error toggling service');
-                });
+                .catch(error => alert(`Error toggling service: ${error.message || error}`));
         },
         toggleServiceEnabled() {
-            axios.post('/toggle_service_enabled')
-                .then(response => {
-                    this.isServiceEnabled = response.data.enabled;
-                })
-                .catch(error => {
-                    console.error('Error toggling service enabled state:', error);
-                    alert('Error enabling/disabling service');
-                });
-        },
-        createConfiguratorShortcut() {
-            axios.post('/create_configurator_shortcut')
-                .then(() => alert('Configurator shortcut created successfully!'))
-                .catch(error => alert('Error creating configurator shortcut'));
-        },
-        stopConfigurator() {
-            axios.post('/stop_configurator')
-                .then(() => window.close())
-                .catch(error => alert('Error stopping configurator'));
-        },
-        toggleAutostart() {
-            axios.post('/toggle_autostart')
-                .then(response => this.updateAutostartStatus(response.data.status))
-                .catch(error => {
-                    console.error('Error toggling autostart:', error);
-                    alert('Error toggling autostart');
-                });
-        },
-        createDesktopEntry() {
-            axios.post('/create_desktop_entry')
-                .then(() => alert('Desktop entry created successfully!'))
-                .catch(error => {
-                    console.error('Error creating desktop entry:', error);
-                    alert('Error creating desktop entry');
-                });
-        },
-        updateAutostartStatus(status) {
-            this.autostartStatus = `Start on Login (${status})`;
+            call('toggle_service_enabled')
+                .then(result => { this.isServiceEnabled = result.enabled; })
+                .catch(error => alert(`Error toggling autostart: ${error.message || error}`));
         },
         toggleModule(module, event) {
             this.config[module].enabled = event.target.checked;
@@ -169,13 +124,6 @@ new Vue({
                     const reminderIndex = this.config[moduleIndex].reminders.indexOf(allReminders[index].time);
                     this.deleteReminder(moduleIndex, reminderIndex);
                 });
-
-                deleteButton.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    const moduleIndex = allReminders[index].module;
-                    const reminderIndex = this.config[moduleIndex].reminders.indexOf(allReminders[index].time);
-                    this.deleteReminder(moduleIndex, reminderIndex);
-                });
             });
 
             // Close active handle when clicking outside
@@ -212,17 +160,8 @@ new Vue({
             });
         },
         testReminder(module) {
-            axios.post('/test_reminder', { 
-                module: module,
-                settings: this.config[module]
-            })
-                .then(response => {
-                    console.log(`Test reminder for ${module} triggered`);
-                })
-                .catch(error => {
-                    console.error(`Error testing reminder ${module}:`, error);
-                    alert('Error triggering test reminder');
-                });
+            call('test_reminder', module, this.config[module])
+                .catch(error => alert(`Error triggering test reminder: ${error.message || error}`));
         },
         deleteReminder(module, index) {
             console.log('Deleting reminder:', module, index);
@@ -250,43 +189,19 @@ new Vue({
         }
     },
     mounted() {
-        const savedConfig = JSON.parse(document.getElementById('config-data').textContent);
-        if (Object.keys(savedConfig).length > 0) {
-            this.config = { ...this.config, ...savedConfig };
-        }
+        call('get_config')
+            .then(saved => {
+                if (saved) this.config = { ...this.config, ...saved };
+                this.$nextTick(() => this.updateSlider());
+            })
+            .catch(error => this.showSaveStatus(false, `Could not load config: ${error.message || error}`));
 
-        axios.get('/service_info')
-            .then(response => {
-                this.serviceStatus = response.data.status;
-                this.isServiceRunning = response.data.running;
-                this.isServiceEnabled = response.data.enabled;
+        call('service_info')
+            .then(info => {
+                this.serviceStatus = info.status;
+                this.isServiceRunning = info.running;
+                this.isServiceEnabled = info.enabled;
             })
             .catch(error => console.error('Error fetching service info:', error));
-
-        axios.get('/autostart_status')
-            .then(response => this.updateAutostartStatus(response.data.status))
-            .catch(error => console.error('Error fetching autostart status:', error));
-
-        this.$nextTick(() => {
-            this.updateSlider();
-        });
-    },
-    created() {
-        // Start ping interval when component is created
-        console.log('Starting ping interval...');
-        this.pingInterval = setInterval(() => {
-            axios.post('/ping')
-                .then(() => console.log('Ping sent successfully'))
-                .catch((error) => {
-                    console.error('Ping failed:', error);
-                    clearInterval(this.pingInterval);
-                });
-        }, 5000);
-    },
-    beforeDestroy() {
-        console.log('Cleaning up ping interval...');
-        if (this.pingInterval) {
-            clearInterval(this.pingInterval);
-        }
     }
 });

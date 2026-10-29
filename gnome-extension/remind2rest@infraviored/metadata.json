@@ -1,0 +1,7 @@
+{
+  "uuid": "remind2rest@infraviored",
+  "name": "Remind2Rest",
+  "description": "Countdown to the next Remind2Rest reminder in the top bar, with pause, trigger and settings.",
+  "shell-version": ["46", "47", "48", "49", "50"],
+  "url": "https://github.com/Infraviored/Remind2Rest"
+}

@@ -11,7 +11,7 @@ from logging.handlers import RotatingFileHandler
 
 from src.config import CONFIG_PATH, LOG_PATH, SOCKET_FAMILY, ADDR, load_config
 from src.ipc import create_server_socket, cleanup_socket
-from src.scheduler import schedule_reminders, get_current_status
+from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -102,6 +102,16 @@ def main():
                             conn.sendall(b"OK")
                         elif command == "STATUS":
                             conn.sendall(json.dumps(get_current_status()).encode())
+                        elif command.startswith("PAUSE "):
+                            pause(int(command.split()[1]))
+                            conn.sendall(b"OK")
+                        elif command == "RESUME":
+                            resume()
+                            conn.sendall(b"OK")
+                        elif command.startswith("TRIGGER "):
+                            module = command.split()[1]
+                            launch_reminder(module, config.get(module, {}))
+                            conn.sendall(b"OK")
                     except Exception as e:
                         logging.error(f"Error handling connection: {e}")
             except BlockingIOError:

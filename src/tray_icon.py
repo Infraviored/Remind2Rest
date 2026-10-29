@@ -1,6 +1,6 @@
 import os
 import subprocess
-import webbrowser
+import sys
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -43,7 +43,7 @@ class Remind2RestIndicator:
         menu.append(self.toggle_item)
 
         # Open Web Interface
-        item_web = Gtk.MenuItem(label="Open Web Interface")
+        item_web = Gtk.MenuItem(label="Settings…")
         item_web.connect("activate", self.open_web_interface)
         menu.append(item_web)
 
@@ -99,7 +99,8 @@ class Remind2RestIndicator:
             dialog.destroy()
 
     def open_web_interface(self, _):
-        webbrowser.open("http://localhost:5000")
+        script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+        subprocess.Popen([sys.executable, os.path.join(script_dir, "configurator.py")])
 
     def quit(self, _):
         Gtk.main_quit()
