@@ -61,7 +61,11 @@ def main():
             try:
                 conn, _ = s.accept()
                 with conn:
-                    data = conn.recv(4096)
+                    conn.settimeout(1.0)
+                    try:
+                        data = conn.recv(4096)
+                    except (socket.timeout, BlockingIOError):
+                        continue
                     if not data:
                         continue
                     try:
@@ -103,17 +107,40 @@ def main():
                         elif command == "STATUS":
                             conn.sendall(json.dumps(get_current_status()).encode())
                         elif command.startswith("PAUSE "):
-                            pause(int(command.split()[1]))
-                            conn.sendall(b"OK")
+                            parts = command.split()
+                            if len(parts) != 2:
+                                conn.sendall(b"ERR invalid PAUSE syntax")
+                            else:
+                                try:
+                                    minutes = int(parts[1])
+                                    if minutes <= 0:
+                                        conn.sendall(b"ERR PAUSE minutes must be positive")
+                                    else:
+                                        pause(minutes)
+                                        conn.sendall(b"OK")
+                                except ValueError:
+                                    conn.sendall(b"ERR PAUSE minutes must be an integer")
                         elif command == "RESUME":
                             resume()
                             conn.sendall(b"OK")
                         elif command.startswith("TRIGGER "):
-                            module = command.split()[1]
-                            launch_reminder(module, config.get(module, {}))
-                            conn.sendall(b"OK")
+                            parts = command.split()
+                            if len(parts) != 2:
+                                conn.sendall(b"ERR invalid TRIGGER syntax")
+                            elif parts[1] not in ("eye_relax", "posture"):
+                                conn.sendall(b"ERR unknown reminder module")
+                            else:
+                                module = parts[1]
+                                launch_reminder(module, (config or {}).get(module, {}))
+                                conn.sendall(b"OK")
+                        else:
+                            conn.sendall(b"ERR unknown command")
                     except Exception as e:
                         logging.error(f"Error handling connection: {e}")
+                        try:
+                            conn.sendall(f"ERR {e}".encode())
+                        except Exception:
+                            pass
             except BlockingIOError:
                 pass
             except Exception as e:

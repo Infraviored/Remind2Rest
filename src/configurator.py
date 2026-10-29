@@ -24,8 +24,8 @@ def send_command_to_service(command):
             sock.settimeout(1.0)
             sock.connect(ADDR)
             sock.sendall(command.encode())
-            sock.recv(64)  # wait for "OK" so the daemon's reply has somewhere to go
-            return True
+            reply = sock.recv(64)
+            return reply.startswith(b"OK")
     except Exception as e:
         print(f"Error sending command: {e}")
         return False
@@ -47,6 +47,10 @@ def systemctl(*args):
 
 def windows_startup_path():
     return os.path.join(os.environ["APPDATA"], "Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Remind2Rest.lnk")
+
+
+def ps_quote(s):
+    return "'" + str(s).replace("'", "''") + "'"
 
 
 class Api:
@@ -89,8 +93,11 @@ class Api:
                 os.remove(startup_path)
                 return {"enabled": False}
             ps_cmd = (
-                f'$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut("{startup_path}"); '
-                f'$Shortcut.TargetPath = "{sys.executable}"; $Shortcut.Arguments = "{reminder_app_path}"; $Shortcut.Save()'
+                f"$WshShell = New-Object -ComObject WScript.Shell; "
+                f"$Shortcut = $WshShell.CreateShortcut({ps_quote(startup_path)}); "
+                f"$Shortcut.TargetPath = {ps_quote(sys.executable)}; "
+                f"$Shortcut.Arguments = {ps_quote(f'\"{reminder_app_path}\"')}; "
+                f"$Shortcut.Save()"
             )
             subprocess.run(["powershell", "-Command", ps_cmd], check=True)
             return {"enabled": True}
@@ -104,9 +111,12 @@ class Api:
 def main():
     if not IS_WINDOWS:
         # Lets GNOME match the window to Remind2Rest.desktop (StartupWMClass) for the dock icon.
-        from gi.repository import GLib
-        GLib.set_prgname(SERVICE)
-        GLib.set_application_name(SERVICE)
+        try:
+            from gi.repository import GLib
+            GLib.set_prgname(SERVICE)
+            GLib.set_application_name(SERVICE)
+        except ImportError:
+            pass
     webview.create_window(
         "Remind2Rest",
         url=Path(index_path).as_uri(),

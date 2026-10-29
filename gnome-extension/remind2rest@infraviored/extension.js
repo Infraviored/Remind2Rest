@@ -24,22 +24,26 @@ const MODULES = {
 };
 
 // Sends one command and returns the daemon's whole reply; throws if the daemon is not running.
-async function sendCommand(command) {
+async function sendCommand(command, cancellable = null) {
     const client = new Gio.SocketClient();
-    const conn = await client.connect_async(Gio.UnixSocketAddress.new(SOCKET_PATH), null);
+    const conn = await client.connect_async(Gio.UnixSocketAddress.new(SOCKET_PATH), cancellable);
     try {
         await conn.get_output_stream().write_bytes_async(
-            new GLib.Bytes(new TextEncoder().encode(command)), GLib.PRIORITY_DEFAULT, null);
+            new GLib.Bytes(new TextEncoder().encode(command)), GLib.PRIORITY_DEFAULT, cancellable);
         const chunks = [];
         for (;;) {
-            const bytes = await conn.get_input_stream().read_bytes_async(4096, GLib.PRIORITY_DEFAULT, null);
+            const bytes = await conn.get_input_stream().read_bytes_async(4096, GLib.PRIORITY_DEFAULT, cancellable);
             if (bytes.get_size() === 0)
                 break;
             chunks.push(new TextDecoder().decode(bytes.toArray()));
         }
         return chunks.join('');
     } finally {
-        conn.close(null);
+        try {
+            conn.close(null);
+        } catch {
+            // ignore close error
+        }
     }
 }
 
@@ -84,66 +88,121 @@ class Indicator extends PanelMenu.Button {
         });
 
         this._running = false;
+        this._polling = false;
+        this._pollCounter = 0;
+        this._remainingSeconds = null;
+        this._currentModule = null;
+        this._paused = false;
+
         this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
-            this._refresh();
+            this._tick();
             return GLib.SOURCE_CONTINUE;
         });
-        this._refresh();
+        this._pollDaemon();
     }
 
     _addAction(label, action) {
         const item = new PopupMenu.PopupMenuItem(label);
         item.connect('activate', () => {
-            action().catch(e => logError(e, 'Remind2Rest'))
-                .finally(() => this._refresh());
+            Promise.resolve().then(action)
+                .catch(e => logError(e, 'Remind2Rest'))
+                .finally(() => this._pollDaemon());
         });
         this.menu.addMenuItem(item);
         return item;
     }
 
-    async _refresh() {
+    _tick() {
+        this._pollCounter = (this._pollCounter || 0) - 1;
+        if (this._pollCounter <= 0) {
+            this._pollDaemon();
+        } else if (this._running && !this._paused && this._currentModule && this._remainingSeconds !== null) {
+            if (this._remainingSeconds > 0)
+                this._remainingSeconds--;
+            const mm = String(Math.floor(this._remainingSeconds / 60)).padStart(2, '0');
+            const ss = String(this._remainingSeconds % 60).padStart(2, '0');
+            const timeStr = `${mm}:${ss}`;
+            this._label.text = ` ${timeStr}`;
+            this._statusItem.label.text = `Next: ${this._currentModule.label} in ${timeStr}`;
+        }
+    }
+
+    async _pollDaemon() {
+        if (this._polling)
+            return;
+        this._polling = true;
+        this._pollCounter = 5;
+
+        const cancellable = new Gio.Cancellable();
+        this._cancellable = cancellable;
+        const cancelTimer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+            cancellable.cancel();
+            return GLib.SOURCE_REMOVE;
+        });
+
         let status = null;
         try {
-            status = JSON.parse(await sendCommand('STATUS'));
+            status = JSON.parse(await sendCommand('STATUS', cancellable));
         } catch {
-            // Daemon not running (or not answering): shown as "not running" below.
+            // Daemon not running, timed out, or unparseable reply.
+        } finally {
+            GLib.source_remove(cancelTimer);
+            if (this._cancellable === cancellable)
+                this._cancellable = null;
+            this._polling = false;
         }
+
         if (!this._timer)
             return; // destroyed while waiting for the daemon
+
         this._running = status !== null;
-        const paused = Boolean(status?.paused_until);
+        this._paused = Boolean(status?.paused_until);
         const module = MODULES[status?.next_reminder];
+        this._currentModule = module;
 
         if (!this._running) {
+            this._remainingSeconds = null;
             this._icon.icon_name = 'alarm-symbolic';
             this._icon.opacity = 110;
             this._label.text = '';
             this._statusItem.label.text = 'Service not running';
-        } else if (paused) {
+        } else if (this._paused) {
+            this._remainingSeconds = null;
             const until = status.paused_until.slice(11, 16);
             this._icon.icon_name = 'media-playback-pause-symbolic';
             this._icon.opacity = 255;
             this._label.text = ` ${until}`;
             this._statusItem.label.text = `Paused until ${until}`;
         } else if (module) {
+            if (status.time_to_next) {
+                const parts = status.time_to_next.split(':');
+                this._remainingSeconds = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+            } else {
+                this._remainingSeconds = null;
+            }
             this._icon.icon_name = module.icon;
             this._icon.opacity = 255;
             this._label.text = ` ${status.time_to_next}`;
             this._statusItem.label.text = `Next: ${module.label} in ${status.time_to_next}`;
         } else {
+            this._remainingSeconds = null;
             this._icon.icon_name = 'alarm-symbolic';
             this._icon.opacity = 255;
             this._label.text = '';
             this._statusItem.label.text = 'No reminders enabled';
         }
 
-        this._pauseItems.forEach(item => (item.visible = this._running && !paused));
-        this._resumeItem.visible = this._running && paused;
+        this._pauseItems.forEach(item => (item.visible = this._running && !this._paused));
+        this._resumeItem.visible = this._running && this._paused;
         this._triggerItems.forEach(item => (item.visible = this._running));
         this._serviceItem.label.text = this._running ? 'Stop service' : 'Start service';
     }
 
     destroy() {
+        if (this._cancellable) {
+            this._cancellable.cancel();
+            this._cancellable = null;
+        }
         if (this._timer) {
             GLib.source_remove(this._timer);
             this._timer = null;

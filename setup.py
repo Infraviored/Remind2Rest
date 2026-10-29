@@ -142,6 +142,21 @@ def uninstall():
         if remove_path(path):
             print(f"Removed: {path}")
 
+    # Remove GNOME extension from enabled-extensions
+    try:
+        result = subprocess.run(
+            ["gsettings", "get", "org.gnome.shell", "enabled-extensions"],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            enabled = ast.literal_eval(result.stdout.replace("@as ", "").strip() or "[]")
+            if EXTENSION_UUID in enabled:
+                enabled.remove(EXTENSION_UUID)
+                subprocess.run(["gsettings", "set", "org.gnome.shell", "enabled-extensions", str(enabled)])
+                print(f"Disabled GNOME extension: {EXTENSION_UUID}")
+    except Exception as e:
+        print(f"Error disabling GNOME extension: {e}")
+
     # Reload systemd
     subprocess.run(["systemctl", "--user", "daemon-reload"])
     subprocess.run(["systemctl", "--user", "reset-failed"])
