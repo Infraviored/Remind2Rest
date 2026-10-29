@@ -35,14 +35,14 @@ h1 { font-size: clamp(40px, 5.4vw, 120px); }
     overflow: hidden;
     height: clamp(110px, 21vh, 260px);
     padding: clamp(12px, 1.4vw, 24px);
-    border: 2px solid rgba(45, 212, 191, 0.28);
+    border: 2px solid rgba(45, 212, 191, 0.55);
     border-radius: clamp(14px, 1.3vw, 24px);
     background: var(--surface);
     text-align: left;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    cursor: not-allowed;
+    cursor: pointer;
     transition: border-color 160ms, transform 160ms, box-shadow 160ms;
 }
 
@@ -51,11 +51,8 @@ h1 { font-size: clamp(40px, 5.4vw, 120px); }
     position: absolute;
     inset: 0;
     background: linear-gradient(to top, rgba(45, 212, 191, 0.32), rgba(45, 212, 191, 0.08));
-    transform-origin: bottom;
-    transform: scaleY(0);
-    animation: arm var(--wait, 3s) linear forwards;
+    opacity: 0.35;
 }
-@keyframes arm { to { transform: scaleY(1); } }
 
 .key > * { position: relative; }
 
@@ -64,7 +61,7 @@ h1 { font-size: clamp(40px, 5.4vw, 120px); }
     font-weight: 800;
     letter-spacing: -0.05em;
     line-height: 0.85;
-    color: rgba(227, 226, 230, 0.35);
+    color: var(--ink);
     transition: color 200ms;
 }
 
@@ -74,15 +71,12 @@ h1 { font-size: clamp(40px, 5.4vw, 120px); }
     color: var(--muted);
 }
 
-.armed .key { cursor: pointer; border-color: rgba(45, 212, 191, 0.55); }
-.armed .key::before { animation: none; transform: scaleY(1); opacity: 0.35; }
-.armed .key .n { color: var(--ink); }
-.armed .key:hover, .armed .key:focus-visible {
+.key:hover, .key:focus-visible {
     border-color: var(--teal);
     transform: translateY(-4px);
     box-shadow: 0 0 40px rgba(45, 212, 191, 0.28);
 }
-.armed .key:hover .n { color: var(--teal); }
+.key:hover .n { color: var(--teal); }
 
 .key.chosen {
     border-color: var(--teal);

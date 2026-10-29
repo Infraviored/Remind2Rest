@@ -3,11 +3,8 @@ const NS = 'http://www.w3.org/2000/svg';
 
 (async () => {
     const api = await R2R.api;
-    const {settings = {}} = await api.get_context();
-    const wait = Math.max(0, Number(settings.wait_duration) || 0);
 
     const scale = document.getElementById('scale');
-    scale.style.setProperty('--wait', `${wait}s`);
     const keys = WORDS.map((word, i) => {
         const b = document.createElement('button');
         b.className = 'key';
@@ -17,25 +14,12 @@ const NS = 'http://www.w3.org/2000/svg';
         return b;
     });
 
-    // Buttons and keys stay dead for wait_duration seconds; the subtitle counts down.
     const sub = document.getElementById('sub');
-    let armed = false, done = false;
-    const armAt = performance.now() + wait * 1000;
-    const countdown = () => {
-        const left = Math.ceil((armAt - performance.now()) / 1000);
-        if (left > 0) {
-            sub.textContent = `Check how you are sitting. The buttons unlock in ${left} s.`;
-            setTimeout(countdown, 200);
-        } else if (!done) {
-            armed = true;
-            scale.classList.add('armed');
-            sub.textContent = 'Click a rating or press 1 to 5.';
-        }
-    };
-    countdown();
+    sub.textContent = 'Click a rating or press 1 to 5.';
+    let done = false;
 
     async function rate(n) {
-        if (!armed || done) return;
+        if (done) return;
         done = true;
         keys[n - 1].classList.add('chosen');
         scale.classList.add('done');

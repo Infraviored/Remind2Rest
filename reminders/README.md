@@ -44,7 +44,7 @@ All methods return promises.
 | Type | Settings (config key → meaning) |
 |---|---|
 | `eye_relax` | `relax_duration` s, `flash_frequency` Hz |
-| `posture` | `wait_duration` s before the rating buttons react (stops accidental key presses) |
+| `posture` | none; the rating buttons react at once (older configs may still hold `wait_duration`, it is removed on load) |
 | `water` | `daily_goal_ml` ml per day (default 2000) |
 | `stretch` | `move_duration` s per move (default 20); four moves, then the page closes |
 | `breathing` | `cycles` 4-7-8 breaths (default 3); closes after the last exhale |

@@ -21,8 +21,8 @@ LIBRARY = {
         "icon": "accessibility_new",
         "symbolic_icon": "preferences-desktop-accessibility-symbolic",
         "color": "#2dd4bf",
-        "defaults": {"enabled": True, "every": 20, "reminders": [10, 30, 50], "wait_duration": 3.0},
-        "fields": [{"key": "wait_duration", "label": "Wait (s)"}],
+        "defaults": {"enabled": True, "every": 20, "reminders": [10, 30, 50]},
+        "fields": [],
     },
     "water": {
         "title": "Water",
@@ -60,11 +60,17 @@ LIBRARY = {
 }
 
 
+# Settings that older versions wrote and that no page reads any more.
+RETIRED = {"posture": ["wait_duration"]}
+
+
 def fill_defaults(config):
     """Add missing types and keys from the library, so configs from older versions keep working."""
     config.setdefault("global_interval", 60)
     for key, entry in LIBRARY.items():
         module = config.setdefault(key, {})
+        for name in RETIRED.get(key, []):
+            module.pop(name, None)
         for name, value in entry["defaults"].items():
             module.setdefault(name, copy.deepcopy(value))
     return config

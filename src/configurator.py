@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import socket
 import subprocess
 from pathlib import Path
@@ -8,7 +9,7 @@ import webview
 
 from src.config import ADDR, SOCKET_FAMILY, load_config, save_config
 from src.library import LIBRARY
-from src.scheduler import launch_reminder
+from src.scheduler import spawn_reminder
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 reminder_app_path = os.path.join(script_dir, "Remind2Rest.py")
@@ -70,7 +71,10 @@ class Api:
         return {"status": "warning", "message": "Configuration saved but service is not running"}
 
     def test_reminder(self, module, settings):
-        launch_reminder(module, settings or (load_config() or {}).get(module, {}))
+        settings = settings or (load_config() or {}).get(module, {})
+        # Through the service, so the test waits like any reminder while another one is open.
+        if not send_command_to_service(f"TRIGGER {module} {json.dumps(settings)}"):
+            spawn_reminder(module, settings)
         return {"status": "success"}
 
     def service_info(self):

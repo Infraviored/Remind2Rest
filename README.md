@@ -61,7 +61,16 @@ This will:
 ### 3. Usage
 Once installed, the background service will start automatically on login. Open the settings from the app menu (**Remind2Rest**), the GNOME top bar menu, or with `python configurator.py`.
 
-The top bar extension and the settings window talk to the service over its socket (`~/.Remind2Rest.sock`) with plain-text commands: `STATUS`, `RELOAD`, `PAUSE <minutes>`, `RESUME`, `TRIGGER <type>` (`eye_relax`, `posture`, `water`). `STATUS` names the next reminder with `next_reminder`, `next_title` and `next_icon`.
+The top bar extension and the settings window talk to the service over its socket (`~/.Remind2Rest.sock`) with plain-text commands: `STATUS`, `RELOAD`, `PAUSE <minutes>`, `RESUME`, `TRIGGER <type> [<settings json>]` (any type from `src/library.py`). `STATUS` names the next reminder with `next_reminder`, `next_title` and `next_icon`.
+
+### One reminder at a time
+
+Reminders never stack (`src/gate.py`):
+- **Screen locked:** nothing opens. A reminder that falls due waits and shows about 45 s after unlock. The lock is read from logind (`LockedHint` of the display session), with GNOME's screensaver as fallback, every 5 s. Where neither answers (Windows), reminders show as before.
+- **A reminder window is open:** the next one waits and shows 30 s after the open one closes. A second reminder of the same type is dropped. A snoozed window still counts as open (its process lives on), so it holds back the others until it is closed. This also holds for `TRIGGER` and the test button in the settings.
+- **Suspend:** after waking up, missed reminders are not repeated; only the latest one shows, 45 s after unlock.
+
+Only one reminder waits at a time; a newer one replaces it. The log says `Deferred posture: screen locked` and `Showing deferred posture after unlock`.
 
 ## Reminder library
 

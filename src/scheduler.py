@@ -6,8 +6,10 @@ import subprocess
 from datetime import datetime, timedelta
 from apscheduler.triggers.interval import IntervalTrigger
 
+from src.gate import ReminderGate
 from src.library import LIBRARY, page_settings
 from src.logs import water_today_ml
+from src.session_lock import is_locked
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -90,16 +92,53 @@ def trigger_reminder(module, settings):
 
     trigger_reminder.last_trigger = trigger_key
 
-    launch_reminder(module, settings)
+    gate.request(module, settings)
 
 
-def launch_reminder(module, settings):
-    """Start the overlay for one reminder in its own process."""
+def spawn_reminder(module, settings):
+    """Start the overlay for one reminder in its own process; returns the process."""
     if module not in LIBRARY:
         raise ValueError(f"Unknown reminder module: {module}")
     notifications_script = os.path.join(script_dir, "notifications.py")
-    subprocess.Popen([sys.executable, notifications_script, "show", module,
-                      "--settings", json.dumps(page_settings(module, settings))])
+    return subprocess.Popen([sys.executable, notifications_script, "show", module,
+                             "--settings", json.dumps(page_settings(module, settings))])
+
+
+def launch_reminder(module, settings):
+    """Show a reminder on request (TRIGGER, the settings window's test button). Waits like a due
+    one while the screen is locked or another reminder is open. Returns "shown", "deferred" or "dropped"."""
+    if module not in LIBRARY:
+        raise ValueError(f"Unknown reminder module: {module}")
+    return gate.request(module, settings, manual=True)
+
+
+def find_missed(since, until):
+    """(module, settings) of the latest reminder due after `since` and up to `until` (epoch seconds)."""
+    config = current_config
+    if not config:
+        return None
+    interval = config["global_interval"]
+    until_minute = datetime.fromtimestamp(until).replace(second=0, microsecond=0)
+    elapsed = (until_minute.hour * 60 + until_minute.minute) % interval
+    latest = None
+    for module in LIBRARY:
+        if config.get(module, {}).get("enabled"):
+            for reminder in config[module].get("reminders", []):
+                due = until_minute - timedelta(minutes=(elapsed - reminder) % interval)
+                if due.timestamp() > since and (latest is None or due > latest[0]):
+                    latest = (due, module)
+    return (latest[1], config[latest[1]]) if latest else None
+
+
+def skip_reason():
+    if is_paused():
+        return "paused"
+    if is_conference_active():
+        return "video conference"
+    return None
+
+
+gate = ReminderGate(spawn_reminder, is_locked=is_locked, find_missed=find_missed, skip_reason=skip_reason)
 
 def schedule_reminders(scheduler, config):
     if not config or not isinstance(config, dict):
@@ -140,6 +179,7 @@ def schedule_reminders(scheduler, config):
         logging.info("No enabled reminders found; waiting for configuration reload")
 
     def check_and_trigger_reminders():
+        gate.tick()
         current_time = datetime.now()
         elapsed_minutes = (
             current_time.hour * 60 + current_time.minute

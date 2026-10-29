@@ -125,15 +125,17 @@ def main():
                             resume()
                             conn.sendall(b"OK")
                         elif command.startswith("TRIGGER "):
-                            parts = command.split()
-                            if len(parts) != 2:
+                            # TRIGGER <type> [<settings json>]; the settings window sends unsaved settings.
+                            parts = command.split(maxsplit=2)
+                            if len(parts) < 2:
                                 conn.sendall(b"ERR invalid TRIGGER syntax")
                             elif parts[1] not in LIBRARY:
                                 conn.sendall(b"ERR unknown reminder module")
                             else:
                                 module = parts[1]
-                                launch_reminder(module, (config or {}).get(module, {}))
-                                conn.sendall(b"OK")
+                                settings = json.loads(parts[2]) if len(parts) == 3 else (config or {}).get(module, {})
+                                result = launch_reminder(module, settings)
+                                conn.sendall(f"OK {result}".encode())
                         else:
                             conn.sendall(b"ERR unknown command")
                     except Exception as e:
