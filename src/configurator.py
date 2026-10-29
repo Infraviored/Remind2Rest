@@ -92,11 +92,12 @@ class Api:
             if os.path.exists(startup_path):
                 os.remove(startup_path)
                 return {"enabled": False}
+            arguments = '"' + reminder_app_path + '"'
             ps_cmd = (
                 f"$WshShell = New-Object -ComObject WScript.Shell; "
                 f"$Shortcut = $WshShell.CreateShortcut({ps_quote(startup_path)}); "
                 f"$Shortcut.TargetPath = {ps_quote(sys.executable)}; "
-                f"$Shortcut.Arguments = {ps_quote(f'\"{reminder_app_path}\"')}; "
+                f"$Shortcut.Arguments = {ps_quote(arguments)}; "
                 f"$Shortcut.Save()"
             )
             subprocess.run(["powershell", "-Command", ps_cmd], check=True)
