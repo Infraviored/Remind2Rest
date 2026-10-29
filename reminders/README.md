@@ -9,7 +9,7 @@ pywebview window (`src/overlay.py`).
 
 Every reminder opens as a frameless, fullscreen, focused window (tested on GNOME Wayland: started
 from the systemd service, it comes to the front with focus). The page decides how intrusive it is:
-eye relax flashes, water shows a calm dark backdrop with three glasses (200, 300, 500 ml): drag one to the "Drink here" circle (it sloshes while carried) or press 1/2/3 to log it.
+eye relax flashes, water shows a shelf of three glasses (200, 300, 500 ml) and a carafe that fills up to the daily goal: tip a glass into the carafe (it sloshes while carried) or press 1/2/3 to log it.
 
 `Escape` must always close the page (call `api.close()`).
 

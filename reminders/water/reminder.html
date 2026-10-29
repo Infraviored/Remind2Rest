@@ -12,31 +12,54 @@
 <div class="stage">
     <header>
         <h1 id="title">Time for some water</h1>
-        <p class="status" id="status">&nbsp;</p>
-        <div class="progress"><div class="fill" id="fill"></div></div>
+        <p class="sub">Drag a glass to the carafe and tip it in, or press 1, 2 or 3</p>
     </header>
 
-    <!-- Drop a glass here to drink it. -->
-    <div class="target-wrap">
-        <div class="target" id="target">
-            <span class="ripple"></span>
-            <span class="ripple r2"></span>
-            <span class="target-text">Drink here</span>
+    <div class="scene">
+        <!-- The shelf: water.js draws a glass into each row. -->
+        <div class="shelf" id="glasses">
+            <div class="glass" data-ml="200" data-key="1" role="button" aria-label="200 ml glass, key 1"></div>
+            <div class="glass" data-ml="300" data-key="2" role="button" aria-label="300 ml glass, key 2"></div>
+            <div class="glass" data-ml="500" data-key="3" role="button" aria-label="500 ml glass, key 3"></div>
+        </div>
+
+        <!-- The day carafe: full = today's goal. -->
+        <div class="carafe-wrap">
+            <svg class="carafe" id="carafe" viewBox="0 0 200 360" aria-hidden="true">
+                <defs>
+                    <clipPath id="carafeInside">
+                        <path d="M80 14 L120 14 L120 70 C120 96 176 110 178 150 L178 320 Q178 342 156 342 L44 342 Q22 342 22 320 L22 150 C24 110 80 96 80 70 Z"/>
+                    </clipPath>
+                    <linearGradient id="carafeFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stop-color="#38bdf8" stop-opacity="0.8"/>
+                        <stop offset="1" stop-color="#818cf8" stop-opacity="0.7"/>
+                    </linearGradient>
+                </defs>
+                <g clip-path="url(#carafeInside)">
+                    <rect x="0" y="0" width="200" height="360" fill="rgba(255,255,255,0.035)"/>
+                    <path id="carafeBack" fill="#38bdf8" fill-opacity="0.3"/>
+                    <path id="carafeWater" fill="url(#carafeFill)"/>
+                </g>
+                <g id="ticks"></g>
+                <path d="M78 12 L122 12 L122 70 C122 95 178 110 180 150 L180 320 Q180 344 156 344 L44 344 Q20 344 20 320 L20 150 C22 110 78 95 78 70 Z"
+                      fill="none" stroke="rgba(226,232,255,0.75)" stroke-width="3" stroke-linejoin="round"/>
+                <path d="M74 12 L126 12" stroke="rgba(226,232,255,0.85)" stroke-width="4" stroke-linecap="round"/>
+                <path d="M34 160 L34 300" stroke="rgba(255,255,255,0.25)" stroke-width="5" stroke-linecap="round"/>
+            </svg>
+            <p class="amount" id="amount">&nbsp;</p>
         </div>
     </div>
 
-    <!-- water.js draws the glass inside each slot. -->
-    <div class="glasses" id="glasses">
-        <div class="glass" data-ml="200" data-key="1" role="button" aria-label="200 ml glass, key 1"></div>
-        <div class="glass" data-ml="300" data-key="2" role="button" aria-label="300 ml glass, key 2"></div>
-        <div class="glass" data-ml="500" data-key="3" role="button" aria-label="500 ml glass, key 3"></div>
-    </div>
-
     <div class="actions" id="actions">
-        <span class="hint">Drag a glass to the circle, or press 1, 2 or 3</span>
         <button class="secondary" id="later">Later</button>
     </div>
 </div>
+
+<!-- The stream from the glass rim into the carafe, drawn over everything. -->
+<svg class="stream-layer" aria-hidden="true">
+    <path id="stream" pathLength="1" fill="none" stroke="#38bdf8" stroke-opacity="0.75" stroke-linecap="round"/>
+    <path id="streamCore" pathLength="1" fill="none" stroke="#e0f2fe" stroke-opacity="0.55" stroke-linecap="round"/>
+</svg>
 <div class="esc-hint"><kbd>Esc</kbd> closes</div>
 
 <script src="../common.js"></script>
