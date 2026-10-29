@@ -8,11 +8,9 @@
 
 - **Eye Relax Reminder**: Encourages users to look away from the screen periodically to reduce eye strain. The reminder flashes alternating colors to promote distance gazing.
 - **Posture Reminder**: Periodically reminds users to correct their sitting posture. Users can also rate their current posture, providing a feedback loop to improve over time.
-- **Dynamic Plotting**: Offers a visualization of posture ratings over time.
-- **Cross-Platform Support**:
-  - **Windows**: Native support with always-on-top Tkinter overlays.
-  - **Linux (Wayland)**: High-performance GTK overlays with Layer Shell support.
-  - **Linux (X11)**: Reliable Tkinter fullscreen overlays.
+- **Water Reminder**: Reminds you to drink and counts the glasses of the day (off by default).
+- **Reminder library**: Every reminder is an HTML page shown in a fullscreen window (pywebview), see [Reminder library](#reminder-library).
+- **Cross-Platform Support**: Linux (GNOME Wayland, X11) and Windows.
 - **Settings window**: A small desktop window (pywebview) to adjust reminders, start/stop the service and toggle autostart. No local web server.
 - **GNOME Shell extension**: Countdown to the next reminder in the top bar, with pause, "remind me now" and a shortcut to the settings.
 - **Service Integration**: Supports running as a background service on both Windows (via Startup) and Linux (via systemd).
@@ -22,9 +20,6 @@
 - `Python 3.8+`
 - `apscheduler`
 - `pillow`
-- `matplotlib`
-- `numpy`
-- `scipy`
 - `pywebview` (Linux needs `gir1.2-webkit2-4.1`)
 - `PyGObject` (Linux/Wayland only)
 
@@ -66,4 +61,10 @@ This will:
 ### 3. Usage
 Once installed, the background service will start automatically on login. Open the settings from the app menu (**Remind2Rest**), the GNOME top bar menu, or with `python configurator.py`.
 
-The top bar extension and the settings window talk to the service over its socket (`~/.Remind2Rest.sock`) with plain-text commands: `STATUS`, `RELOAD`, `PAUSE <minutes>`, `RESUME`, `TRIGGER eye_relax|posture`.
+The top bar extension and the settings window talk to the service over its socket (`~/.Remind2Rest.sock`) with plain-text commands: `STATUS`, `RELOAD`, `PAUSE <minutes>`, `RESUME`, `TRIGGER <type>` (`eye_relax`, `posture`, `water`). `STATUS` names the next reminder with `next_reminder`, `next_title` and `next_icon`.
+
+## Reminder library
+
+The reminder types are listed in `src/library.py` (title, icons, color, default settings, settings fields). Each type's page is `reminders/<type>/reminder.html`; the daemon opens it with `notifications.py show <type> --settings '<json>'` in a fullscreen window (`src/overlay.py`). The settings window and the top bar read the list from the library, so a new type needs an entry there and a page. The JavaScript API the pages use and the settings of each type are described in [reminders/README.md](reminders/README.md).
+
+Posture ratings go to `posture_ratings.txt`, water glasses to `water_log.txt` (next to it). Old config files without a type get its defaults when loaded.

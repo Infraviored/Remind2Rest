@@ -7,6 +7,7 @@ from pathlib import Path
 import webview
 
 from src.config import ADDR, SOCKET_FAMILY, load_config, save_config
+from src.library import LIBRARY
 from src.scheduler import launch_reminder
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -55,6 +56,9 @@ def ps_quote(s):
 
 class Api:
     """Methods the page calls as window.pywebview.api.<name>(); each returns JSON-able data."""
+
+    def get_library(self):
+        return [{"key": key, **entry} for key, entry in LIBRARY.items()]
 
     def get_config(self):
         return load_config()

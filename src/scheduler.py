@@ -1,9 +1,12 @@
 import os
 import sys
+import json
 import logging
 import subprocess
 from datetime import datetime, timedelta
 from apscheduler.triggers.interval import IntervalTrigger
+
+from src.library import LIBRARY, page_settings
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -82,16 +85,11 @@ def trigger_reminder(module, settings):
 
 def launch_reminder(module, settings):
     """Start the overlay for one reminder in its own process."""
-    notifications_script = os.path.join(script_dir, "notifications.py")
-    if module == "eye_relax":
-        args = ["eye_relax",
-                "--freq", str(settings.get("flash_frequency", 2.0)),
-                "--duration", str(settings.get("relax_duration", 20))]
-    elif module == "posture":
-        args = ["posture", "--wait", str(settings.get("wait_duration", 3.0))]
-    else:
+    if module not in LIBRARY:
         raise ValueError(f"Unknown reminder module: {module}")
-    subprocess.Popen([sys.executable, notifications_script, *args])
+    notifications_script = os.path.join(script_dir, "notifications.py")
+    subprocess.Popen([sys.executable, notifications_script, "show", module,
+                      "--settings", json.dumps(page_settings(module, settings))])
 
 def schedule_reminders(scheduler, config):
     if not config or not isinstance(config, dict):
@@ -106,7 +104,7 @@ def schedule_reminders(scheduler, config):
     elapsed_minutes = (current_time.hour * 60 + current_time.minute) % interval_minutes
 
     next_times = []
-    for module in ["eye_relax", "posture"]:
+    for module in LIBRARY:
         if config[module]["enabled"]:
             for reminder in config[module]["reminders"]:
                 minutes_until = (reminder - elapsed_minutes) % interval_minutes
@@ -131,7 +129,7 @@ def schedule_reminders(scheduler, config):
         next_reminder_type = None
         time_to_next = float("inf")
 
-        for module in ["eye_relax", "posture"]:
+        for module in LIBRARY:
             if config[module]["enabled"]:
                 for reminder in config[module]["reminders"]:
                     time_to_reminder = (
@@ -149,9 +147,12 @@ def schedule_reminders(scheduler, config):
             minutes_to_next, seconds_to_next = 0, 0
         else:
             minutes_to_next, seconds_to_next = divmod(int(time_to_next), 60)
+        entry = LIBRARY.get(next_reminder_type, {})
         status = {
             "running": True,
             "next_reminder": next_reminder_type,
+            "next_title": entry.get("title"),
+            "next_icon": entry.get("symbolic_icon"),
             "time_to_next": f"{minutes_to_next:02d}:{seconds_to_next:02d}",
             "total_interval": f"{interval_minutes:02d}",
         }

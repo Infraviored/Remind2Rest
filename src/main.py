@@ -10,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from logging.handlers import RotatingFileHandler
 
 from src.config import CONFIG_PATH, LOG_PATH, SOCKET_FAMILY, ADDR, load_config
+from src.library import LIBRARY
 from src.ipc import create_server_socket, cleanup_socket
 from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume
 
@@ -127,7 +128,7 @@ def main():
                             parts = command.split()
                             if len(parts) != 2:
                                 conn.sendall(b"ERR invalid TRIGGER syntax")
-                            elif parts[1] not in ("eye_relax", "posture"):
+                            elif parts[1] not in LIBRARY:
                                 conn.sendall(b"ERR unknown reminder module")
                             else:
                                 module = parts[1]

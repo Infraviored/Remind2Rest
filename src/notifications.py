@@ -1,11 +1,12 @@
 import sys
+import json
 import argparse
 import os
 import logging
 from logging.handlers import RotatingFileHandler
-from src.eye_relax import eye_relax_reminder
-from src.posture import posture_reminder
 from src.custom_reminder import show_custom_reminder
+from src.library import LIBRARY
+from src.overlay import show_reminder
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -26,13 +27,9 @@ def main():
     parser = argparse.ArgumentParser(description="Remind2Rest Notifications")
     subparsers = parser.add_subparsers(dest="command")
     
-    eye_p = subparsers.add_parser("eye_relax")
-    eye_p.add_argument("--freq", type=float, default=2.0)
-    eye_p.add_argument("--duration", type=int, default=20)
-    
-    post_p = subparsers.add_parser("posture")
-    post_p.add_argument("--wait", type=float, default=3.0)
-    post_p.add_argument("--timeout", type=int, default=10)
+    show_p = subparsers.add_parser("show")
+    show_p.add_argument("type", choices=list(LIBRARY))
+    show_p.add_argument("--settings", type=json.loads, default={})
     
     cust_p = subparsers.add_parser("custom")
     cust_p.add_argument("--message", type=str, required=True)
@@ -44,10 +41,8 @@ def main():
     cust_p.add_argument("--fontsize", type=int, default=60)
     
     args = parser.parse_args()
-    if args.command == "eye_relax":
-        eye_relax_reminder(args.freq, args.duration)
-    elif args.command == "posture":
-        posture_reminder(args.wait, args.timeout)
+    if args.command == "show":
+        show_reminder(args.type, args.settings)
     elif args.command == "custom":
         show_custom_reminder(args.message, args.flashing, args.duration, args.cancel_key, args.freq, args.color, args.fontsize)
     else:

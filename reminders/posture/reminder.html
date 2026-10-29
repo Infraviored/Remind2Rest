@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Posture check</title>
+<link rel="stylesheet" href="../common.css">
+<link rel="stylesheet" href="posture.css">
+</head>
+<body>
+<main>
+    <header>
+        <h1 id="title">How is your posture?</h1>
+        <p class="sub" id="sub">&nbsp;</p>
+    </header>
+
+    <div class="scale" id="scale" role="group" aria-label="Posture rating">
+        <!-- buttons built in posture.js -->
+    </div>
+
+    <section class="history">
+        <div class="history-head">
+            <h2>Last 14 days</h2>
+            <div class="legend">
+                <span><i class="dot"></i>Rating</span>
+                <span><i class="line"></i>Daily trend</span>
+            </div>
+        </div>
+        <div class="chart" id="chart"></div>
+    </section>
+</main>
+<div class="esc-hint"><kbd>Esc</kbd> skips</div>
+
+<script src="../common.js"></script>
+<script src="posture.js"></script>
+</body>
+</html>

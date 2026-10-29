@@ -18,11 +18,6 @@ Gio._promisify(Gio.Subprocess.prototype, 'wait_async');
 
 const SOCKET_PATH = GLib.build_filenamev([GLib.get_home_dir(), '.Remind2Rest.sock']);
 
-const MODULES = {
-    eye_relax: {label: 'Eye relax', icon: 'view-reveal-symbolic'},
-    posture: {label: 'Posture', icon: 'preferences-desktop-accessibility-symbolic'},
-};
-
 // Sends one command and returns the daemon's whole reply; throws if the daemon is not running.
 async function sendCommand(command, cancellable = null) {
     const client = new Gio.SocketClient();
@@ -76,6 +71,7 @@ class Indicator extends PanelMenu.Button {
         this._triggerItems = [
             this._addAction('Eye break now', () => sendCommand('TRIGGER eye_relax')),
             this._addAction('Posture check now', () => sendCommand('TRIGGER posture')),
+            this._addAction('Water now', () => sendCommand('TRIGGER water')),
         ];
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         this._serviceItem = this._addAction('', () => systemctl(this._running ? 'stop' : 'start'));
@@ -91,7 +87,7 @@ class Indicator extends PanelMenu.Button {
         this._polling = false;
         this._pollCounter = 0;
         this._remainingSeconds = null;
-        this._currentModule = null;
+        this._nextTitle = null;
         this._paused = false;
 
         this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1, () => {
@@ -116,14 +112,14 @@ class Indicator extends PanelMenu.Button {
         this._pollCounter = (this._pollCounter || 0) - 1;
         if (this._pollCounter <= 0) {
             this._pollDaemon();
-        } else if (this._running && !this._paused && this._currentModule && this._remainingSeconds !== null) {
+        } else if (this._running && !this._paused && this._nextTitle && this._remainingSeconds !== null) {
             if (this._remainingSeconds > 0)
                 this._remainingSeconds--;
             const mm = String(Math.floor(this._remainingSeconds / 60)).padStart(2, '0');
             const ss = String(this._remainingSeconds % 60).padStart(2, '0');
             const timeStr = `${mm}:${ss}`;
             this._label.text = ` ${timeStr}`;
-            this._statusItem.label.text = `Next: ${this._currentModule.label} in ${timeStr}`;
+            this._statusItem.label.text = `Next: ${this._nextTitle} in ${timeStr}`;
         }
     }
 
@@ -157,8 +153,8 @@ class Indicator extends PanelMenu.Button {
 
         this._running = status !== null;
         this._paused = Boolean(status?.paused_until);
-        const module = MODULES[status?.next_reminder];
-        this._currentModule = module;
+        // The daemon names the next reminder and its icon (src/library.py), so new types need no change here.
+        this._nextTitle = status?.next_title ?? null;
 
         if (!this._running) {
             this._remainingSeconds = null;
@@ -173,17 +169,17 @@ class Indicator extends PanelMenu.Button {
             this._icon.opacity = 255;
             this._label.text = ` ${until}`;
             this._statusItem.label.text = `Paused until ${until}`;
-        } else if (module) {
+        } else if (this._nextTitle) {
             if (status.time_to_next) {
                 const parts = status.time_to_next.split(':');
                 this._remainingSeconds = parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
             } else {
                 this._remainingSeconds = null;
             }
-            this._icon.icon_name = module.icon;
+            this._icon.icon_name = status.next_icon || 'alarm-symbolic';
             this._icon.opacity = 255;
             this._label.text = ` ${status.time_to_next}`;
-            this._statusItem.label.text = `Next: ${module.label} in ${status.time_to_next}`;
+            this._statusItem.label.text = `Next: ${this._nextTitle} in ${status.time_to_next}`;
         } else {
             this._remainingSeconds = null;
             this._icon.icon_name = 'alarm-symbolic';

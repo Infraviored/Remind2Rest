@@ -11,34 +11,13 @@ new Vue({
     el: '#app',
     data: function() {
         return {
-            config: {
-                global_interval: 60,
-                eye_relax: { enabled: false, relax_duration: 20, flash_frequency: 1, reminders: [] },
-                posture: { enabled: false, wait_duration: 3, reminders: [] }
-            },
-            modules: [
-                {
-                    key: 'eye_relax', title: 'Eye Relax', icon: 'visibility',
-                    text: 'text-primary', activeCard: 'border-primary/30 bg-primary/5',
-                    fields: [
-                        { key: 'relax_duration', label: 'Duration (s)' },
-                        { key: 'flash_frequency', label: 'Flash (Hz)' }
-                    ]
-                },
-                {
-                    key: 'posture', title: 'Posture', icon: 'accessibility_new',
-                    text: 'text-tertiary', activeCard: 'border-tertiary/30 bg-tertiary/5',
-                    fields: [{ key: 'wait_duration', label: 'Wait (s)' }]
-                }
-            ],
+            // Filled from the reminder library (src/library.py) in mounted().
+            config: { global_interval: 60 },
+            modules: [],
             serviceStatus: 'Unknown',
             isServiceRunning: false,
             isServiceEnabled: false,
             slider: null,
-            colors: {
-                eye_relax: '#818cf8', // Indigo-400
-                posture: '#2dd4bf'   // Teal-400
-            },
             saveStatus: { show: false, success: false, message: '' }
         };
     },
@@ -61,6 +40,10 @@ new Vue({
                 .then(result => { this.isServiceEnabled = result.enabled; })
                 .catch(error => alert(`Error toggling autostart: ${error.message || error}`));
         },
+        // Card border and tint in the type's library color (hex + alpha).
+        cardStyle(m) {
+            return this.config[m.key].enabled ? { borderColor: m.color + '4d', backgroundColor: m.color + '0d' } : {};
+        },
         toggleModule(module, event) {
             this.config[module].enabled = event.target.checked;
             this.$nextTick(() => {
@@ -72,11 +55,10 @@ new Vue({
                 this.slider.destroy();
             }
 
-            const allReminders = Object.entries(this.config)
-                .filter(([key, value]) => key !== 'global_interval' && value.enabled)
-                .flatMap(([module, data]) =>
-                    data.reminders.map(time => ({ time, module }))
-                );
+            const allReminders = this.modules
+                .filter(m => this.config[m.key].enabled)
+                .flatMap(m => this.config[m.key].reminders.map(time => ({ time, module: m.key })));
+            const colors = Object.fromEntries(this.modules.map(m => [m.key, m.color]));
 
             const sliderElement = document.getElementById('interval-slider');
 
@@ -102,7 +84,7 @@ new Vue({
 
             const handles = sliderElement.querySelectorAll('.noUi-handle');
             handles.forEach((handle, index) => {
-                handle.style.backgroundColor = this.colors[allReminders[index].module];
+                handle.style.backgroundColor = colors[allReminders[index].module];
                 
                 const deleteButton = document.createElement('button');
                 deleteButton.className = 'delete-button';
@@ -138,8 +120,8 @@ new Vue({
                     reminder.time = Math.round(values[index]);
                 });
 
-                Object.keys(this.config).forEach(module => {
-                    if (module !== 'global_interval' && this.config[module].enabled) {
+                this.modules.forEach(({ key: module }) => {
+                    if (this.config[module].enabled) {
                         this.config[module].reminders = allReminders
                             .filter(r => r.module === module)
                             .map(r => r.time)
@@ -189,9 +171,11 @@ new Vue({
         }
     },
     mounted() {
-        call('get_config')
-            .then(saved => {
-                if (saved) this.config = { ...this.config, ...saved };
+        Promise.all([call('get_library'), call('get_config')])
+            .then(([library, saved]) => {
+                const defaults = Object.fromEntries(library.map(m => [m.key, JSON.parse(JSON.stringify(m.defaults))]));
+                this.config = { ...this.config, ...defaults, ...(saved || {}) };
+                this.modules = library;
                 this.$nextTick(() => this.updateSlider());
             })
             .catch(error => this.showSaveStatus(false, `Could not load config: ${error.message || error}`));

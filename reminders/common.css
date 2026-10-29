@@ -1,0 +1,64 @@
+/* Shared look of all reminder pages. */
+:root {
+    --bg: #121316;
+    --surface: #1c1e23;
+    --ink: #e3e2e6;
+    --muted: #94a3b8;
+    --indigo: #818cf8;
+    --teal: #2dd4bf;
+    --sky: #38bdf8;
+    --font: "Inter Display", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font);
+    font-feature-settings: "tnum" 1, "cv11" 1;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    cursor: default;
+}
+
+h1 {
+    margin: 0;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 0.95;
+}
+
+button {
+    font: inherit;
+    color: inherit;
+}
+
+button:focus-visible {
+    outline: 3px solid var(--sky);
+    outline-offset: 4px;
+}
+
+/* Small "Esc to close" note in a corner. */
+.esc-hint {
+    position: fixed;
+    right: clamp(16px, 2.5vw, 40px);
+    bottom: clamp(14px, 2.2vh, 32px);
+    font-size: clamp(12px, 0.9vw, 15px);
+    color: var(--muted);
+    opacity: 0.7;
+}
+
+.esc-hint kbd {
+    font: inherit;
+    padding: 0.1em 0.45em;
+    border: 1px solid currentColor;
+    border-radius: 0.35em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

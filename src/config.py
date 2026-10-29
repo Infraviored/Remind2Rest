@@ -3,6 +3,8 @@ import json
 import socket
 import logging
 
+from src.library import fill_defaults
+
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 # Platform-specific paths and socket configuration
@@ -13,29 +15,27 @@ if os.name == 'nt':
     CONFIG_PATH = os.path.join(base_dir, 'reminder_config.json')
     LOG_PATH = os.path.join(base_dir, 'Remind2Rest.log')
     RATINGS_FILE_PATH = os.path.join(base_dir, 'posture_ratings.txt')
+    WATER_LOG_PATH = os.path.join(base_dir, 'water_log.txt')
     ADDR = ('127.0.0.1', 55555)
     SOCKET_FAMILY = socket.AF_INET
 else:
     CONFIG_PATH = os.path.expanduser("~/.config/Remind2Rest/reminder_config.json")
     LOG_PATH = os.path.expanduser("~/.local/share/Remind2Rest/Remind2Rest.log")
     RATINGS_FILE_PATH = os.path.join(script_dir, 'posture_ratings.txt')
+    WATER_LOG_PATH = os.path.join(script_dir, 'water_log.txt')
     ADDR = os.path.expanduser("~/.Remind2Rest.sock")
     SOCKET_FAMILY = getattr(socket, 'AF_UNIX', socket.AF_INET)
 
 def load_config():
     try:
         if not os.path.exists(CONFIG_PATH):
-            default_config = {
-                "global_interval": 60,
-                "eye_relax": {"enabled": True, "reminders": [20, 40], "flash_frequency": 2.0, "relax_duration": 20},
-                "posture": {"enabled": True, "reminders": [0, 30], "wait_duration": 3.0}
-            }
+            default_config = fill_defaults({"global_interval": 60})
             save_config(default_config)
             return default_config
         with open(CONFIG_PATH, "r") as file:
             config = json.load(file)
         validate_config(config)
-        return config
+        return fill_defaults(config)
     except Exception as e:
         logging.error(f"Error loading configuration: {e}")
     return None
@@ -51,10 +51,4 @@ def save_config(config):
 def validate_config(config):
     if "global_interval" not in config:
         raise ValueError("Missing 'global_interval' in config")
-    for module in ["eye_relax", "posture"]:
-        if module not in config:
-            raise ValueError(f"Missing '{module}' in config")
-        if "enabled" not in config[module]:
-            raise ValueError(f"Missing 'enabled' for module {module}")
-        if "reminders" not in config[module]:
-            raise ValueError(f"Missing 'reminders' for module {module}")
+    # Missing reminder types or keys are filled from the library by load_config.

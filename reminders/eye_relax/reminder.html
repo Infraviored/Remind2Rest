@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Eye relax</title>
+<link rel="stylesheet" href="../common.css">
+<style>
+    /* Two hard states, no transition: the whole screen swaps so the eyes notice. */
+    body {
+        --fg: var(--bg);
+        --page: #eef0ff;
+        --line: #4f46e5;
+        background: var(--page);
+        color: var(--fg);
+        display: grid;
+        place-items: center;
+    }
+    body.dark {
+        --fg: #f4f5ff;
+        --page: var(--bg);
+        --line: var(--indigo);
+    }
+    body.paused {
+        --fg: var(--ink);
+        --page: var(--bg);
+        --line: var(--indigo);
+    }
+
+    main {
+        width: min(88vw, 150vh);
+        text-align: left;
+    }
+
+    h1 {
+        font-size: clamp(56px, 9.5vw, 220px);
+        text-wrap: balance;
+    }
+    body.dark h1, body.paused h1 { text-shadow: 0 0 0.35em rgba(129, 140, 248, 0.45); }
+
+    .row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 4vw;
+        margin-top: clamp(28px, 6vh, 80px);
+    }
+
+    .count {
+        font-size: clamp(64px, 11vw, 240px);
+        font-weight: 800;
+        letter-spacing: -0.05em;
+        line-height: 1;
+        color: var(--line);
+    }
+    .count small {
+        font-size: 0.3em;
+        font-weight: 600;
+        letter-spacing: 0;
+        margin-left: 0.1em;
+    }
+
+    .hint {
+        font-size: clamp(16px, 1.6vw, 34px);
+        font-weight: 500;
+        max-width: 22ch;
+        text-align: right;
+    }
+
+    .bar {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        height: clamp(8px, 1.4vh, 18px);
+        width: 100%;
+        background: var(--line);
+        box-shadow: 0 0 24px var(--line);
+        transform-origin: left;
+    }
+</style>
+</head>
+<body>
+<main>
+    <h1>Look more than 20&nbsp;m away</h1>
+    <div class="row">
+        <div class="count"><span id="count">20</span><small>s</small></div>
+        <div class="hint" id="hint">Hold the mouse button to stop the flashing</div>
+    </div>
+</main>
+<div class="bar" id="bar"></div>
+<div class="esc-hint"><kbd>Esc</kbd> skips</div>
+
+<script src="../common.js"></script>
+<script>
+(async () => {
+    const api = await R2R.api;
+    const {settings = {}} = await api.get_context();
+    const duration = Math.max(1, Number(settings.relax_duration) || 20);
+    const freq = Number(settings.flash_frequency) || 0;
+
+    const body = document.body;
+    const countEl = document.getElementById('count');
+    const hint = document.getElementById('hint');
+    const bar = document.getElementById('bar');
+
+    // Holding a mouse button (or touch) pauses the flashing; the countdown keeps running.
+    let held = false;
+    const hold = on => {
+        held = on;
+        body.classList.toggle('paused', on);
+        hint.textContent = on ? 'Flashing paused' : 'Hold the mouse button to stop the flashing';
+    };
+    addEventListener('pointerdown', () => hold(true));
+    addEventListener('pointerup', () => hold(false));
+    addEventListener('blur', () => hold(false));
+    addEventListener('contextmenu', e => e.preventDefault());
+
+    // One colour swap every 1000/freq ms (same meaning as the old GTK/Tk version).
+    if (freq > 0) {
+        setInterval(() => { if (!held) body.classList.toggle('dark'); }, 1000 / freq);
+    }
+
+    const end = performance.now() + duration * 1000;
+    const tick = () => {
+        const left = Math.max(0, end - performance.now());
+        countEl.textContent = Math.ceil(left / 1000);
+        bar.style.transform = `scaleX(${left / (duration * 1000)})`;
+        if (left <= 0) api.close();
+        else requestAnimationFrame(tick);
+    };
+    tick();
+})();
+</script>
+</body>
+</html>

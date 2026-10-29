@@ -4,3 +4,4 @@ ratings_plot.png
 __pycache__
 myenv/
 *.log
+water_log.txt
