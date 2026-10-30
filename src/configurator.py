@@ -166,7 +166,10 @@ def window_height():
         screen_height = webview.screens[0].height
     except Exception:
         return WINDOW_HEIGHT
-    return max(560, min(WINDOW_HEIGHT, screen_height - 80))
+    avail = screen_height - 80
+    if avail <= 0:
+        return WINDOW_HEIGHT
+    return min(WINDOW_HEIGHT, avail)
 
 
 def main():
@@ -178,13 +181,14 @@ def main():
             GLib.set_application_name(SERVICE)
         except ImportError:
             pass
+    height = window_height()
     webview.create_window(
         "Remind2Rest",
         url=Path(index_path).as_uri(),
         js_api=Api(),
         width=WINDOW_WIDTH,
-        height=window_height(),
-        min_size=(760, 560),
+        height=height,
+        min_size=(760, min(560, height)),
         background_color="#121316",
     )
     webview.start(icon=icon_path)
