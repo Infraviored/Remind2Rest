@@ -5,6 +5,7 @@ import socket
 import subprocess
 from pathlib import Path
 
+import threading
 import webview
 
 from src.config import ADDR, SOCKET_FAMILY, load_config, save_config
@@ -20,17 +21,33 @@ IS_WINDOWS = os.name == "nt"
 SERVICE = "Remind2Rest"
 
 
-def send_command_to_service(command):
+def send_command_to_service(command, timeout=5.0):
     try:
-        with socket.socket(SOCKET_FAMILY, socket.SOCK_STREAM) as sock:
-            sock.settimeout(1.0)
+        sock = socket.socket(SOCKET_FAMILY, socket.SOCK_STREAM)
+    except Exception as e:
+        print(f"Error creating socket: {e}")
+        return None
+
+    with sock:
+        sock.settimeout(timeout)
+        try:
             sock.connect(ADDR)
+        except (ConnectionRefusedError, FileNotFoundError):
+            return None
+        except OSError as e:
+            print(f"Service unreachable: {e}")
+            return None
+
+        try:
             sock.sendall(command.encode())
             reply = sock.recv(64)
             return reply.startswith(b"OK")
-    except Exception as e:
-        print(f"Error sending command: {e}")
-        return False
+        except socket.timeout:
+            print(f"Timeout waiting for reply to {command}")
+            return True
+        except Exception as e:
+            print(f"Error communicating with service: {e}")
+            return False
 
 
 def is_service_running():
@@ -70,11 +87,16 @@ class Api:
             return {"status": "success", "message": "Configuration saved and service reloaded"}
         return {"status": "warning", "message": "Configuration saved but service is not running"}
 
+    def _spawn_fallback(self, module, settings):
+        proc = spawn_reminder(module, settings)
+        threading.Thread(target=proc.wait, daemon=True).start()
+        return proc
+
     def test_reminder(self, module, settings):
         settings = settings or (load_config() or {}).get(module, {})
         # Through the service, so the test waits like any reminder while another one is open.
-        if not send_command_to_service(f"TRIGGER {module} {json.dumps(settings)}"):
-            spawn_reminder(module, settings)
+        if send_command_to_service(f"TRIGGER {module} {json.dumps(settings)}") is None:
+            self._spawn_fallback(module, settings)
         return {"status": "success"}
 
     def service_info(self):

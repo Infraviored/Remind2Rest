@@ -151,6 +151,73 @@ class GateTest(unittest.TestCase):
         gate = ReminderGate(h.spawn, is_locked=lambda: None, clock=lambda: h.now)
         self.assertEqual(gate.request("eye_relax", {}), "shown")
 
+    def test_request_on_unlock_triggers_unlock_delay(self):
+        h = self.h
+        h.locked = True
+        h.run(LOCK_POLL)
+        self.assertEqual(h.gate.request("posture", {}), "deferred")
+        h.run(600)
+        # Screen unlocked, advance clock so lock poll is due, and request() is called BEFORE tick() runs
+        h.locked = False
+        h.now += LOCK_POLL
+        self.assertEqual(h.gate.request("eye_relax", {}), "deferred")
+        h.run(UNLOCK_DELAY - 2)
+        self.assertEqual(h.shown(), [])
+        h.run(2)
+        self.assertEqual(h.shown(), ["eye_relax"])
+
+    def test_request_immediately_after_close_waits_close_delay(self):
+        h = self.h
+        h.gate.request("posture", {})
+        self.assertEqual(h.shown(), ["posture"])
+        # Window closed, and request() is called BEFORE tick() runs
+        h.close_last()
+        self.assertEqual(h.gate.request("eye_relax", {}), "deferred")
+        h.run(AFTER_CLOSE_DELAY - 1)
+        self.assertEqual(h.shown(), ["posture"])
+        h.run(2)
+        self.assertEqual(h.shown(), ["posture", "eye_relax"])
+
+
+from unittest.mock import patch
+import src.session_lock as session_lock
+
+
+class SessionLockTest(unittest.TestCase):
+    def test_locked_if_any_probe_says_locked(self):
+        with patch.object(session_lock, "Gio", True), \
+             patch.object(session_lock, "_logind_locked", return_value=True), \
+             patch.object(session_lock, "_screensaver_active", return_value=False):
+            self.assertTrue(session_lock.is_locked())
+
+        with patch.object(session_lock, "Gio", True), \
+             patch.object(session_lock, "_logind_locked", return_value=False), \
+             patch.object(session_lock, "_screensaver_active", return_value=True):
+            self.assertTrue(session_lock.is_locked())
+
+        with patch.object(session_lock, "Gio", True), \
+             patch.object(session_lock, "_logind_locked", return_value=False), \
+             patch.object(session_lock, "_screensaver_active", return_value=False):
+            self.assertFalse(session_lock.is_locked())
+
+        with patch.object(session_lock, "Gio", True), \
+             patch.object(session_lock, "_logind_locked", return_value=False), \
+             patch.object(session_lock, "_screensaver_active", side_effect=RuntimeError("no screensaver")):
+            self.assertFalse(session_lock.is_locked())
+
+        with patch.object(session_lock, "Gio", True), \
+             patch.object(session_lock, "_logind_locked", side_effect=RuntimeError("no logind")), \
+             patch.object(session_lock, "_screensaver_active", return_value=True):
+            self.assertTrue(session_lock.is_locked())
+
+        with patch.object(session_lock, "Gio", True), \
+             patch.object(session_lock, "_logind_locked", side_effect=RuntimeError("fail")), \
+             patch.object(session_lock, "_screensaver_active", side_effect=RuntimeError("fail")):
+            self.assertIsNone(session_lock.is_locked())
+
+        with patch.object(session_lock, "Gio", None):
+            self.assertIsNone(session_lock.is_locked())
+
 
 class LibraryTest(unittest.TestCase):
     def test_old_posture_wait_duration_is_removed(self):

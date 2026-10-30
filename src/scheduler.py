@@ -81,16 +81,16 @@ def trigger_reminder(module, settings):
 
     logging.info(f"Triggering {module} reminder")
     current_time = datetime.now()
-    trigger_key = f"{module}_{current_time.minute}"
+    trigger_key = (current_time.hour, current_time.minute)
 
-    if (
-        hasattr(trigger_reminder, "last_trigger")
-        and trigger_reminder.last_trigger == trigger_key
-    ):
+    if not hasattr(trigger_reminder, "last_triggers"):
+        trigger_reminder.last_triggers = {}
+
+    if trigger_reminder.last_triggers.get(module) == trigger_key:
         logging.debug(f"Skipping duplicate {module} reminder")
         return
 
-    trigger_reminder.last_trigger = trigger_key
+    trigger_reminder.last_triggers[module] = trigger_key
 
     gate.request(module, settings)
 
@@ -179,8 +179,8 @@ def schedule_reminders(scheduler, config):
         logging.info("No enabled reminders found; waiting for configuration reload")
 
     def check_and_trigger_reminders():
-        gate.tick()
         current_time = datetime.now()
+        gate.tick()
         elapsed_minutes = (
             current_time.hour * 60 + current_time.minute
         ) % interval_minutes
