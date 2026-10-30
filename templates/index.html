@@ -217,40 +217,25 @@
             color: #c4c7d0;
         }
 
-        /* Signal toggles: rose when on, muted when off */
-        .pill {
-            display: inline-flex;
+        /* Checkbox rows in the conference panels */
+        .check-row {
+            display: flex;
             align-items: center;
-            gap: 4px;
-            height: 28px;
-            padding: 0 10px 0 8px;
-            border-radius: 9999px;
-            font-size: 11px;
-            font-weight: 600;
-            color: #8c909f;
-            background: #0d0e11;
-            border: 1px solid #2a2c31;
-            transition: background-color 0.15s, color 0.15s, border-color 0.15s;
-        }
-
-        .pill .material-symbols-outlined {
-            font-size: 15px;
-        }
-
-        .pill:hover:not(:disabled) {
-            border-color: #424753;
+            gap: 8px;
+            padding: 3px 4px;
+            border-radius: 6px;
+            font-size: 12px;
             color: #c4c7d0;
+            cursor: pointer;
         }
 
-        .pill.on {
-            color: #fda4af;
-            background: rgba(253, 164, 175, 0.12);
-            border-color: rgba(253, 164, 175, 0.4);
+        .check-row:hover {
+            background: rgba(255, 255, 255, 0.04);
         }
 
-        .pill:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
+        .check-row .material-symbols-outlined {
+            font-size: 16px;
+            color: #8c909f;
         }
 
         /* Small secondary button */
@@ -282,48 +267,6 @@
 
         .btn:disabled {
             opacity: 0.4;
-        }
-
-        /* On/off switch in a row with its label */
-        .switch-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11px;
-            font-weight: 600;
-            color: #c4c7d0;
-            text-align: left;
-        }
-
-        .switch {
-            position: relative;
-            flex-shrink: 0;
-            width: 28px;
-            height: 16px;
-            border-radius: 9999px;
-            background: #343538;
-            transition: background-color 0.15s;
-        }
-
-        .switch::after {
-            content: "";
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 12px;
-            height: 12px;
-            border-radius: 9999px;
-            background: #8c909f;
-            transition: transform 0.15s, background-color 0.15s;
-        }
-
-        .switch.on {
-            background: rgba(253, 164, 175, 0.35);
-        }
-
-        .switch.on::after {
-            transform: translateX(12px);
-            background: #fda4af;
         }
 
         /* Schedule lanes: a faint tint of the type's color, a little stronger on hover */
@@ -511,12 +454,14 @@
                 <!-- Detect: which signals count as a call -->
                 <div class="panel">
                     <h4 class="panel-title"><span class="material-symbols-outlined">sensors</span>Detect</h4>
-                    <div class="flex flex-wrap gap-1.5">
-                        <button v-for="s in conferenceSignals" :key="s.key" type="button" :title="s.hint" :disabled="s.unavailable"
-                            @click="config.conference.signals[s.key] = !config.conference.signals[s.key]"
-                            :class="['pill', !s.unavailable && config.conference.signals[s.key] ? 'on' : '']">
+                    <!-- Ticked = this signal counts as a call -->
+                    <div class="flex flex-col gap-1">
+                        <label v-for="s in conferenceSignals" :key="s.key" :title="s.hint"
+                            :class="['check-row', s.unavailable ? 'opacity-40 cursor-not-allowed' : '']">
+                            <input type="checkbox" v-model="config.conference.signals[s.key]" :disabled="s.unavailable"
+                                class="w-4 h-4 rounded border-outline-variant bg-surface-container-lowest text-rose-400" />
                             <span class="material-symbols-outlined">{{ s.icon }}</span>{{ s.label }}
-                        </button>
+                        </label>
                     </div>
                     <p v-if="conferenceSignals.some(s => s.unavailable)" class="panel-hint">Screen share cannot be detected on Windows.</p>
                     <label class="field mt-auto self-start" title="How long no signal must be active before the conference counts as ended">
@@ -533,12 +478,11 @@
                         <span>Ignore mic of</span>
                         <input :value="listText('ignore_apps')" @change="setList('ignore_apps', $event)" type="text" placeholder="VibeVoice" />
                     </label>
-                    <button type="button" @click="config.conference.microphone_needs_app = !config.conference.microphone_needs_app"
-                        title="The microphone counts only while one of the meeting apps runs, so dictation or voice tools alone are no call"
-                        class="switch-row">
-                        <span :class="['switch', config.conference.microphone_needs_app ? 'on' : '']"></span>
+                    <label class="check-row" title="The microphone counts only while one of the meeting apps runs, so dictation or voice tools alone are no call">
+                        <input type="checkbox" v-model="config.conference.microphone_needs_app"
+                            class="w-4 h-4 rounded border-outline-variant bg-surface-container-lowest text-rose-400" />
                         Only with a meeting app
-                    </button>
+                    </label>
                     <label class="field" :title="'Process names that count as a meeting app (comma-separated)' + (config.conference.signals.processes ? '' : '; the Meeting app signal is off')">
                         <span>Meeting apps</span>
                         <input :value="listText('processes')" @change="setList('processes', $event)" type="text" placeholder="teams, zoom" />
