@@ -74,7 +74,7 @@ new Vue({
         },
         // A webhook is set: the saved one (the page only gets webhook_set and webhook_masked), or one typed in.
         hasWebhook() {
-            return !!(this.config.conference.webhook_url || this.config.conference.webhook_set);
+            return !!(this.config.conference && (this.config.conference.webhook_url || this.config.conference.webhook_set));
         },
         enabledModules() {
             return this.modules.filter(m => this.config[m.key].enabled);
