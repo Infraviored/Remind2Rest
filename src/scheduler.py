@@ -222,4 +222,5 @@ def schedule_reminders(scheduler, config):
         }
         update_status(status)
 
-    scheduler.add_job(check_and_trigger_reminders, IntervalTrigger(seconds=1))
+    # First run now, so STATUS names the next reminder right after start or reload.
+    scheduler.add_job(check_and_trigger_reminders, IntervalTrigger(seconds=1), next_run_time=datetime.now())

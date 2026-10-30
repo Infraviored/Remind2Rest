@@ -218,7 +218,8 @@ class Indicator extends PanelMenu.Button {
             this._icon.icon_name = 'alarm-symbolic';
             this._icon.opacity = 255;
             this._label.text = '';
-            this._statusItem.label.text = 'No reminders enabled';
+            // Before its first tick the daemon has no status yet (no `running` key).
+            this._statusItem.label.text = status.running ? 'No reminders enabled' : 'Starting…';
         }
 
         this._pauseItems.forEach(item => (item.visible = this._running && !this._paused));
