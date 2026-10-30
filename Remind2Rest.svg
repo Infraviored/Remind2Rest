@@ -1,0 +1,114 @@
+<svg viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <!-- Dunkler UI Squircle-Hintergrund -->
+              <linearGradient id="r2r-bg" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#1E293B"/>
+                <stop offset="50%" stop-color="#0F172A"/>
+                <stop offset="100%" stop-color="#090D16"/>
+              </linearGradient>
+
+              <!-- Subtiler Rahmen-Glanz für das App-Icon -->
+              <linearGradient id="r2r-border" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+                <stop offset="50%" stop-color="#38BDF8" stop-opacity="0.06"/>
+                <stop offset="100%" stop-color="#2DD4BF" stop-opacity="0.18"/>
+              </linearGradient>
+
+              <!-- Hintere Atem-/Pausen-Aura -->
+              <linearGradient id="r2r-aura" x1="156" y1="140" x2="356" y2="390" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#818CF8" stop-opacity="0.35"/>
+                <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.08"/>
+              </linearGradient>
+
+              <!-- Glas-Tropfen Oberfläche -->
+              <linearGradient id="r2r-glass" x1="170" y1="120" x2="340" y2="400" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.24"/>
+                <stop offset="45%" stop-color="#E2E8F0" stop-opacity="0.09"/>
+                <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.16"/>
+              </linearGradient>
+
+              <!-- Glas-Kante (Rim Light) -->
+              <linearGradient id="r2r-glass-rim" x1="160" y1="115" x2="350" y2="405" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.65"/>
+                <stop offset="40%" stop-color="#38BDF8" stop-opacity="0.25"/>
+                <stop offset="100%" stop-color="#2DD4BF" stop-opacity="0.5"/>
+              </linearGradient>
+
+              <!-- Wasserwelle (Vordergrund) -->
+              <linearGradient id="r2r-wave-front" x1="156" y1="260" x2="356" y2="412" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#2DD4BF"/>
+                <stop offset="100%" stop-color="#0284C7"/>
+              </linearGradient>
+
+              <!-- Wasserwelle (Hintergrund) -->
+              <linearGradient id="r2r-wave-back" x1="156" y1="245" x2="356" y2="395" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.65"/>
+                <stop offset="100%" stop-color="#6366F1" stop-opacity="0.45"/>
+              </linearGradient>
+
+              <!-- Achtsamkeits-Funke / Sanfter Reminder -->
+              <radialGradient id="r2r-glow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#99F6E4" stop-opacity="1"/>
+                <stop offset="50%" stop-color="#2DD4BF" stop-opacity="0.5"/>
+                <stop offset="100%" stop-color="#2DD4BF" stop-opacity="0"/>
+              </radialGradient>
+
+              <!-- Clip-Pfad für den Tropfen -->
+              <clipPath id="r2r-droplet-clip">
+                <path d="M256 112 C256 112 364 232 364 312 C364 371.647 315.647 420 256 420 C196.353 420 148 371.647 148 312 C148 232 256 112 256 112 Z"/>
+              </clipPath>
+
+              <!-- Weicher Schatten für das Hauptelement -->
+              <filter id="r2r-drop-shadow" x="100" y="80" width="312" height="390" filterUnits="userSpaceOnUse">
+                <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#020617" flood-opacity="0.65"/>
+              </filter>
+            </defs>
+
+            <!-- 1. App-Icon Basis (Squircle) -->
+            <rect x="28" y="28" width="456" height="456" rx="112" fill="url(#r2r-bg)"/>
+            <rect x="29.5" y="29.5" width="453" height="453" rx="110.5" stroke="url(#r2r-border)" stroke-width="3"/>
+
+            <!-- 2. Sanftes Umgebungsleuchten im Hintergrund -->
+            <circle cx="256" cy="285" r="145" fill="url(#r2r-aura)" opacity="0.55"/>
+
+            <!-- 3. Äußerer "Atemring" (symbolisiert Ruhe & Pausen-Zyklus) -->
+            <circle cx="256" cy="304" r="134" stroke="url(#r2r-glass-rim)" stroke-width="2" stroke-dasharray="6 10" opacity="0.35"/>
+
+            <!-- 4. Hintere versetzte Glas-Karte (Tiefe / UI-Anspielung) -->
+            <path d="M256 128 C256 128 352 236 352 308 C352 361.019 309.019 404 256 404 C202.981 404 160 361.019 160 308 C160 236 256 128 256 128 Z" 
+                  transform="rotate(-7 256 290)" 
+                  fill="url(#r2r-aura)" 
+                  stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="2"/>
+
+            <!-- 5. Haupt-Tropfen (mit Wasserfüllung & Glaseffekt) -->
+            <g filter="url(#r2r-drop-shadow)">
+              <g clip-path="url(#r2r-droplet-clip)">
+                <!-- Dunkle Glas-Basis im Inneren -->
+                <rect x="140" y="100" width="232" height="330" fill="#0F172A" fill-opacity="0.55"/>
+
+                <!-- Hintere sanfte Welle (Atmung / Lüften) -->
+                <path d="M130 296 C185 268, 235 322, 290 294 C335 270, 365 288, 385 296 L385 435 L130 435 Z" 
+                      fill="url(#r2r-wave-back)"/>
+
+                <!-- Vordere ruhige Welle (Wasser / Erholung) -->
+                <path d="M130 312 C180 338, 235 280, 295 306 C335 324, 360 308, 385 298 L385 435 L130 435 Z" 
+                      fill="url(#r2r-wave-front)" fill-opacity="0.9"/>
+
+                <!-- Glas-Überlagerung (Milchglas-Look) -->
+                <path d="M256 112 C256 112 364 232 364 312 C364 371.647 315.647 420 256 420 C196.353 420 148 371.647 148 312 C148 232 256 112 256 112 Z" 
+                      fill="url(#r2r-glass)"/>
+
+                <!-- Glanzlicht oben links (Glas-Reflexion) -->
+                <path d="M180 285 C180 235 228 168 244 146" 
+                      stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="8" stroke-linecap="round" fill="none"/>
+              </g>
+
+              <!-- Präziser Glas-Rand des Tropfens -->
+              <path d="M256 112 C256 112 364 232 364 312 C364 371.647 315.647 420 256 420 C196.353 420 148 371.647 148 312 C148 232 256 112 256 112 Z" 
+                    stroke="url(#r2r-glass-rim)" stroke-width="3.5"/>
+            </g>
+
+            <!-- 6. Sanfter Achtsamkeits-Punkt über dem Tropfen ("Remind"-Impuls ohne Alarm) -->
+            <circle cx="256" cy="80" r="18" fill="url(#r2r-glow)"/>
+            <circle cx="256" cy="80" r="5.5" fill="#CCFBF1"/>
+          </svg>

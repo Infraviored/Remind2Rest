@@ -65,11 +65,13 @@ async function systemctl(action) {
 
 const Indicator = GObject.registerClass(
 class Indicator extends PanelMenu.Button {
-    _init() {
+    _init(path) {
         super._init(0.0, 'Remind2Rest');
 
+        // The Remind2Rest logo, shown whenever no next reminder names its own icon.
+        this._logo = Gio.icon_new_for_string(GLib.build_filenamev([path, 'remind2rest-symbolic.svg']));
         const box = new St.BoxLayout({style_class: 'panel-status-menu-box'});
-        this._icon = new St.Icon({icon_name: 'alarm-symbolic', style_class: 'system-status-icon'});
+        this._icon = new St.Icon({gicon: this._logo, style_class: 'system-status-icon'});
         this._label = new St.Label({text: '', y_align: Clutter.ActorAlign.CENTER});
         box.add_child(this._icon);
         box.add_child(this._label);
@@ -218,7 +220,7 @@ class Indicator extends PanelMenu.Button {
 
         if (!this._running) {
             this._remainingSeconds = null;
-            this._icon.icon_name = 'alarm-symbolic';
+            this._icon.gicon = this._logo;
             this._icon.opacity = 110;
             this._label.text = '';
             this._statusItem.label.text = 'Service not running';
@@ -245,13 +247,16 @@ class Indicator extends PanelMenu.Button {
             } else {
                 this._remainingSeconds = null;
             }
-            this._icon.icon_name = status.next_icon || 'alarm-symbolic';
+            if (status.next_icon)
+                this._icon.icon_name = status.next_icon;
+            else
+                this._icon.gicon = this._logo;
             this._icon.opacity = 255;
             this._label.text = ` ${status.time_to_next}`;
             this._statusItem.label.text = `Next: ${this._nextTitle} in ${status.time_to_next}`;
         } else {
             this._remainingSeconds = null;
-            this._icon.icon_name = 'alarm-symbolic';
+            this._icon.gicon = this._logo;
             this._icon.opacity = 255;
             this._label.text = '';
             // Before its first tick the daemon has no status yet (no `running` key).
@@ -315,7 +320,7 @@ class Indicator extends PanelMenu.Button {
 
 export default class Remind2RestExtension extends Extension {
     enable() {
-        this._indicator = new Indicator();
+        this._indicator = new Indicator(this.path);
         Main.panel.addToStatusArea(this.uuid, this._indicator);
     }
 

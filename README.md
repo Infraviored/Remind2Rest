@@ -1,4 +1,4 @@
-<img src="Remind2Rest.png" alt="" width="64" height="64">
+<img src="Remind2Rest.svg" alt="" width="64" height="64">
 
 # Remind2Rest
 
