@@ -302,7 +302,10 @@ class FakeRegistry:
         return self.keys.get(path, {}).get(name)
 
     def values(self, path, *names):
-        return tuple(self.value(path, name) for name in names)
+        try:
+            return tuple(self.value(path, name) for name in names)
+        except OSError:
+            return (None,) * len(names)
 
 
 def in_use(start=133000000000000000):

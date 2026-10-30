@@ -279,10 +279,7 @@ def consent_store_users(device, ignore_apps=(), registry=None):
     entries += [(f"{base}\\NonPackaged\\{key}", key, False) for key in registry.subkeys(f"{base}\\NonPackaged")]
     users = set()
     for path, key, packaged in entries:
-        try:
-            start, stop = registry.values(path, "LastUsedTimeStart", "LastUsedTimeStop")
-        except OSError:
-            continue
+        start, stop = registry.values(path, "LastUsedTimeStart", "LastUsedTimeStop")
         if not (isinstance(start, int) and start > 0 and stop == 0):
             continue
         name = windows_app_name(key, packaged)
