@@ -6,7 +6,6 @@ import time
 
 UNLOCK_DELAY = 45       # s after unlock or wake-up before a deferred reminder shows
 AFTER_CLOSE_DELAY = 30  # s after a reminder window closed before the next one shows
-CONFERENCE_END_DELAY = 0  # conference end grace is handled by the detector; deferred reminders show immediately
 LOCK_POLL = 5           # s between two lock checks
 WAKE_JUMP = 60          # s of wall clock between two ticks that count as a suspend
 
@@ -93,16 +92,9 @@ class ReminderGate:
             self._hold(now, UNLOCK_DELAY, "unlock")
 
         was_conference = self._conference
-        try:
-            self._conference = bool(self._in_conference())
-        except Exception as e:
-            logging.debug(f"Conference check failed: {e}")
-            self._conference = False
+        self._conference = bool(self._in_conference())
         if was_conference and not self._conference:
-            if CONFERENCE_END_DELAY > 0:
-                self._hold(now, CONFERENCE_END_DELAY, "the conference ended")
-            else:
-                self._hold_reason = "the conference ended"
+            self._hold_reason = "the conference ended"  # no wait: the detector's end grace was it
 
         if self._proc is not None and self._proc.poll() is not None:
             self._proc = None

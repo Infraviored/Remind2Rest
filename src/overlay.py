@@ -8,7 +8,7 @@ from pathlib import Path
 import time
 import webview
 
-from src.config import RATINGS_FILE_PATH, WATER_LOG_PATH
+from src.config import IS_WINDOWS, RATINGS_FILE_PATH, WATER_LOG_PATH
 from src.logs import TIME_FORMAT, MAX_WATER_ML, read_ratings, water_today_ml
 from src.library import LIBRARY
 from src.session_lock import is_locked
@@ -122,7 +122,7 @@ class OverlayApi:
 
 def show_reminder(module, settings):
     """Show reminders/<module>/reminder.html fullscreen until the page calls close()."""
-    if os.name != "nt":
+    if not IS_WINDOWS:
         # Lets GNOME match the window to Remind2Rest.desktop (StartupWMClass) for the dock icon.
         try:
             from gi.repository import GLib
