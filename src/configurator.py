@@ -161,9 +161,9 @@ WINDOW_HEIGHT = 860
 
 
 def window_height():
-    """WINDOW_HEIGHT, or the screen height minus room for panels and the title bar if smaller."""
+    """WINDOW_HEIGHT, or the primary screen height minus room for panels and the title bar if smaller."""
     try:
-        screen_height = min(s.height for s in webview.screens)
+        screen_height = webview.screens[0].height
     except Exception:
         return WINDOW_HEIGHT
     return max(560, min(WINDOW_HEIGHT, screen_height - 80))
