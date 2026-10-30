@@ -71,7 +71,11 @@ class Indicator extends PanelMenu.Button {
         // The Remind2Rest logo, shown whenever no next reminder names its own icon.
         this._logo = Gio.icon_new_for_string(GLib.build_filenamev([path, 'remind2rest-symbolic.svg']));
         const box = new St.BoxLayout({style_class: 'panel-status-menu-box'});
-        this._icon = new St.Icon({gicon: this._logo, style_class: 'system-status-icon'});
+        this._icon = new St.Icon({
+            gicon: this._logo,
+            fallback_gicon: this._logo,
+            style_class: 'system-status-icon',
+        });
         this._label = new St.Label({text: '', y_align: Clutter.ActorAlign.CENTER});
         box.add_child(this._icon);
         box.add_child(this._label);
