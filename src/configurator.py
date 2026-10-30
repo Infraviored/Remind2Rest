@@ -111,7 +111,7 @@ class Api:
             return {"status": "error", "message": "Enter an http:// or https:// URL first"}
         try:
             code = post_webhook(url, "test", [])
-            return {"status": "success", "message": f"Test sent to {redact(url)} (HTTP {code})"}
+            return {"status": "success", "code": code, "message": f"Test sent to {redact(url)} (HTTP {code})"}
         except Exception as e:
             return {"status": "error", "message": f"Test failed: {format_error(e)}"}
 
@@ -155,6 +155,20 @@ class Api:
         return {"enabled": True}
 
 
+# Height the settings page needs without scrolling; capped to the screen below.
+WINDOW_WIDTH = 1000
+WINDOW_HEIGHT = 860
+
+
+def window_height():
+    """WINDOW_HEIGHT, or the screen height minus room for panels and the title bar if smaller."""
+    try:
+        screen_height = min(s.height for s in webview.screens)
+    except Exception:
+        return WINDOW_HEIGHT
+    return max(560, min(WINDOW_HEIGHT, screen_height - 80))
+
+
 def main():
     if not IS_WINDOWS:
         # Lets GNOME match the window to Remind2Rest.desktop (StartupWMClass) for the dock icon.
@@ -168,9 +182,9 @@ def main():
         "Remind2Rest",
         url=Path(index_path).as_uri(),
         js_api=Api(),
-        width=1000,
-        height=500,
-        min_size=(760, 460),
+        width=WINDOW_WIDTH,
+        height=window_height(),
+        min_size=(760, 560),
         background_color="#121316",
     )
     webview.start(icon=icon_path)

@@ -15,12 +15,13 @@ const DRAG_THRESHOLD = 4;
 // Conference signals in the order of src/conference.py SIGNALS. winHint replaces hint on Windows;
 // winHint null = the signal cannot be detected there.
 const CONFERENCE_SIGNALS = [
-    { key: 'screen_share', label: 'Screen share', hint: 'Screen sharing or a screencast (top bar extension, else PipeWire)',
-      winHint: null },
-    { key: 'microphone', label: 'Microphone', hint: 'An app records from the microphone (with "Mic only with an app": while one of the apps below runs)' },
-    { key: 'camera', label: 'Camera', hint: 'An app uses the camera' },
-    { key: 'processes', label: 'Apps', hint: 'One of the apps below runs' },
-    { key: 'do_not_disturb', label: 'Do Not Disturb', hint: "GNOME's Do Not Disturb is on",
+    { key: 'screen_share', label: 'Screen share', icon: 'screen_share',
+      hint: 'Screen sharing or a screencast (top bar extension, else PipeWire)', winHint: null },
+    { key: 'microphone', label: 'Microphone', icon: 'mic',
+      hint: 'An app records from the microphone (with "Only with a meeting app": while one of the meeting apps runs)' },
+    { key: 'camera', label: 'Camera', icon: 'videocam', hint: 'An app uses the camera' },
+    { key: 'processes', label: 'Meeting app', icon: 'apps', hint: 'One of the meeting apps runs' },
+    { key: 'do_not_disturb', label: 'Do Not Disturb', icon: 'do_not_disturb_on', hint: "GNOME's Do Not Disturb is on",
       winHint: 'Windows notifications are switched off (best effort)' }
 ];
 
@@ -45,6 +46,11 @@ new Vue({
             // Position of "now" in the cycle, in minutes (fractional), refreshed by a timer.
             now: 0,
             status: { show: false, success: false, message: '' },
+            // Webhook editor: the saved URL is never shown, only replaced (it holds a secret id).
+            webhookEditing: false,
+            webhookDraft: '',
+            // Result of "Send test", shown next to the button: { ok, text } or null; 'sending' while it runs.
+            webhookResult: null,
             suppressClick: false,
             suppressLaneClick: false
         };
@@ -64,8 +70,14 @@ new Vue({
                 } else if (windows && s.winHint) {
                     hint = s.winHint;
                 }
-                return { key: s.key, label: s.label, hint, unavailable };
+                return { key: s.key, label: s.label, icon: s.icon, hint, unavailable };
             });
+        },
+        // "https://host/…" for the saved webhook URL; the path holds the secret webhook id.
+        webhookMasked() {
+            const url = (this.config.conference && this.config.conference.webhook_url) || '';
+            const match = url.match(/^([a-z][a-z0-9+.-]*:\/\/)(?:[^@\/]*@)?([^\/?#]*)/i);
+            return match ? match[1] + match[2] + '/…' : (url ? '…' : '');
         },
         enabledModules() {
             return this.modules.filter(m => this.config[m.key].enabled);
@@ -103,6 +115,7 @@ new Vue({
     },
     methods: {
         saveConfig() {
+            if (this.webhookEditing) this.applyWebhook();   // a typed but not applied URL is saved too
             call('save_config', this.config)
                 .then(result => this.showStatus(result.status === 'success', result.message))
                 .catch(error => this.showStatus(false, `Save failed: ${error.message || error}`));
@@ -124,10 +137,39 @@ new Vue({
             call('test_reminder', module, this.config[module])
                 .catch(error => alert(`Error triggering test reminder: ${error.message || error}`));
         },
+        // Tests the URL being typed, else the saved one; the result stays next to the button.
         testWebhook() {
-            call('test_webhook', this.config.conference.webhook_url)
-                .then(result => this.showStatus(result.status === 'success', result.message))
-                .catch(error => this.showStatus(false, `Test failed: ${error.message || error}`));
+            const url = (this.webhookEditing && this.webhookDraft.trim()) || this.config.conference.webhook_url;
+            this.webhookResult = 'sending';
+            call('test_webhook', url)
+                .then(result => {
+                    const ok = result.status === 'success';
+                    this.webhookResult = { ok, text: ok ? `Received · HTTP ${result.code}` : result.message };
+                })
+                .catch(error => { this.webhookResult = { ok: false, text: `Test failed: ${error.message || error}` }; });
+        },
+        editWebhook() {
+            this.webhookDraft = '';
+            this.webhookResult = null;
+            this.webhookEditing = true;
+            this.$nextTick(() => this.$refs.webhookInput && this.$refs.webhookInput.focus());
+        },
+        // Takes the typed URL; an empty field keeps the saved one.
+        applyWebhook() {
+            const url = this.webhookDraft.trim();
+            if (url) this.config.conference.webhook_url = url;
+            this.webhookDraft = '';
+            this.webhookEditing = false;
+        },
+        cancelWebhook() {
+            this.webhookDraft = '';
+            this.webhookEditing = false;
+        },
+        removeWebhook() {
+            this.config.conference.webhook_url = '';
+            this.webhookDraft = '';
+            this.webhookEditing = false;
+            this.webhookResult = null;
         },
         // Conference name lists, edited as comma-separated text.
         listText(key) {

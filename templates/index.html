@@ -144,27 +144,9 @@
             margin: 0;
         }
 
-        /* Conference section: checkboxes and free text inside a field box */
-        /* Rose like the section icon; .field input would otherwise make the checked box light grey */
-        .field input[type="checkbox"] {
-            width: 14px;
-            height: 14px;
-            min-width: 0;
-            margin-right: 2px;
-            border: 1px solid #424753;
-            background-color: #1a1b1e;
-            border-radius: 0.25rem;
-            color: #fda4af;
-            cursor: inherit;
-        }
-
-        .field input[type="checkbox"]:checked {
-            border-color: transparent;
-            background-color: currentColor;
-        }
-
+        /* Free text inside a field box (conference section) */
         .field input[type="text"],
-        .field input[type="url"] {
+        .field input[type="password"] {
             flex: 1 1 auto;
             min-width: 6ch;
             text-align: left;
@@ -177,6 +159,171 @@
 
         .field:focus-within {
             box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.5);
+        }
+
+        /* Conference sub-panels */
+        .panel {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 0;
+            padding: 10px 12px 12px;
+            border-radius: 0.75rem;
+            background: rgba(13, 14, 17, 0.45);
+            border: 1px solid rgba(66, 71, 83, 0.35);
+        }
+
+        .panel-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #8c909f;
+        }
+
+        .panel-title .material-symbols-outlined {
+            font-size: 15px;
+            color: #fda4af;
+        }
+
+        .link-btn {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #fda4af;
+            opacity: 0.8;
+        }
+
+        .link-btn:hover {
+            opacity: 1;
+        }
+
+        .panel .field {
+            height: 30px;
+        }
+
+        .panel-hint {
+            font-size: 10.5px;
+            line-height: 1.45;
+            color: #8c909f;
+        }
+
+        .panel-hint code {
+            font-size: 10px;
+            color: #c4c7d0;
+        }
+
+        /* Signal toggles: rose when on, muted when off */
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            height: 28px;
+            padding: 0 10px 0 8px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #8c909f;
+            background: #0d0e11;
+            border: 1px solid #2a2c31;
+            transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+        }
+
+        .pill .material-symbols-outlined {
+            font-size: 15px;
+        }
+
+        .pill:hover:not(:disabled) {
+            border-color: #424753;
+            color: #c4c7d0;
+        }
+
+        .pill.on {
+            color: #fda4af;
+            background: rgba(253, 164, 175, 0.12);
+            border-color: rgba(253, 164, 175, 0.4);
+        }
+
+        .pill:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        /* Small secondary button */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            height: 28px;
+            padding: 0 10px;
+            border-radius: 0.5rem;
+            font-size: 11px;
+            font-weight: 600;
+            color: #e2e8f0;
+            background: #343538;
+            transition: background-color 0.15s, transform 0.1s;
+        }
+
+        .btn .material-symbols-outlined {
+            font-size: 15px;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+        }
+
+        /* On/off switch in a row with its label */
+        .switch-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #c4c7d0;
+            text-align: left;
+        }
+
+        .switch {
+            position: relative;
+            flex-shrink: 0;
+            width: 28px;
+            height: 16px;
+            border-radius: 9999px;
+            background: #343538;
+            transition: background-color 0.15s;
+        }
+
+        .switch::after {
+            content: "";
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 12px;
+            height: 12px;
+            border-radius: 9999px;
+            background: #8c909f;
+            transition: transform 0.15s, background-color 0.15s;
+        }
+
+        .switch.on {
+            background: rgba(253, 164, 175, 0.35);
+        }
+
+        .switch.on::after {
+            transform: translateX(12px);
+            background: #fda4af;
         }
 
         /* Schedule lanes: a faint tint of the type's color, a little stronger on hover */
@@ -267,7 +414,7 @@
                     <input type="checkbox" v-model="config[m.key].enabled"
                         class="w-5 h-5 rounded border-outline-variant bg-surface-container-lowest" :style="{ color: m.color }" />
                 </div>
-                <!-- One-line fields: name, value, unit in one box (keeps six cards and six lanes in 1000x500) -->
+                <!-- One-line fields: name, value, unit in one box -->
                 <div v-if="config[m.key].enabled" class="flex gap-1.5 mt-2">
                     <!-- Amber outline: the times on the timeline are not "every N min" (Auto-arrange would change them) -->
                     <label :class="['field', offPattern.includes(m.key) ? 'off-pattern' : '']"
@@ -286,8 +433,8 @@
         </div>
 
         <!-- Schedule: one lane per enabled type on a shared 0..cycle axis, edited by hand -->
-        <section class="glass-card rounded-2xl px-4 pt-3 pb-2 border border-outline-variant/10 select-none">
-            <div class="flex items-center gap-3 mb-2">
+        <section class="glass-card rounded-2xl px-5 pt-3.5 pb-3 border border-outline-variant/10 select-none">
+            <div class="flex items-center gap-3 mb-3">
                 <h3 class="text-base font-bold tracking-tight">Schedule</h3>
                 <label class="flex items-center gap-1.5 bg-surface-container-lowest rounded-lg pl-2.5 pr-2 h-7" title="Length of one cycle; it repeats all day">
                     <span class="text-[10px] font-bold tracking-wider uppercase text-outline">Cycle</span>
@@ -305,25 +452,25 @@
             </div>
 
             <p v-if="!enabledModules.length" class="text-outline/60 italic py-2">Enable a reminder type above to schedule it.</p>
-            <div v-else class="grid grid-cols-[104px_1fr] gap-x-3">
-                <div class="flex flex-col gap-1">
-                    <div v-for="m in enabledModules" :key="m.key" class="h-4 flex items-center gap-1.5 min-w-0">
-                        <span class="material-symbols-outlined text-[15px]" :style="{ color: m.color }">{{ m.icon }}</span>
-                        <span class="text-[11px] font-semibold text-on-surface-variant truncate">{{ m.title }}</span>
+            <div v-else class="grid grid-cols-[112px_1fr] gap-x-4">
+                <div class="flex flex-col gap-2">
+                    <div v-for="m in enabledModules" :key="m.key" class="h-6 flex items-center gap-1.5 min-w-0">
+                        <span class="material-symbols-outlined text-[17px]" :style="{ color: m.color }">{{ m.icon }}</span>
+                        <span class="text-xs font-semibold text-on-surface-variant truncate">{{ m.title }}</span>
                     </div>
                 </div>
                 <div class="relative mx-1.5">
                     <!-- Grid lines, collisions and "now", behind the lanes -->
-                    <div class="absolute inset-x-0 top-0 bottom-5 pointer-events-none">
+                    <div class="absolute inset-x-0 top-0 bottom-6 pointer-events-none">
                         <div v-for="t in ticks" :key="'g' + t" class="absolute top-0 bottom-0 w-px bg-white/[0.04]" :style="{ left: percent(t) }"></div>
                         <div v-for="(c, i) in collisions" :key="'c' + i" title="Reminders of different types close together"
-                            class="absolute -top-0.5 -bottom-0.5 rounded bg-amber-400/[0.09] pointer-events-auto cursor-help"
+                            class="absolute -top-1 -bottom-1 rounded bg-amber-400/[0.09] pointer-events-auto cursor-help"
                             :style="{ left: percent(c[0]), width: percent(c[1] - c[0]) }"></div>
                     </div>
-                    <div class="relative flex flex-col gap-1">
+                    <div class="relative flex flex-col gap-2">
                         <div v-for="m in enabledModules" :key="m.key" @click="addAt(m.key, $event)"
                             :title="'Click to add a ' + m.title + ' reminder'"
-                            class="lane relative h-4 rounded-full cursor-copy" :style="{ '--lane': m.color }">
+                            class="lane relative h-6 rounded-full cursor-copy" :style="{ '--lane': m.color }">
                             <div v-for="(t, i) in config[m.key].reminders" :key="i" tabindex="0"
                                 :data-marker="m.key + '-' + i" :aria-label="m.title + ' at minute ' + t"
                                 @pointerdown="startDrag(m.key, i, $event)" @pointermove="moveDrag" @pointerup="endDrag" @pointercancel="cancelDrag"
@@ -340,12 +487,12 @@
                         </div>
                     </div>
                     <!-- Axis -->
-                    <div class="relative h-5 text-[10px] font-semibold text-outline">
-                        <span v-for="t in ticks" :key="'t' + t" class="absolute top-1 -translate-x-1/2" :style="{ left: percent(t) }">{{ t }}</span>
+                    <div class="relative h-6 text-[10px] font-semibold text-outline">
+                        <span v-for="t in ticks" :key="'t' + t" class="absolute top-1.5 -translate-x-1/2" :style="{ left: percent(t) }">{{ t }}</span>
                     </div>
                     <!-- Now: thin line through the lanes, a small label on the axis -->
                     <div class="absolute top-0 bottom-0 pointer-events-none z-10" :style="{ left: percent(now) }">
-                        <div class="absolute top-0 bottom-5 w-px -translate-x-1/2 bg-rose-400/70"></div>
+                        <div class="absolute top-0 bottom-6 w-px -translate-x-1/2 bg-rose-400/70"></div>
                         <span class="absolute bottom-0 -translate-x-1/2 px-1 rounded text-[9px] font-bold uppercase tracking-wider text-rose-300 bg-background pointer-events-auto cursor-help"
                             :title="'Now, minute ' + Math.floor(now) + ' of the cycle'">now</span>
                     </div>
@@ -354,54 +501,93 @@
         </section>
 
         <!-- Conference: reminders wait while one of the enabled signals is active (src/conference.py) -->
-        <section v-if="config.conference" class="glass-card rounded-2xl px-4 py-3 border border-outline-variant/10 space-y-2">
-            <div class="flex items-center gap-3">
+        <section v-if="config.conference" class="glass-card rounded-2xl px-5 pt-3.5 pb-4 border border-outline-variant/10">
+            <div class="flex items-center gap-2 mb-3">
                 <span class="material-symbols-outlined text-xl text-rose-300">videocam</span>
                 <h3 class="text-base font-bold tracking-tight">Conference</h3>
-                <p class="flex-1 text-[11px] text-outline truncate">Reminders wait while any checked signal is active and show when the call has been over for {{ config.conference.end_grace_seconds }} s</p>
+                <p class="flex-1 min-w-0 text-[11px] text-outline truncate ml-1">Reminders wait during a call and show once it has been over for {{ config.conference.end_grace_seconds }} s</p>
             </div>
-            <div class="flex flex-wrap gap-1.5">
-                <label v-for="s in conferenceSignals" :key="s.key" class="field"
-                    :class="s.unavailable ? 'opacity-50' : 'cursor-pointer'" :title="s.hint">
-                    <input type="checkbox" :checked="!s.unavailable && config.conference.signals[s.key]"
-                        @change="config.conference.signals[s.key] = $event.target.checked" :disabled="s.unavailable"
-                        class="w-4 h-4 rounded border-outline-variant bg-surface-container-lowest text-rose-300" />
-                    <span>{{ s.label }}</span>
-                    <span v-if="s.unavailable" class="text-[10px] text-outline">not available on Windows</span>
-                </label>
-                <label class="field" title="How long no signal must be active before the conference counts as ended">
-                    <span>End after</span>
-                    <input v-model.number="config.conference.end_grace_seconds" type="number" min="0" :style="fitWidth(config.conference.end_grace_seconds)" />
-                    <span>s</span>
-                </label>
-            </div>
-            <div class="flex flex-wrap gap-1.5">
-                <label class="field" style="flex: 1 1 0" title="Apps whose microphone use is not a call (application name or binary, comma-separated)">
-                    <span>Ignore mic of</span>
-                    <input :value="listText('ignore_apps')" @change="setList('ignore_apps', $event)" type="text"
-                        placeholder="VibeVoice" />
-                </label>
-                <label class="field cursor-pointer" title="The microphone counts only while one of the apps on the right runs, so dictation or voice tools alone are no call">
-                    <input type="checkbox" v-model="config.conference.microphone_needs_app"
-                        class="w-4 h-4 rounded border-outline-variant bg-surface-container-lowest text-rose-300" />
-                    <span>Mic only with an app</span>
-                </label>
-                <label class="field" style="flex: 1 1 0" :title="'Process names that count as a call while running (comma-separated)' + (config.conference.signals.processes ? '' : '; the Apps signal is off')">
-                    <span>Apps</span>
-                    <input :value="listText('processes')" @change="setList('processes', $event)" type="text"
-                        placeholder="teams, zoom" />
-                </label>
-            </div>
-            <div class="flex gap-1.5">
-                <label class="field" style="flex: 1 1 0" title="POSTed as JSON on every start and end of a conference; empty = off">
-                    <span>Webhook</span>
-                    <input v-model.trim="config.conference.webhook_url" type="url"
-                        placeholder="https://homeassistant.local:8123/api/webhook/<id>" />
-                </label>
-                <button @click.prevent="testWebhook" :disabled="!config.conference.webhook_url"
-                    class="flex items-center gap-1 px-3 h-7 rounded-lg text-xs font-semibold text-slate-200 bg-surface-container-highest hover:bg-white/10 active:scale-95 transition-all disabled:opacity-40">
-                    <span class="material-symbols-outlined text-base">send</span> Send test
-                </button>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <!-- Detect: which signals count as a call -->
+                <div class="panel">
+                    <h4 class="panel-title"><span class="material-symbols-outlined">sensors</span>Detect</h4>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button v-for="s in conferenceSignals" :key="s.key" type="button" :title="s.hint" :disabled="s.unavailable"
+                            @click="config.conference.signals[s.key] = !config.conference.signals[s.key]"
+                            :class="['pill', !s.unavailable && config.conference.signals[s.key] ? 'on' : '']">
+                            <span class="material-symbols-outlined">{{ s.icon }}</span>{{ s.label }}
+                        </button>
+                    </div>
+                    <p v-if="conferenceSignals.some(s => s.unavailable)" class="panel-hint">Screen share cannot be detected on Windows.</p>
+                    <label class="field mt-auto self-start" title="How long no signal must be active before the conference counts as ended">
+                        <span>End after</span>
+                        <input v-model.number="config.conference.end_grace_seconds" type="number" min="0" :style="fitWidth(config.conference.end_grace_seconds)" />
+                        <span>s</span>
+                    </label>
+                </div>
+
+                <!-- Microphone: what does not count, and the meeting apps -->
+                <div class="panel">
+                    <h4 class="panel-title"><span class="material-symbols-outlined">mic</span>Microphone</h4>
+                    <label class="field" title="Apps whose microphone use is not a call (application name or binary, comma-separated)">
+                        <span>Ignore mic of</span>
+                        <input :value="listText('ignore_apps')" @change="setList('ignore_apps', $event)" type="text" placeholder="VibeVoice" />
+                    </label>
+                    <button type="button" @click="config.conference.microphone_needs_app = !config.conference.microphone_needs_app"
+                        title="The microphone counts only while one of the meeting apps runs, so dictation or voice tools alone are no call"
+                        class="switch-row">
+                        <span :class="['switch', config.conference.microphone_needs_app ? 'on' : '']"></span>
+                        Only with a meeting app
+                    </button>
+                    <label class="field" :title="'Process names that count as a meeting app (comma-separated)' + (config.conference.signals.processes ? '' : '; the Meeting app signal is off')">
+                        <span>Meeting apps</span>
+                        <input :value="listText('processes')" @change="setList('processes', $event)" type="text" placeholder="teams, zoom" />
+                    </label>
+                </div>
+
+                <!-- Home Assistant: one webhook URL, never shown in full (its path is a secret id) -->
+                <div class="panel">
+                    <h4 class="panel-title">
+                        <span class="material-symbols-outlined">home</span><span class="flex-1">Home Assistant</span>
+                        <template v-if="config.conference.webhook_url && !webhookEditing">
+                            <button type="button" @click="editWebhook" class="link-btn">Change</button>
+                            <button type="button" @click="removeWebhook" class="link-btn hover:!text-error">Remove</button>
+                        </template>
+                    </h4>
+                    <div v-if="webhookEditing" class="flex flex-col gap-1.5">
+                        <label class="field">
+                            <span>URL</span>
+                            <input ref="webhookInput" v-model="webhookDraft" type="password" autocomplete="off" spellcheck="false"
+                                @keydown.enter.prevent="applyWebhook" @keydown.esc.prevent="cancelWebhook"
+                                :placeholder="config.conference.webhook_url ? 'New webhook URL' : 'https://…/api/webhook/<id>'" />
+                        </label>
+                        <div class="flex gap-1.5">
+                            <button type="button" @click="applyWebhook" :disabled="!webhookDraft.trim()" class="btn text-rose-200">
+                                <span class="material-symbols-outlined">check</span>Use
+                            </button>
+                            <button type="button" @click="cancelWebhook" class="btn">Cancel</button>
+                        </div>
+                    </div>
+                    <span v-else-if="config.conference.webhook_url" class="field" title="Webhook set; the full URL is hidden because it holds the secret id">
+                        <span class="material-symbols-outlined text-[15px] text-rose-300">link</span>
+                        <span class="truncate text-on-surface font-medium">{{ webhookMasked }}</span>
+                    </span>
+                    <button v-else type="button" @click="editWebhook" class="btn self-start">
+                        <span class="material-symbols-outlined">add_link</span>Set webhook URL
+                    </button>
+                    <div class="flex items-center gap-1.5 min-w-0">
+                        <button type="button" @click="testWebhook" :disabled="!(config.conference.webhook_url || webhookDraft.trim()) || webhookResult === 'sending'" class="btn shrink-0">
+                            <span class="material-symbols-outlined">send</span>Send test
+                        </button>
+                        <span v-if="webhookResult === 'sending'" class="flex-1 text-[11px] text-outline">Sending…</span>
+                        <span v-else-if="webhookResult" :title="webhookResult.text"
+                            :class="['flex-1 flex items-center gap-1 text-[11px] font-semibold min-w-0', webhookResult.ok ? 'text-tertiary' : 'text-error']">
+                            <span class="material-symbols-outlined text-[15px]">{{ webhookResult.ok ? 'check_circle' : 'error' }}</span>
+                            <span class="truncate">{{ webhookResult.text }}</span>
+                        </span>
+                    </div>
+                    <p class="panel-hint">Gets JSON <code>{"state": "on"|"off"}</code> when a call starts and ends. The test sends <code>"test"</code>, which Home Assistant normally ignores.</p>
+                </div>
             </div>
         </section>
     </div>
