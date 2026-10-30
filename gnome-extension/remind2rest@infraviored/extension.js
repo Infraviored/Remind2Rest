@@ -125,6 +125,7 @@ class Indicator extends PanelMenu.Button {
         this._running = false;
         this._conference = false;
         this._polling = false;
+        this._shareCancellable = null;
         this._pollCounter = 0;
         this._remainingSeconds = null;
         this._nextTitle = null;
@@ -274,8 +275,17 @@ class Indicator extends PanelMenu.Button {
 
     // Tells the daemon at once when sharing starts or stops, not only at the next poll.
     _reportScreenShare() {
-        this._sendScreenShare().catch(() => {
+        if (this._shareCancellable) {
+            this._shareCancellable.cancel();
+            this._shareCancellable = null;
+        }
+        const cancellable = new Gio.Cancellable();
+        this._shareCancellable = cancellable;
+        this._sendScreenShare(cancellable).catch(() => {
             // Daemon not running; the next poll resends.
+        }).finally(() => {
+            if (this._shareCancellable === cancellable)
+                this._shareCancellable = null;
         });
     }
 
@@ -287,6 +297,10 @@ class Indicator extends PanelMenu.Button {
         for (const [handle, id] of this._shareHandles)
             handle.disconnect(id);
         this._shareHandles.clear();
+        if (this._shareCancellable) {
+            this._shareCancellable.cancel();
+            this._shareCancellable = null;
+        }
         if (this._cancellable) {
             this._cancellable.cancel();
             this._cancellable = null;

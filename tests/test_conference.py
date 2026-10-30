@@ -1,6 +1,7 @@
 """Run: python -m unittest tests.test_conference"""
 import json
 import os
+import shutil
 import stat
 import sys
 import tempfile
@@ -64,10 +65,18 @@ class PipewireSignalsTest(unittest.TestCase):
     def test_camera_node_is_not_a_screen_share(self):
         self.assertEqual(pipewire_signals([CAMERA_ON])["screen_share"], [])
 
+    def test_control_center_meter_is_not_microphone(self):
+        cc_node = node("running", **{"media.class": "Stream/Input/Audio", "application.name": "gnome-control-center",
+                                     "application.process.binary": "gnome-control-center"})
+        self.assertEqual(pipewire_signals([cc_node])["microphone"], [])
+
 
 class ProcTest(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
 
     def proc(self, pid, comm, fds=()):
         os.makedirs(os.path.join(self.root, pid, "fd"))
@@ -80,6 +89,7 @@ class ProcTest(unittest.TestCase):
         self.proc("10", "pipewire", ["/dev/video0"])
         self.proc("11", "chrome", ["/dev/null", "/dev/video2"])
         self.proc("12", "bash", ["/dev/pts/1"])
+        self.proc("13", "pipewire-media-", ["/dev/video1"])
         os.makedirs(os.path.join(self.root, "self"))
         self.assertEqual(conference.video_device_users(self.root), ["chrome"])
 
@@ -322,17 +332,21 @@ class ConfigTest(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "POSIX file modes")
     def test_config_file_is_owner_only(self):
         import src.config as config
-        path = os.path.join(tempfile.mkdtemp(), "reminder_config.json")
-        with open(path, "w") as f:
-            f.write("{}")
-        os.chmod(path, 0o644)  # from an older version
-        with patch.object(config, "CONFIG_PATH", path):
-            config.save_config({"global_interval": 60})
-        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
-        os.chmod(path, 0o644)
-        with patch.object(config, "CONFIG_PATH", path):
-            self.assertIsNotNone(config.load_config())
-        self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+        tmp_dir = tempfile.mkdtemp()
+        try:
+            path = os.path.join(tmp_dir, "reminder_config.json")
+            with open(path, "w") as f:
+                f.write("{}")
+            os.chmod(path, 0o644)  # from an older version
+            with patch.object(config, "CONFIG_PATH", path):
+                config.save_config({"global_interval": 60})
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+            os.chmod(path, 0o644)
+            with patch.object(config, "CONFIG_PATH", path):
+                self.assertIsNotNone(config.load_config())
+            self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

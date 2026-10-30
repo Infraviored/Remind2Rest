@@ -37,10 +37,10 @@ DEFAULTS = {
 }
 
 # Capture streams that only meter the level (volume sliders, pavucontrol) are not a microphone in use.
-METER_BINARIES = {"gnome-shell", "pavucontrol", "pavucontrol-qt"}
-METER_APP_IDS = {"org.pulseaudio.pavucontrol"}
+METER_BINARIES = {"gnome-shell", "pavucontrol", "pavucontrol-qt", "gnome-control-center"}
+METER_APP_IDS = {"org.pulseaudio.pavucontrol", "org.gnome.Settings"}
 # Processes that hold /dev/video* open for others; the PipeWire node state covers them.
-VIDEO_BROKERS = {"pipewire", "wireplumber"}
+VIDEO_BROKERS = {"pipewire", "wireplumber", "pipewire-media-", "pipewire-media-session"}
 
 
 def fill_defaults(config):
@@ -330,7 +330,8 @@ class ConferenceDetector:
 
     @property
     def active(self):
-        return self._active
+        with self._mutex:
+            return self._active
 
     def report_screenshare(self, sharing):
         """The GNOME extension's view of screen sharing (SCREENSHARE on|off); combined with pw-dump."""
