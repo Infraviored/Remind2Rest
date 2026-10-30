@@ -119,7 +119,13 @@ new Vue({
             const result = distributeReminders(types);
             if (!result.cycle) return;
             this.config.global_interval = result.cycle;
-            this.enabledModules.forEach(m => { this.config[m.key].reminders = result.reminders[m.key]; });
+            this.modules.forEach(m => {
+                if (result.reminders[m.key]) {
+                    this.config[m.key].reminders = result.reminders[m.key];
+                } else if (Array.isArray(this.config[m.key]?.reminders)) {
+                    this.config[m.key].reminders = this.config[m.key].reminders.filter(t => t < result.cycle);
+                }
+            });
             const rounded = this.enabledModules
                 .filter(m => result.every[m.key] !== this.config[m.key].every)
                 .map(m => `${m.title} every ${result.every[m.key]} min`);
