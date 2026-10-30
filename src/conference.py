@@ -18,10 +18,6 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 
-try:
-    from gi.repository import Gio
-except ImportError:
-    Gio = None
 
 POLL_INTERVAL = 3       # s between two polls
 TOOL_TIMEOUT = 2        # s a pw-dump / gsettings call may take
@@ -152,19 +148,8 @@ def running_processes(names, proc_root="/proc"):
     return sorted(found)
 
 
-_notification_settings = None
-
-
 def dnd_active():
     """GNOME's Do Not Disturb: notification banners switched off."""
-    global _notification_settings
-    if Gio is not None:
-        if _notification_settings is None:
-            source = Gio.SettingsSchemaSource.get_default()
-            if source is None or source.lookup("org.gnome.desktop.notifications", True) is None:
-                raise FileNotFoundError("schema org.gnome.desktop.notifications not installed")
-            _notification_settings = Gio.Settings.new("org.gnome.desktop.notifications")
-        return not _notification_settings.get_boolean("show-banners")
     out = subprocess.run(["gsettings", "get", "org.gnome.desktop.notifications", "show-banners"],
                          capture_output=True, text=True, timeout=TOOL_TIMEOUT, check=True)
     return out.stdout.strip() == "false"

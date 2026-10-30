@@ -180,6 +180,20 @@ class DetectorTest(unittest.TestCase):
         self.assertEqual(len([line for line in logs.output if "pw-dump" in line]), 1)
         self.assertFalse(d.active)
 
+    def test_dnd_active_synchronous_call(self):
+        class FakeCompletedProcess:
+            def __init__(self, stdout):
+                self.stdout = stdout
+
+        with patch("src.conference.subprocess.run", return_value=FakeCompletedProcess("false\n")) as mock_run:
+            self.assertTrue(conference.dnd_active())
+            mock_run.assert_called_once_with(
+                ["gsettings", "get", "org.gnome.desktop.notifications", "show-banners"],
+                capture_output=True, text=True, timeout=conference.TOOL_TIMEOUT, check=True,
+            )
+        with patch("src.conference.subprocess.run", return_value=FakeCompletedProcess("true\n")):
+            self.assertFalse(conference.dnd_active())
+
 
 class FakeResponse:
     status = 200
