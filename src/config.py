@@ -60,4 +60,25 @@ def validate_config(config):
         raise ValueError("Config must be a dictionary")
     if "global_interval" not in config or not isinstance(config["global_interval"], (int, float)) or config["global_interval"] <= 0:
         raise ValueError("Missing or invalid 'global_interval' in config")
-    # Missing reminder types or keys are filled from the library by load_config.
+    if "conference" in config:
+        conf = config["conference"]
+        if not isinstance(conf, dict):
+            config["conference"] = {}
+            conf = config["conference"]
+        try:
+            val = conf.get("end_grace_seconds")
+            conf["end_grace_seconds"] = max(0, int(val if val not in (None, "") else 60))
+        except (ValueError, TypeError):
+            conf["end_grace_seconds"] = 60
+        if not isinstance(conf.get("signals"), dict):
+            conf["signals"] = {}
+        for sig in ("screen_share", "microphone", "camera", "processes", "do_not_disturb"):
+            if sig in conf["signals"]:
+                conf["signals"][sig] = bool(conf["signals"][sig])
+        for key, default in (("ignore_apps", ["VibeVoice"]), ("processes", ["teams", "teams-for-linux", "zoom"])):
+            if not isinstance(conf.get(key), list):
+                conf[key] = default
+            else:
+                conf[key] = [str(x) for x in conf[key] if x]
+        if not isinstance(conf.get("webhook_url"), str):
+            conf["webhook_url"] = str(conf.get("webhook_url") or "")

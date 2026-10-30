@@ -45,11 +45,24 @@ VIDEO_BROKERS = {"pipewire", "wireplumber"}
 
 def fill_defaults(config):
     """Add config["conference"] and its missing keys, for configs from before conference detection."""
-    conference = config.setdefault("conference", {})
+    conference = config.get("conference")
+    if not isinstance(conference, dict):
+        conference = {}
+        config["conference"] = conference
     for key, value in DEFAULTS.items():
-        conference.setdefault(key, copy.deepcopy(value))
+        if key not in conference or conference[key] in (None, ""):
+            conference[key] = copy.deepcopy(value)
+    signals = conference.setdefault("signals", {})
+    if not isinstance(signals, dict):
+        signals = {}
+        conference["signals"] = signals
     for name, on in DEFAULTS["signals"].items():
-        conference["signals"].setdefault(name, on)
+        signals.setdefault(name, on)
+    try:
+        val = conference.get("end_grace_seconds")
+        conference["end_grace_seconds"] = max(0, int(val if val not in (None, "") else 60))
+    except (ValueError, TypeError):
+        conference["end_grace_seconds"] = 60
     return config
 
 
@@ -382,6 +395,11 @@ class ConferenceDetector:
         signals = self._read_signals(settings)
         now = self._clock()
         reasons = [name for name in SIGNALS if signals[name]]
+        try:
+            val = settings.get("end_grace_seconds")
+            end_grace = max(0, int(val if val not in (None, "") else 60))
+        except (ValueError, TypeError):
+            end_grace = 60
 
         with self._mutex:
             self._signals = signals
@@ -392,7 +410,7 @@ class ConferenceDetector:
                 self._last_signal_at = now
                 self._active = True
                 self._reasons = reasons
-            elif self._active and now - self._last_signal_at >= settings["end_grace_seconds"]:
+            elif self._active and now - self._last_signal_at >= end_grace:
                 self._active = False
                 self._reasons = []
             active, current = self._active, list(self._reasons)
@@ -401,7 +419,7 @@ class ConferenceDetector:
             details = ", ".join(f"{name} ({', '.join(signals[name])})" for name in reasons)
             logging.info(f"Conference started: {details}")
         elif was_active and not active:
-            logging.info(f"Conference ended: no signal for {settings['end_grace_seconds']} s")
+            logging.info(f"Conference ended: no signal for {end_grace} s")
         elif first:
             logging.info("Conference detection started: no conference")
         if first or active != was_active:

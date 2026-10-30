@@ -181,6 +181,16 @@ class DetectorTest(unittest.TestCase):
         self.assertEqual(len([line for line in logs.output if "pw-dump" in line]), 1)
         self.assertFalse(d.active)
 
+    def test_none_end_grace_does_not_crash_poll(self):
+        d = self.p.detector(end_grace_seconds=None)
+        self.p.nodes = [MIC_FIREFOX]
+        d.poll()
+        self.assertTrue(d.active)
+        self.p.nodes = []
+        self.p.now += 60
+        d.poll()
+        self.assertFalse(d.active)
+
     def test_dnd_active_synchronous_call(self):
         class FakeCompletedProcess:
             def __init__(self, stdout):
@@ -289,6 +299,25 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(conf["ignore_apps"], [])
         self.assertEqual(conf["webhook_url"], "")
         self.assertEqual(conf["end_grace_seconds"], 60)
+
+    def test_conference_config_coercion_and_validation(self):
+        from src.config import validate_config
+        config = {
+            "global_interval": 60,
+            "conference": {
+                "end_grace_seconds": None,
+                "signals": {"camera": "true", "microphone": 0},
+                "ignore_apps": "not-a-list",
+                "webhook_url": 12345,
+            }
+        }
+        validate_config(config)
+        conf = config["conference"]
+        self.assertEqual(conf["end_grace_seconds"], 60)
+        self.assertTrue(conf["signals"]["camera"])
+        self.assertFalse(conf["signals"]["microphone"])
+        self.assertEqual(conf["ignore_apps"], ["VibeVoice"])
+        self.assertEqual(conf["webhook_url"], "12345")
 
     @unittest.skipIf(os.name == "nt", "POSIX file modes")
     def test_config_file_is_owner_only(self):
