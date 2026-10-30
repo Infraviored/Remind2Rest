@@ -239,7 +239,8 @@ new Vue({
             const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
             if (!step) return;
             event.preventDefault();
-            const moved = (times[index] + step * (event.shiftKey ? 5 : 1) + this.cycle) % this.cycle;
+            const delta = step * (event.shiftKey ? 5 : 1);
+            const moved = ((times[index] + delta) % this.cycle + this.cycle) % this.cycle;
             if (times.includes(moved)) return;
             this.setTimes(key, times.map((t, i) => (i === index ? moved : t)));
             const newIndex = this.config[key].reminders.indexOf(moved);
