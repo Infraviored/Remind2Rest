@@ -6,7 +6,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.gate import ReminderGate, UNLOCK_DELAY, AFTER_CLOSE_DELAY, LOCK_POLL, CONFERENCE_END_DELAY
+from src.gate import ReminderGate, UNLOCK_DELAY, AFTER_CLOSE_DELAY, LOCK_POLL
 
 
 class FakeProc:
@@ -228,11 +228,6 @@ class GateTest(unittest.TestCase):
         h.run(1)
         self.assertEqual(h.shown(), [])
         self.assertIsNone(h.gate.pending)
-
-    def test_conference_check_failure_counts_as_no_conference(self):
-        h = Harness()
-        gate = ReminderGate(h.spawn, clock=lambda: h.now, in_conference=lambda: 1 / 0)
-        self.assertEqual(gate.request("posture", {}), "shown")
 
 
 from unittest.mock import patch

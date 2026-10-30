@@ -3,13 +3,14 @@ import sys
 import json
 import socket
 import subprocess
+import urllib.parse
 from pathlib import Path
 
 import threading
 import webview
 
 from src.conference import post_webhook, redact, format_error
-from src.config import ADDR, SOCKET_FAMILY, load_config, save_config
+from src.config import ADDR, IS_WINDOWS, SOCKET_FAMILY, load_config, save_config
 from src.library import LIBRARY
 from src.scheduler import spawn_reminder
 
@@ -18,7 +19,6 @@ reminder_app_path = os.path.join(script_dir, "Remind2Rest.py")
 icon_path = os.path.join(script_dir, "Remind2Rest.png")
 index_path = os.path.join(script_dir, "templates", "index.html")
 
-IS_WINDOWS = os.name == "nt"
 SERVICE = "Remind2Rest"
 
 
@@ -73,6 +73,17 @@ def ps_quote(s):
     return "'" + str(s).replace("'", "''") + "'"
 
 
+def mask_webhook(url):
+    """scheme://host/… of a webhook URL for the page, "…" for anything that is no URL. The page never
+    gets the full saved URL: its path is a secret id."""
+    parts = urllib.parse.urlsplit(url)
+    return redact(url) if parts.scheme and parts.netloc else "…"
+
+
+def saved_webhook():
+    return ((load_config() or {}).get("conference") or {}).get("webhook_url", "").strip()
+
+
 class Api:
     """Methods the page calls as window.pywebview.api.<name>(); each returns JSON-able data."""
 
@@ -80,13 +91,31 @@ class Api:
         return [{"key": key, **entry} for key, entry in LIBRARY.items()]
 
     def get_config(self):
-        return load_config()
+        """The saved config with conference.webhook_url blanked: webhook_set says whether one is saved,
+        webhook_masked shows its host. save_config puts the saved URL back."""
+        config = load_config()
+        if config:
+            conf = config["conference"]
+            url = conf["webhook_url"].strip()
+            conf.update(webhook_url="", webhook_set=bool(url), webhook_masked=mask_webhook(url) if url else "")
+        return config
+
+    def mask_webhook(self, url):
+        """The masked form of a URL typed in the page, before it is saved."""
+        return mask_webhook((url or "").strip())
 
     def get_platform(self):
         """'windows' or 'linux'; the page marks conference signals Windows cannot detect."""
         return "windows" if IS_WINDOWS else "linux"
 
     def save_config(self, config):
+        # The page sends a new webhook URL, or "" with webhook_set: true to keep the saved one, false to remove it.
+        conf = config.get("conference")
+        if isinstance(conf, dict):
+            keep = conf.pop("webhook_set", False)
+            conf.pop("webhook_masked", None)
+            if keep and not str(conf.get("webhook_url") or "").strip():
+                conf["webhook_url"] = saved_webhook()
         save_config(config)
         if send_command_to_service("RELOAD"):
             return {"status": "success", "message": "Configuration saved and service reloaded"}
@@ -104,9 +133,10 @@ class Api:
             self._spawn_fallback(module, settings)
         return {"status": "success"}
 
-    def test_webhook(self, url):
-        """POSTs state "test" to the conference webhook once, so the user sees whether it arrives."""
-        url = (url or "").strip()
+    def test_webhook(self, url=None):
+        """POSTs state "test" to the conference webhook once (url, else the saved one), so the user
+        sees whether it arrives."""
+        url = (url or "").strip() or saved_webhook()
         if not url.startswith(("http://", "https://")):
             return {"status": "error", "message": "Enter an http:// or https:// URL first"}
         try:

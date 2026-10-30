@@ -3,12 +3,15 @@ import json
 import socket
 import logging
 
+IS_WINDOWS = os.name == "nt"  # before the imports below: src.conference imports it while they load
+
+from src import conference
 from src.library import fill_defaults
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 # Platform-specific paths and socket configuration
-if os.name == 'nt':
+if IS_WINDOWS:
     appdata = os.environ.get('LOCALAPPDATA', os.path.expanduser('~/AppData/Local'))
     base_dir = os.path.join(appdata, 'Remind2Rest')
     os.makedirs(base_dir, exist_ok=True)
@@ -32,8 +35,7 @@ def load_config():
             default_config = fill_defaults({"global_interval": 60})
             save_config(default_config)
             return default_config
-        if os.name != "nt" and os.stat(CONFIG_PATH).st_mode & 0o077:
-            os.chmod(CONFIG_PATH, 0o600)  # see save_config
+        _owner_only()
         with open(CONFIG_PATH, "r") as file:
             config = json.load(file)
         config = fill_defaults(config)
@@ -43,14 +45,17 @@ def load_config():
         logging.error(f"Error loading configuration: {e}")
     return None
 
+def _owner_only():
+    """Owner only: conference.webhook_url carries a secret (a Home Assistant webhook id). A file from
+    older versions may be world-readable."""
+    if not IS_WINDOWS and os.stat(CONFIG_PATH).st_mode & 0o077:
+        os.chmod(CONFIG_PATH, 0o600)
+
 def save_config(config):
     try:
         os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-        # Owner only: conference.webhook_url carries a secret (a Home Assistant webhook id).
-        fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        if os.name != "nt":
-            os.fchmod(fd, 0o600)  # a file from older versions may be world-readable
-        with os.fdopen(fd, "w") as file:
+        with os.fdopen(os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as file:
+            _owner_only()
             json.dump(config, file, indent=2)
     except Exception as e:
         logging.error(f"Error saving configuration: {e}")
@@ -60,27 +65,4 @@ def validate_config(config):
         raise ValueError("Config must be a dictionary")
     if "global_interval" not in config or not isinstance(config["global_interval"], (int, float)) or config["global_interval"] <= 0:
         raise ValueError("Missing or invalid 'global_interval' in config")
-    if "conference" in config:
-        conf = config["conference"]
-        if not isinstance(conf, dict):
-            config["conference"] = {}
-            conf = config["conference"]
-        try:
-            val = conf.get("end_grace_seconds")
-            conf["end_grace_seconds"] = max(0, int(val if val not in (None, "") else 60))
-        except (ValueError, TypeError):
-            conf["end_grace_seconds"] = 60
-        if not isinstance(conf.get("signals"), dict):
-            conf["signals"] = {}
-        for sig in ("screen_share", "microphone", "camera", "processes", "do_not_disturb"):
-            if sig in conf["signals"]:
-                conf["signals"][sig] = bool(conf["signals"][sig])
-        for key, default in (("ignore_apps", ["VibeVoice"]), ("processes", ["teams", "teams-for-linux", "ms-teams", "zoom"])):
-            if not isinstance(conf.get(key), list):
-                conf[key] = default
-            else:
-                conf[key] = [str(x) for x in conf[key] if x]
-        val = conf.get("microphone_needs_app")
-        conf["microphone_needs_app"] = True if val in (None, "") else bool(val)
-        if not isinstance(conf.get("webhook_url"), str):
-            conf["webhook_url"] = str(conf.get("webhook_url") or "")
+    config["conference"] = conference.normalize(config.get("conference"))

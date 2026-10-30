@@ -13,6 +13,7 @@ does not end it). Each change of state is logged and, if conference.webhook_url 
 """
 import copy
 import csv
+import glob
 import io
 import json
 import logging
@@ -25,6 +26,8 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 
+from src.config import IS_WINDOWS
+
 
 POLL_INTERVAL = 3       # s between two polls
 TOOL_TIMEOUT = 2        # s a pw-dump / gsettings call may take
@@ -32,10 +35,7 @@ EXTENSION_FRESH = 15    # s a SCREENSHARE report of the GNOME extension stays va
 WEBHOOK_TIMEOUT = 10    # s per webhook attempt
 WEBHOOK_ATTEMPTS = 3
 
-IS_WINDOWS = os.name == "nt"
 CREATE_NO_WINDOW = 0x08000000  # subprocess.CREATE_NO_WINDOW, which only exists on Windows builds
-
-SIGNALS = ("screen_share", "microphone", "camera", "processes", "do_not_disturb")
 
 DEFAULTS = {
     "signals": {"screen_share": True, "microphone": True, "camera": True, "processes": False,
@@ -49,6 +49,7 @@ DEFAULTS = {
     "end_grace_seconds": 60,
     "webhook_url": "",
 }
+SIGNALS = tuple(DEFAULTS["signals"])
 
 # Capture streams that only meter the level (volume sliders, pavucontrol) are not a microphone in use.
 METER_BINARIES = {"gnome-shell", "pavucontrol", "pavucontrol-qt", "gnome-control-center"}
@@ -57,26 +58,33 @@ METER_APP_IDS = {"org.pulseaudio.pavucontrol", "org.gnome.Settings"}
 VIDEO_BROKERS = {"pipewire", "wireplumber", "pipewire-media-", "pipewire-media-session"}
 
 
-def fill_defaults(config):
-    """Add config["conference"] and its missing keys, for configs from before conference detection."""
-    conference = config.get("conference")
-    if not isinstance(conference, dict):
-        conference = {}
-        config["conference"] = conference
-    for key, value in DEFAULTS.items():
-        if key not in conference or conference[key] in (None, ""):
-            conference[key] = copy.deepcopy(value)
-    signals = conference.setdefault("signals", {})
+def normalize(conf):
+    """conf (config["conference"]) with every key of DEFAULTS present and of its type, in place; a
+    missing, empty or unusable value gets the default. Returns a new dict if conf is no dict."""
+    if not isinstance(conf, dict):
+        conf = {}
+    signals = conf.get("signals")
     if not isinstance(signals, dict):
         signals = {}
-        conference["signals"] = signals
-    for name, on in DEFAULTS["signals"].items():
-        signals.setdefault(name, on)
+    conf["signals"] = {**signals, **{name: bool(signals.get(name, on)) for name, on in DEFAULTS["signals"].items()}}
+    for key in ("ignore_apps", "processes"):
+        value = conf.get(key)
+        conf[key] = [str(x) for x in value if x] if isinstance(value, list) else list(DEFAULTS[key])
+    value = conf.get("webhook_url")
+    conf["webhook_url"] = value if isinstance(value, str) else str(value or "")
+    value = conf.get("microphone_needs_app")
+    conf["microphone_needs_app"] = DEFAULTS["microphone_needs_app"] if value in (None, "") else bool(value)
     try:
-        val = conference.get("end_grace_seconds")
-        conference["end_grace_seconds"] = max(0, int(val if val not in (None, "") else 60))
+        value = conf.get("end_grace_seconds")
+        conf["end_grace_seconds"] = max(0, int(DEFAULTS["end_grace_seconds"] if value in (None, "") else value))
     except (ValueError, TypeError):
-        conference["end_grace_seconds"] = 60
+        conf["end_grace_seconds"] = DEFAULTS["end_grace_seconds"]
+    return conf
+
+
+def fill_defaults(config):
+    """Add config["conference"] and its missing keys, for configs from before conference detection."""
+    config["conference"] = normalize(config.get("conference"))
     return config
 
 
@@ -138,12 +146,26 @@ def _comm(proc_root, pid):
         return None
 
 
-def video_device_users(proc_root="/proc"):
-    """Names of processes (other than PipeWire) with a /dev/video* open. Chrome and Teams open the
-    camera directly, past PipeWire. Processes of other users are not readable and are skipped."""
-    users = set()
+def proc_comms(proc_root="/proc"):
+    """{pid: comm} of every process, from one pass over /proc; comm is cut at 15 characters."""
+    comms = {}
     for pid in os.listdir(proc_root):
-        if not pid.isdigit():
+        if pid.isdigit():
+            comm = _comm(proc_root, pid)
+            if comm:
+                comms[pid] = comm
+    return comms
+
+
+def video_device_users(proc_root="/proc", comms=None, dev_root="/dev"):
+    """Names of processes (other than PipeWire) with a /dev/video* open. Chrome and Teams open the
+    camera directly, past PipeWire. Processes of other users are not readable and are skipped.
+    comms is proc_comms() if the caller has it already; without a /dev/video* nothing is scanned."""
+    if not glob.glob(os.path.join(dev_root, "video*")):
+        return []
+    users = set()
+    for pid, comm in (proc_comms(proc_root) if comms is None else comms).items():
+        if comm in VIDEO_BROKERS:
             continue
         fd_dir = os.path.join(proc_root, pid, "fd")
         try:
@@ -156,23 +178,17 @@ def video_device_users(proc_root="/proc"):
             except OSError:
                 continue
             if target.startswith("/dev/video"):
-                comm = _comm(proc_root, pid)
-                if comm and comm not in VIDEO_BROKERS:
-                    users.add(comm)
+                users.add(comm)
                 break
     return sorted(users)
 
 
-def running_processes(names, proc_root="/proc"):
-    """Which of `names` run, matched case-insensitively against /proc/<pid>/comm (15 characters)."""
+def running_processes(names, proc_root="/proc", comms=None):
+    """Which of `names` run, matched case-insensitively against /proc/<pid>/comm (15 characters).
+    comms is proc_comms() if the caller has it already."""
     wanted = {name.lower()[:15]: name for name in names if name}
-    found = set()
-    for pid in os.listdir(proc_root):
-        if pid.isdigit():
-            comm = _comm(proc_root, pid)
-            if comm and comm.lower() in wanted:
-                found.add(wanted[comm.lower()])
-    return sorted(found)
+    running = {comm.lower() for comm in (proc_comms(proc_root) if comms is None else comms).values()}
+    return sorted(wanted[comm] for comm in wanted.keys() & running)
 
 
 def dnd_active():
@@ -197,7 +213,8 @@ WINDOWS_METER_APPS = {"windows.immersivecontrolpanel"}
 
 class WindowsRegistry:
     """Read-only HKEY_CURRENT_USER access: subkeys(path) -> names ([] if the key is missing),
-    value(path, name) -> data (None if missing). winreg is imported here, so only on Windows."""
+    values(path, *names) -> data of each (None if missing), value(path, name) -> the data of one.
+    winreg is imported here, so only on Windows."""
 
     def __init__(self):
         import winreg
@@ -217,13 +234,23 @@ class WindowsRegistry:
                 except OSError:  # no more subkeys
                     return names
 
-    def value(self, path, name):
+    def values(self, path, *names):
         winreg = self._winreg
         try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as key:
-                return winreg.QueryValueEx(key, name)[0]
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, path)
         except OSError:
-            return None
+            return (None,) * len(names)
+        found = []
+        with key:
+            for name in names:
+                try:
+                    found.append(winreg.QueryValueEx(key, name)[0])
+                except OSError:
+                    found.append(None)
+        return tuple(found)
+
+    def value(self, path, name):
+        return self.values(path, name)[0]
 
 
 def _strip_exe(name):
@@ -253,7 +280,7 @@ def consent_store_users(device, ignore_apps=(), registry=None):
     users = set()
     for path, key, packaged in entries:
         try:
-            start, stop = registry.value(path, "LastUsedTimeStart"), registry.value(path, "LastUsedTimeStop")
+            start, stop = registry.values(path, "LastUsedTimeStart", "LastUsedTimeStop")
         except OSError:
             continue
         if not (isinstance(start, int) and start > 0 and stop == 0):
@@ -303,11 +330,9 @@ def format_error(e):
     """Exception class plus HTTP status/reason only, never arbitrary exception strings that could contain the URL."""
     if isinstance(e, urllib.error.HTTPError):
         return f"{type(e).__name__} {e.code} {e.reason}"
-    if isinstance(e, urllib.error.URLError):
-        if hasattr(e, "reason") and isinstance(e.reason, Exception):
-            return f"{type(e).__name__} ({type(e.reason).__name__})"
-        return f"{type(e).__name__}"
-    return f"{type(e).__name__}"
+    if isinstance(e, urllib.error.URLError) and isinstance(e.reason, Exception):
+        return f"{type(e).__name__} ({type(e.reason).__name__})"
+    return type(e).__name__
 
 
 def post_webhook(url, state, reasons):
@@ -320,95 +345,72 @@ def post_webhook(url, state, reasons):
         return response.status
 
 
-class WebhookTask:
-    def __init__(self):
-        self._done = threading.Event()
-
-    def set_done(self):
-        self._done.set()
-
-    def join(self, timeout=None):
-        return self._done.wait(timeout)
-
-
 class WebhookDispatcher:
-    """Serializes webhook dispatches through a single worker thread. If a newer state arrives while
-    an older state is waiting to retry, the pending retries of the older state are superseded."""
+    """post_webhook in one background worker thread, retried with backoff (backoff, 2 * backoff, ...
+    seconds). Only the latest state counts: a newer one replaces a state not sent yet and cuts the
+    retries of the one being sent short. Failures are only logged."""
 
-    def __init__(self, post=post_webhook, attempts=WEBHOOK_ATTEMPTS, sleep=time.sleep):
+    def __init__(self, post=post_webhook, attempts=WEBHOOK_ATTEMPTS, backoff=2):
         self._post = post
         self._attempts = attempts
-        self._sleep = sleep
+        self._backoff = backoff
         self._cond = threading.Condition()
-        self._queue = []
-        self._latest_generation = 0
+        self._pending = None  # (url, state, reasons, done) the worker has not taken yet
         self._thread = None
         self._stop = False
 
-    def send(self, url, state, reasons, attempts=None, sleep=None):
-        task = WebhookTask()
-        attempts = self._attempts if attempts is None else attempts
-        sleep = self._sleep if sleep is None else sleep
+    def send(self, url, state, reasons):
+        """Returns a threading.Event, set once this state was sent, given up or superseded."""
+        done = threading.Event()
         with self._cond:
-            self._latest_generation += 1
-            gen = self._latest_generation
-            self._queue.append((url, state, reasons, gen, attempts, sleep, task))
+            if self._pending is not None:
+                self._pending[3].set()
+            self._pending = (url, state, list(reasons), done)
             if self._thread is None:
                 self._thread = threading.Thread(target=self._run, name="conference-webhook", daemon=True)
                 self._thread.start()
-            self._cond.notify_all()
-        return task
+            self._cond.notify()
+        return done
 
     def stop(self):
         with self._cond:
             self._stop = True
-            self._cond.notify_all()
+            self._cond.notify()
         if self._thread is not None:
             self._thread.join()
+
+    def _superseded(self):
+        return self._pending is not None or self._stop
 
     def _run(self):
         while True:
             with self._cond:
-                while not self._queue and not self._stop:
-                    self._cond.wait()
+                self._cond.wait_for(self._superseded)
                 if self._stop:
                     return
-                url, state, reasons, gen, attempts, sleep, task = self._queue.pop(0)
-
+                url, state, reasons, done = self._pending
+                self._pending = None
             try:
-                for attempt in range(1, attempts + 1):
-                    with self._cond:
-                        if self._latest_generation > gen:
-                            break
-                    try:
-                        self._post(url, state, reasons)
-                        logging.info(f"Conference webhook {redact(url)} sent: {state}")
-                        break
-                    except Exception as e:
-                        logging.warning(f"Conference webhook {redact(url)} attempt {attempt}/{attempts} failed: "
-                                        f"{format_error(e)}")
-                        if attempt < attempts:
-                            delay = 2 ** attempt
-                            with self._cond:
-                                if self._latest_generation > gen:
-                                    break
-                                if sleep != time.sleep:
-                                    sleep(delay)
-                                else:
-                                    self._cond.wait(timeout=delay)
-                                if self._latest_generation > gen:
-                                    break
+                self._deliver(url, state, reasons)
             finally:
-                task.set_done()
+                done.set()
+
+    def _deliver(self, url, state, reasons):
+        for attempt in range(1, self._attempts + 1):
+            try:
+                self._post(url, state, reasons)
+                logging.info(f"Conference webhook {redact(url)} sent: {state}")
+                return
+            except Exception as e:
+                logging.warning(f"Conference webhook {redact(url)} attempt {attempt}/{self._attempts} failed: "
+                                f"{format_error(e)}")
+            if attempt < self._attempts:
+                with self._cond:
+                    if self._cond.wait_for(self._superseded, self._backoff * 2 ** (attempt - 1)):
+                        return
 
 
-_webhook_dispatcher = WebhookDispatcher()
-
-
-def send_webhook(url, state, reasons, attempts=WEBHOOK_ATTEMPTS, sleep=time.sleep):
-    """post_webhook in a serialized background worker thread, retried with backoff (2 s, 4 s).
-    A newer state supersedes pending retries of an older one; failures are only logged."""
-    return _webhook_dispatcher.send(url, state, reasons, attempts=attempts, sleep=sleep)
+webhook_dispatcher = WebhookDispatcher()
 
 
 # ---- Detector ----
@@ -424,21 +426,22 @@ class ConferenceDetector:
     """
 
     def __init__(self, settings=None, clock=time.monotonic, on_change=None, read_pipewire=read_pipewire,
-                 video_users=video_device_users, processes=None, dnd=None, windows=None, registry=None):
-        self._settings = fill_defaults({"conference": copy.deepcopy(settings or {})})["conference"]
+                 video_users=None, processes=None, dnd=None, windows=None, registry=None):
+        self._mutex = threading.Lock()
+        self.configure(settings)
         self._clock = clock
         self._on_change = on_change or self._notify
         self._windows = IS_WINDOWS if windows is None else bool(windows)
         self._registry = registry  # created on first use, so winreg is only imported on Windows
         self._read_pipewire = read_pipewire
-        self._video_users = video_users
+        self._video_users = video_users or self._linux_video_users
         if self._windows:
             self._processes = processes or windows_running_processes
             self._dnd = dnd or (lambda: windows_dnd_active(self._hkcu()))
         else:
-            self._processes = processes or running_processes
+            self._processes = processes or self._linux_processes
             self._dnd = dnd or dnd_active
-        self._mutex = threading.Lock()
+        self._comms = None  # proc_comms() of the running poll, read once by whichever probe needs it first
         self._signals = {name: [] for name in SIGNALS}
         self._active = False
         self._reasons = []
@@ -451,7 +454,7 @@ class ConferenceDetector:
 
     def configure(self, settings):
         with self._mutex:
-            self._settings = fill_defaults({"conference": copy.deepcopy(settings or {})})["conference"]
+            self._settings = normalize(copy.deepcopy(settings or {}))
 
     @property
     def active(self):
@@ -469,10 +472,10 @@ class ConferenceDetector:
         """Everything for the CONFERENCE command and STATUS."""
         with self._mutex:
             enabled = self._settings["signals"]
-            ext_active = self._extension_fresh() and self._extension[0]
+            fresh = self._extension_fresh()
             if self._windows:
                 source = "unavailable"
-            elif ext_active or (self._extension_fresh() and not self._signals["screen_share"]):
+            elif fresh and (self._extension[0] or not self._signals["screen_share"]):
                 source = "extension"
             else:
                 source = "pipewire"
@@ -508,53 +511,67 @@ class ConferenceDetector:
             self._registry = WindowsRegistry()
         return self._registry
 
-    def _read_windows_devices(self, settings, signals):
+    def _proc_comms(self):
+        if self._comms is None:
+            self._comms = proc_comms()
+        return self._comms
+
+    def _linux_processes(self, names):
+        return running_processes(names, comms=self._proc_comms())
+
+    def _linux_video_users(self):
+        return video_device_users(comms=self._proc_comms())
+
+    def _read_windows(self, settings, enabled):
         """Camera and microphone from the consent store. Windows offers no screen share source."""
+        signals = {}
         for name, device in (("microphone", "microphone"), ("camera", "webcam")):
-            if settings["signals"].get(name):
+            if enabled.get(name):
                 signals[name] = self._probe(f"{device} registry", lambda d=device: consent_store_users(
                     d, settings["ignore_apps"], self._hkcu())) or []
+        return signals
 
-    def _read_signals(self, settings):
-        enabled = settings["signals"]
-        signals = {name: [] for name in SIGNALS}
-        if self._windows:
-            self._read_windows_devices(settings, signals)
-        elif enabled.get("microphone") or enabled.get("camera") or enabled.get("screen_share"):
+    def _read_linux(self, settings, enabled):
+        """Screen share, microphone and camera from pw-dump and the GNOME extension; camera also from /proc."""
+        signals = {}
+        if enabled.get("microphone") or enabled.get("camera") or enabled.get("screen_share"):
             nodes = self._probe("pw-dump", self._read_pipewire)
             if nodes is not None:
                 signals.update(pipewire_signals(nodes, settings["ignore_apps"]))
         with self._mutex:
             extension = self._extension if self._extension_fresh() else None
-        if not self._windows and extension is not None and extension[0]:
-            signals["screen_share"] = sorted(set(signals["screen_share"]) | {"GNOME Shell"})
-        if enabled.get("camera") and not self._windows:
+        if extension is not None and extension[0]:
+            signals["screen_share"] = sorted(set(signals.get("screen_share", [])) | {"GNOME Shell"})
+        if enabled.get("camera"):
             users = self._probe("/proc fd scan", self._video_users) or []
-            signals["camera"] = sorted(set(signals["camera"]) | set(users))
-        apps = None
-        if enabled.get("processes"):
+            signals["camera"] = sorted(set(signals.get("camera", [])) | set(users))
+        return signals
+
+    def _read_signals(self, settings):
+        enabled = settings["signals"]
+        self._comms = None
+        signals = {name: [] for name in SIGNALS}
+        signals.update((self._read_windows if self._windows else self._read_linux)(settings, enabled))
+        # The meeting apps that run, read once: the processes signal, and what an open microphone needs
+        # to count. Not read for an idle microphone, so tasklist does not run every poll on Windows.
+        apps = []
+        if enabled.get("processes") or (enabled.get("microphone") and signals["microphone"]
+                                        and settings["microphone_needs_app"]):
             apps = self._probe("processes", self._processes, settings["processes"]) or []
-            signals["processes"] = apps
-        if enabled.get("microphone") and signals["microphone"] and settings.get("microphone_needs_app", True):
-            if apps is None:
-                apps = self._probe("processes", self._processes, settings["processes"]) or []
-            if not apps:
-                signals["microphone"] = []
+        signals["processes"] = apps
+        if settings["microphone_needs_app"] and not apps:
+            signals["microphone"] = []
         if enabled.get("do_not_disturb"):
             signals["do_not_disturb"] = ["Do Not Disturb"] if self._probe("do not disturb", self._dnd) else []
         return {name: (found if enabled.get(name) else []) for name, found in signals.items()}
 
     def poll(self):
         with self._mutex:
-            settings = copy.deepcopy(self._settings)
+            settings = self._settings  # configure() replaces it, never changes it
         signals = self._read_signals(settings)
         now = self._clock()
         reasons = [name for name in SIGNALS if signals[name]]
-        try:
-            val = settings.get("end_grace_seconds")
-            end_grace = max(0, int(val if val not in (None, "") else 60))
-        except (ValueError, TypeError):
-            end_grace = 60
+        end_grace = settings["end_grace_seconds"]
 
         with self._mutex:
             self._signals = signals
@@ -582,9 +599,9 @@ class ConferenceDetector:
 
     def _notify(self, active, reasons):
         with self._mutex:
-            url = self._settings.get("webhook_url", "").strip()
+            url = self._settings["webhook_url"].strip()
         if url:
-            send_webhook(url, "on" if active else "off", reasons)
+            webhook_dispatcher.send(url, "on" if active else "off", reasons)
 
     def start(self):
         if self._thread is not None:

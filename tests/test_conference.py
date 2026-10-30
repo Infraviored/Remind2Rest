@@ -6,6 +6,7 @@ import stat
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -85,19 +86,49 @@ class ProcTest(unittest.TestCase):
         for i, target in enumerate(fds):
             os.symlink(target, os.path.join(self.root, pid, "fd", str(i)))
 
+    def dev(self, *names):
+        dev_root = os.path.join(self.root, "dev")
+        os.makedirs(dev_root)
+        for name in names:
+            open(os.path.join(dev_root, name), "w").close()
+        return dev_root
+
     def test_video_users_skip_pipewire(self):
         self.proc("10", "pipewire", ["/dev/video0"])
         self.proc("11", "chrome", ["/dev/null", "/dev/video2"])
         self.proc("12", "bash", ["/dev/pts/1"])
         self.proc("13", "pipewire-media-", ["/dev/video1"])
         os.makedirs(os.path.join(self.root, "self"))
-        self.assertEqual(conference.video_device_users(self.root), ["chrome"])
+        dev_root = self.dev("video0", "null")
+        self.assertEqual(conference.video_device_users(self.root, dev_root=dev_root), ["chrome"])
+        comms = conference.proc_comms(self.root)
+        self.assertEqual(comms, {"10": "pipewire", "11": "chrome", "12": "bash", "13": "pipewire-media-"})
+        self.assertEqual(conference.video_device_users(self.root, comms=comms, dev_root=dev_root), ["chrome"])
+
+    def test_no_video_device_skips_the_fd_scan(self):
+        self.proc("11", "chrome", ["/dev/video2"])
+        dev_root = self.dev("null")
+        with patch("src.conference.os.listdir", side_effect=AssertionError("no scan without /dev/video*")):
+            self.assertEqual(conference.video_device_users(self.root, dev_root=dev_root), [])
 
     def test_running_processes_case_insensitive_and_truncated(self):
         self.proc("20", "teams-for-linux")  # comm is cut at 15 characters
         self.proc("21", "Zoom")
         self.assertEqual(conference.running_processes(["teams", "teams-for-linux", "zoom"], self.root),
                          ["teams-for-linux", "zoom"])
+        self.assertEqual(conference.running_processes(["zoom"], comms={"1": "ZOOM"}), ["zoom"])
+
+    def test_detector_reads_proc_once_per_poll(self):
+        reads = []
+        d = ConferenceDetector({"signals": {"processes": True}}, on_change=lambda a, r: None,
+                               read_pipewire=lambda: [], dnd=lambda: False)
+        with patch("src.conference.proc_comms", side_effect=lambda: reads.append(1) or {"1": "zoom"}), \
+             patch("src.conference.glob.glob", return_value=["/dev/video0"]), \
+             patch("src.conference.os.listdir", side_effect=OSError):
+            d.poll()
+            d.poll()
+        self.assertEqual(reads, [1, 1])
+        self.assertEqual(d.state()["signals"]["processes"]["sources"], ["zoom"])
 
 
 class Probes:
@@ -270,6 +301,9 @@ class FakeRegistry:
     def value(self, path, name):
         return self.keys.get(path, {}).get(name)
 
+    def values(self, path, *names):
+        return tuple(self.value(path, name) for name in names)
+
 
 def in_use(start=133000000000000000):
     return {"LastUsedTimeStart": start, "LastUsedTimeStop": 0}
@@ -393,7 +427,8 @@ class WindowsDetectorTest(unittest.TestCase):
         d._on_change = lambda a, r: None
         d.poll()
         self.assertEqual(self.linux_calls, [])
-        self.assertIs(ConferenceDetector({})._processes, conference.running_processes)
+        linux = ConferenceDetector({})
+        self.assertEqual(linux._processes, linux._linux_processes)
 
     def test_windows_signals_from_registry(self):
         reg = FakeRegistry({
@@ -487,7 +522,7 @@ class WebhookTest(unittest.TestCase):
             raise OSError(f"refused: {WEBHOOK}")
         with patch.object(conference.urllib.request, "urlopen", side_effect=fail), \
              self.assertLogs(level="WARNING") as logs:
-            conference.send_webhook(WEBHOOK, "off", [], sleep=lambda s: None).join(5)
+            conference.WebhookDispatcher(backoff=0).send(WEBHOOK, "off", []).wait(5)
         self.assertEqual(len(calls), 3)
         text = "\n".join(logs.output)
         self.assertNotIn("PLACEHOLDER-ID", text)
@@ -505,19 +540,49 @@ class WebhookTest(unittest.TestCase):
                 release_first_post.wait(5)
                 raise OSError("failed to send on")
 
-        dispatcher = conference.WebhookDispatcher(post=mock_post, attempts=3, sleep=lambda s: None)
-        task1 = dispatcher.send(WEBHOOK, "on", ["camera"])
+        dispatcher = conference.WebhookDispatcher(post=mock_post, attempts=3, backoff=5)
+        done1 = dispatcher.send(WEBHOOK, "on", ["camera"])
         started_first_post.wait(5)
-        # While "on" is in progress / failing, queue a newer "off" state
-        task2 = dispatcher.send(WEBHOOK, "off", [])
+        # While "on" is in progress / failing, send a newer "off" state
+        done2 = dispatcher.send(WEBHOOK, "off", [])
         release_first_post.set()
 
-        task1.join(5)
-        task2.join(5)
+        # The 5 s backoff of "on" is cut short by the pending "off".
+        self.assertTrue(done1.wait(2))
+        self.assertTrue(done2.wait(2))
         dispatcher.stop()
 
         # "on" was attempted once; its pending retries were superseded by "off"
         self.assertEqual(posted, ["on", "off"])
+
+    def test_unsent_state_is_replaced_by_newer(self):
+        posted = []
+        release = threading.Event()
+
+        def mock_post(url, state, reasons):
+            posted.append(state)
+            release.wait(5)
+
+        dispatcher = conference.WebhookDispatcher(post=mock_post, attempts=1, backoff=0)
+        done1 = dispatcher.send(WEBHOOK, "on", [])
+        while not posted:
+            time.sleep(0.01)
+        done2 = dispatcher.send(WEBHOOK, "off", [])
+        done3 = dispatcher.send(WEBHOOK, "on", ["camera"])
+        self.assertTrue(done2.is_set())  # superseded before it was tried
+        release.set()
+        self.assertTrue(done1.wait(2) and done3.wait(2))
+        dispatcher.stop()
+        self.assertEqual(posted, ["on", "on"])
+
+    def test_detector_change_goes_to_the_dispatcher(self):
+        sent = []
+        with patch.object(conference.webhook_dispatcher, "send", side_effect=lambda *a: sent.append(a)):
+            ConferenceDetector({"webhook_url": f" {WEBHOOK} "}, dnd=lambda: True, read_pipewire=lambda: [],
+                               video_users=lambda: [], processes=lambda names: []).poll()
+            ConferenceDetector({}, read_pipewire=lambda: [], video_users=lambda: [], dnd=lambda: False,
+                               processes=lambda names: []).poll()
+        self.assertEqual(sent, [(WEBHOOK, "on", ["do_not_disturb"])])
 
     def test_redact_drops_credentials_and_path(self):
         self.assertEqual(conference.redact("https://user:pw@ha.example.invalid:8123/api/webhook/x"),
@@ -580,6 +645,18 @@ class ConfigTest(unittest.TestCase):
         validate_config(c_missing)
         self.assertTrue(c_missing["conference"]["microphone_needs_app"])
 
+    def test_normalize_is_shared_and_idempotent(self):
+        conf = conference.normalize({"signals": "x", "processes": ["zoom", "", 3], "end_grace_seconds": "-5",
+                                     "extra": 1})
+        self.assertEqual(conf["signals"], conference.DEFAULTS["signals"])
+        self.assertEqual(conf["processes"], ["zoom", "3"])
+        self.assertEqual(conf["end_grace_seconds"], 0)
+        self.assertEqual(conf["extra"], 1)
+        self.assertEqual(conference.normalize(json.loads(json.dumps(conf))), conf)
+        self.assertEqual(conference.normalize(None), conference.normalize({}))
+        self.assertEqual(conference.normalize({"end_grace_seconds": "soon"})["end_grace_seconds"], 60)
+        self.assertEqual(conference.SIGNALS, tuple(conference.DEFAULTS["signals"]))
+
     @unittest.skipIf(os.name == "nt", "POSIX file modes")
     def test_config_file_is_owner_only(self):
         import src.config as config
@@ -598,6 +675,48 @@ class ConfigTest(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+class ConfiguratorWebhookTest(unittest.TestCase):
+    """The settings page never gets the saved webhook URL, only webhook_set and webhook_masked."""
+
+    def setUp(self):
+        import src.configurator as configurator
+        from src.library import fill_defaults
+        self.configurator = configurator
+        self.stored = fill_defaults({"global_interval": 60, "conference": {"webhook_url": WEBHOOK}})
+        self.saved = []
+        for name, value in (("load_config", lambda: json.loads(json.dumps(self.stored))),
+                            ("save_config", self.saved.append), ("send_command_to_service", lambda c: True)):
+            patcher = patch.object(configurator, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.api = configurator.Api()
+
+    def test_page_gets_only_the_masked_url(self):
+        conf = self.api.get_config()["conference"]
+        self.assertEqual((conf["webhook_url"], conf["webhook_set"], conf["webhook_masked"]),
+                         ("", True, "https://ha.example.invalid/…"))
+        self.assertNotIn("PLACEHOLDER-ID", json.dumps(self.api.get_config()))
+        self.assertEqual(self.api.mask_webhook("not a url"), "…")
+
+    def test_save_keeps_replaces_or_removes(self):
+        for sent, set_, expected in (("", True, WEBHOOK), ("https://new.invalid/x", True, "https://new.invalid/x"),
+                                     ("", False, "")):
+            config = self.api.get_config()
+            config["conference"].update(webhook_url=sent, webhook_set=set_)
+            self.api.save_config(config)
+            conf = self.saved[-1]["conference"]
+            self.assertEqual(conf["webhook_url"], expected)
+            self.assertNotIn("webhook_set", conf)
+            self.assertNotIn("webhook_masked", conf)
+
+    def test_test_without_url_uses_the_saved_one(self):
+        posted = []
+        with patch.object(self.configurator, "post_webhook", side_effect=lambda url, *a: posted.append(url) or 200):
+            self.assertEqual(self.api.test_webhook()["status"], "success")
+            self.api.test_webhook(" https://new.invalid/x ")
+        self.assertEqual(posted, [WEBHOOK, "https://new.invalid/x"])
 
 
 if __name__ == "__main__":
