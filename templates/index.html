@@ -283,7 +283,7 @@
                     <div class="absolute inset-x-0 top-0 bottom-5 pointer-events-none">
                         <div v-for="t in ticks" :key="'g' + t" class="absolute top-0 bottom-0 w-px bg-white/[0.04]" :style="{ left: percent(t) }"></div>
                         <div v-for="(c, i) in collisions" :key="'c' + i" title="Reminders of different types close together"
-                            class="absolute -top-0.5 -bottom-0.5 rounded bg-amber-400/[0.09]"
+                            class="absolute -top-0.5 -bottom-0.5 rounded bg-amber-400/[0.09] pointer-events-auto cursor-help"
                             :style="{ left: percent(c[0]), width: percent(c[1] - c[0]) }"></div>
                     </div>
                     <div class="relative flex flex-col gap-1">
@@ -310,10 +310,10 @@
                         <span v-for="t in ticks" :key="'t' + t" class="absolute top-1 -translate-x-1/2" :style="{ left: percent(t) }">{{ t }}</span>
                     </div>
                     <!-- Now: thin line through the lanes, a small label on the axis -->
-                    <div class="absolute top-0 bottom-0 pointer-events-none z-10" :style="{ left: percent(now) }"
-                        :title="'Now, minute ' + Math.floor(now) + ' of the cycle'">
+                    <div class="absolute top-0 bottom-0 pointer-events-none z-10" :style="{ left: percent(now) }">
                         <div class="absolute top-0 bottom-5 w-px -translate-x-1/2 bg-rose-400/70"></div>
-                        <span class="absolute bottom-0 -translate-x-1/2 px-1 rounded text-[9px] font-bold uppercase tracking-wider text-rose-300 bg-background">now</span>
+                        <span class="absolute bottom-0 -translate-x-1/2 px-1 rounded text-[9px] font-bold uppercase tracking-wider text-rose-300 bg-background pointer-events-auto cursor-help"
+                            :title="'Now, minute ' + Math.floor(now) + ' of the cycle'">now</span>
                     </div>
                 </div>
             </div>
