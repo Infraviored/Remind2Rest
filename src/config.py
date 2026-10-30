@@ -32,6 +32,8 @@ def load_config():
             default_config = fill_defaults({"global_interval": 60})
             save_config(default_config)
             return default_config
+        if os.name != "nt" and os.stat(CONFIG_PATH).st_mode & 0o077:
+            os.chmod(CONFIG_PATH, 0o600)  # see save_config
         with open(CONFIG_PATH, "r") as file:
             config = json.load(file)
         config = fill_defaults(config)
@@ -44,7 +46,11 @@ def load_config():
 def save_config(config):
     try:
         os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-        with open(CONFIG_PATH, "w") as file:
+        # Owner only: conference.webhook_url carries a secret (a Home Assistant webhook id).
+        fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        if os.name != "nt":
+            os.fchmod(fd, 0o600)  # a file from older versions may be world-readable
+        with os.fdopen(fd, "w") as file:
             json.dump(config, file, indent=2)
     except Exception as e:
         logging.error(f"Error saving configuration: {e}")
