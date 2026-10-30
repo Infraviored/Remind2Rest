@@ -144,6 +144,29 @@
             margin: 0;
         }
 
+        /* Conference section: checkboxes and free text inside a field box */
+        .field input[type="checkbox"] {
+            border: 1px solid #424753;
+            background-color: #1a1b1e;
+            border-radius: 0.25rem;
+        }
+
+        .field input[type="checkbox"]:checked {
+            background-color: currentColor;
+        }
+
+        .field input[type="text"],
+        .field input[type="url"] {
+            flex: 1 1 auto;
+            min-width: 6ch;
+            text-align: left;
+            font-weight: 500;
+        }
+
+        .field input::placeholder {
+            color: #424753;
+        }
+
         .field:focus-within {
             box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.5);
         }
@@ -316,6 +339,50 @@
                             :title="'Now, minute ' + Math.floor(now) + ' of the cycle'">now</span>
                     </div>
                 </div>
+            </div>
+        </section>
+
+        <!-- Conference: reminders wait while one of the enabled signals is active (src/conference.py) -->
+        <section v-if="config.conference" class="glass-card rounded-2xl px-4 py-3 border border-outline-variant/10 space-y-2">
+            <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-xl text-rose-300">videocam</span>
+                <h3 class="text-base font-bold tracking-tight">Conference</h3>
+                <p class="flex-1 text-[11px] text-outline truncate">Reminders wait while any checked signal is active and show 60 s after the call</p>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+                <label v-for="s in conferenceSignals" :key="s.key" class="field cursor-pointer" :title="s.hint">
+                    <input type="checkbox" v-model="config.conference.signals[s.key]"
+                        class="w-4 h-4 rounded border-outline-variant bg-surface-container-lowest text-rose-300" />
+                    <span>{{ s.label }}</span>
+                </label>
+                <label class="field" title="How long no signal must be active before the conference counts as ended">
+                    <span>End after</span>
+                    <input v-model.number="config.conference.end_grace_seconds" type="number" min="0" :style="fitWidth(config.conference.end_grace_seconds)" />
+                    <span>s</span>
+                </label>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+                <label class="field" style="flex: 1 1 0" title="Apps whose microphone use is not a call (application name or binary, comma-separated)">
+                    <span>Ignore mic of</span>
+                    <input :value="listText('ignore_apps')" @change="setList('ignore_apps', $event)" type="text"
+                        placeholder="VibeVoice" />
+                </label>
+                <label class="field" style="flex: 1 1 0" :title="'Process names that count as a call while running (comma-separated)' + (config.conference.signals.processes ? '' : '; the Apps signal is off')">
+                    <span>Apps</span>
+                    <input :value="listText('processes')" @change="setList('processes', $event)" type="text"
+                        placeholder="teams, zoom" />
+                </label>
+            </div>
+            <div class="flex gap-1.5">
+                <label class="field" style="flex: 1 1 0" title="POSTed as JSON on every start and end of a conference; empty = off">
+                    <span>Webhook</span>
+                    <input v-model.trim="config.conference.webhook_url" type="url"
+                        placeholder="https://homeassistant.local:8123/api/webhook/<id>" />
+                </label>
+                <button @click.prevent="testWebhook" :disabled="!config.conference.webhook_url"
+                    class="flex items-center gap-1 px-3 h-7 rounded-lg text-xs font-semibold text-slate-200 bg-surface-container-highest hover:bg-white/10 active:scale-95 transition-all disabled:opacity-40">
+                    <span class="material-symbols-outlined text-base">send</span> Send test
+                </button>
             </div>
         </section>
     </div>

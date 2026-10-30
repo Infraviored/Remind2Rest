@@ -8,6 +8,7 @@ from pathlib import Path
 import threading
 import webview
 
+from src.conference import post_webhook, redact
 from src.config import ADDR, SOCKET_FAMILY, load_config, save_config
 from src.library import LIBRARY
 from src.scheduler import spawn_reminder
@@ -98,6 +99,17 @@ class Api:
         if send_command_to_service(f"TRIGGER {module} {json.dumps(settings)}") is None:
             self._spawn_fallback(module, settings)
         return {"status": "success"}
+
+    def test_webhook(self, url):
+        """POSTs state "test" to the conference webhook once, so the user sees whether it arrives."""
+        url = (url or "").strip()
+        if not url.startswith(("http://", "https://")):
+            return {"status": "error", "message": "Enter an http:// or https:// URL first"}
+        try:
+            code = post_webhook(url, "test", [])
+            return {"status": "success", "message": f"Test sent to {redact(url)} (HTTP {code})"}
+        except Exception as e:
+            return {"status": "error", "message": f"Test failed: {str(e).replace(url, redact(url))}"}
 
     def service_info(self):
         running = is_service_running()

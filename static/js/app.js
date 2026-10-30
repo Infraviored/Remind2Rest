@@ -12,6 +12,15 @@ const COLLISION_MINUTES = 2;
 // Pointer travel (px) below which pressing a marker counts as a click (remove), not a drag.
 const DRAG_THRESHOLD = 4;
 
+// Conference signals in the order of src/conference.py SIGNALS.
+const CONFERENCE_SIGNALS = [
+    { key: 'screen_share', label: 'Screen share', hint: 'Screen sharing or a screencast (top bar extension, else PipeWire)' },
+    { key: 'microphone', label: 'Microphone', hint: 'An app records from the microphone' },
+    { key: 'camera', label: 'Camera', hint: 'An app uses the camera' },
+    { key: 'processes', label: 'Apps', hint: 'One of the apps below runs' },
+    { key: 'do_not_disturb', label: 'Do Not Disturb', hint: "GNOME's Do Not Disturb is on" }
+];
+
 // distributeReminders() and circularDistance() come from static/js/distribute.js, loaded before this file.
 
 new Vue({
@@ -21,6 +30,7 @@ new Vue({
             // Filled from the reminder library (src/library.py) in mounted().
             config: { global_interval: 60 },
             modules: [],
+            conferenceSignals: CONFERENCE_SIGNALS,
             serviceStatus: 'Unknown',
             isServiceRunning: false,
             isServiceEnabled: false,
@@ -95,6 +105,18 @@ new Vue({
         testReminder(module) {
             call('test_reminder', module, this.config[module])
                 .catch(error => alert(`Error triggering test reminder: ${error.message || error}`));
+        },
+        testWebhook() {
+            call('test_webhook', this.config.conference.webhook_url)
+                .then(result => this.showStatus(result.status === 'success', result.message))
+                .catch(error => this.showStatus(false, `Test failed: ${error.message || error}`));
+        },
+        // Conference name lists, edited as comma-separated text.
+        listText(key) {
+            return (this.config.conference[key] || []).join(', ');
+        },
+        setList(key, event) {
+            this.config.conference[key] = event.target.value.split(',').map(s => s.trim()).filter(Boolean);
         },
         // Library labels look like "Duration (s)": the name before the brackets, the unit inside.
         fieldName(label) {
