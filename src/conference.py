@@ -2,11 +2,18 @@
 microphone or camera, a meeting app, GNOME's Do Not Disturb. Polled every POLL_INTERVAL seconds in its
 own thread, so a slow pw-dump never holds up the scheduler tick; the gate only reads the result.
 
+On Windows the signals come from elsewhere (see "Windows probes" below): camera and microphone from the
+registry's CapabilityAccessManager consent store, processes from tasklist, Do Not Disturb (best effort)
+from the notification settings. Screen sharing has no reliable source there and stays off. None of the
+Linux tools (pw-dump, gsettings, /proc) is run on Windows.
+
 Each signal can be switched off in config["conference"]["signals"]. The conference is on while any
 enabled signal is, and off once none has been for end_grace_seconds (a call that drops for a moment
 does not end it). Each change of state is logged and, if conference.webhook_url is set, POSTed there.
 """
 import copy
+import csv
+import io
 import json
 import logging
 import os
@@ -25,13 +32,17 @@ EXTENSION_FRESH = 15    # s a SCREENSHARE report of the GNOME extension stays va
 WEBHOOK_TIMEOUT = 10    # s per webhook attempt
 WEBHOOK_ATTEMPTS = 3
 
+IS_WINDOWS = os.name == "nt"
+CREATE_NO_WINDOW = 0x08000000  # subprocess.CREATE_NO_WINDOW, which only exists on Windows builds
+
 SIGNALS = ("screen_share", "microphone", "camera", "processes", "do_not_disturb")
 
 DEFAULTS = {
     "signals": {"screen_share": True, "microphone": True, "camera": True, "processes": False,
                 "do_not_disturb": True},
     "ignore_apps": ["VibeVoice"],
-    "processes": ["teams", "teams-for-linux", "zoom"],
+    # On Windows matched without ".exe": teams = classic Teams.exe, ms-teams = new Teams, zoom = Zoom.exe.
+    "processes": ["teams", "teams-for-linux", "ms-teams", "zoom"],
     "end_grace_seconds": 60,
     "webhook_url": "",
 }
@@ -173,6 +184,107 @@ def read_pipewire():
     return json.loads(out.stdout)
 
 
+# ---- Windows probes. The registry is read through a small reader, so the tests can fake it. ----
+
+CONSENT_STORE = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore"
+NOTIFICATION_SETTINGS = r"Software\Microsoft\Windows\CurrentVersion\Notifications\Settings"
+# Microphone or camera use that is no call: the Settings app's level meter and camera preview.
+WINDOWS_METER_APPS = {"windows.immersivecontrolpanel"}
+
+
+class WindowsRegistry:
+    """Read-only HKEY_CURRENT_USER access: subkeys(path) -> names ([] if the key is missing),
+    value(path, name) -> data (None if missing). winreg is imported here, so only on Windows."""
+
+    def __init__(self):
+        import winreg
+        self._winreg = winreg
+
+    def subkeys(self, path):
+        winreg = self._winreg
+        try:
+            key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, path)
+        except FileNotFoundError:
+            return []
+        names = []
+        with key:
+            while True:
+                try:
+                    names.append(winreg.EnumKey(key, len(names)))
+                except OSError:  # no more subkeys
+                    return names
+
+    def value(self, path, name):
+        winreg = self._winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as key:
+                return winreg.QueryValueEx(key, name)[0]
+        except FileNotFoundError:
+            return None
+
+
+def _strip_exe(name):
+    name = name.lower()
+    return name[:-4] if name.endswith(".exe") else name
+
+
+def windows_app_name(key, packaged):
+    """A consent store subkey as a readable name: "C:#Program Files#Google#Chrome#Application#chrome.exe"
+    (desktop app, its path with # for \\) -> "chrome.exe"; package family "MSTeams_8wekyb3d8bbwe" -> "MSTeams"."""
+    if packaged:
+        return key.rpartition("_")[0] or key
+    return key.rpartition("#")[2] or key
+
+
+def consent_store_users(device, ignore_apps=(), registry=None):
+    """Apps using the camera (device "webcam") or the microphone ("microphone") right now, from
+    HKCU\\...\\ConsentStore\\<device>: a subkey per packaged app, and a subkey per desktop app under
+    NonPackaged. An app uses the device while its LastUsedTimeStop is 0 and LastUsedTimeStart is set.
+    HKCU is enough: it records every app the logged-in user runs. HKLM holds the machine-wide
+    allow/deny switch and use by services or other accounts, which is no call of this user."""
+    registry = registry or WindowsRegistry()
+    ignore = {_strip_exe(name) for name in ignore_apps}
+    base = f"{CONSENT_STORE}\\{device}"
+    entries = [(f"{base}\\{key}", key, True) for key in registry.subkeys(base) if key != "NonPackaged"]
+    entries += [(f"{base}\\NonPackaged\\{key}", key, False) for key in registry.subkeys(f"{base}\\NonPackaged")]
+    users = set()
+    for path, key, packaged in entries:
+        start, stop = registry.value(path, "LastUsedTimeStart"), registry.value(path, "LastUsedTimeStop")
+        if not (isinstance(start, int) and start > 0 and stop == 0):
+            continue
+        name = windows_app_name(key, packaged)
+        if {_strip_exe(name), key.lower()} & (ignore | WINDOWS_METER_APPS):
+            continue
+        users.add(name)
+    return sorted(users)
+
+
+def windows_dnd_active(registry=None):
+    """Best effort: Windows has no stable API for Focus Assist / Do Not Disturb. Windows 11 writes
+    NOC_GLOBAL_SETTING_TOASTS_ENABLED = 0 while notifications are switched off; missing counts as off."""
+    registry = registry or WindowsRegistry()
+    return registry.value(NOTIFICATION_SETTINGS, "NOC_GLOBAL_SETTING_TOASTS_ENABLED") == 0
+
+
+def run_tasklist():
+    """tasklist's CSV, without a console window flashing up."""
+    out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, errors="replace",
+                         timeout=TOOL_TIMEOUT, check=True, creationflags=CREATE_NO_WINDOW)
+    return out.stdout
+
+
+def parse_tasklist(text):
+    """Image names from `tasklist /FO CSV /NH` lines like "Teams.exe","1234","Console","1","200,000 K"."""
+    return {row[0] for row in csv.reader(io.StringIO(text)) if len(row) >= 2 and row[0]}
+
+
+def windows_running_processes(names, tasklist=run_tasklist):
+    """Which of `names` run, matched case-insensitively and with or without ".exe"."""
+    wanted = {_strip_exe(name): name for name in names if name}
+    running = {_strip_exe(image) for image in parse_tasklist(tasklist())}
+    return sorted(wanted[name] for name in wanted.keys() & running)
+
+
 # ---- Webhook ----
 
 def redact(url):
@@ -301,18 +413,25 @@ class ConferenceDetector:
     webhook receiver learns the state after a reboot.
 
     The probes are injectable for the tests: read_pipewire() -> pw-dump JSON, video_users() -> process
-    names, processes(names) -> running names, dnd() -> bool.
+    names, processes(names) -> running names, dnd() -> bool, registry -> a WindowsRegistry stand-in.
+    windows (default: os.name == "nt") picks the Windows probes; the Linux ones are then never called.
     """
 
     def __init__(self, settings=None, clock=time.monotonic, on_change=None, read_pipewire=read_pipewire,
-                 video_users=video_device_users, processes=running_processes, dnd=dnd_active):
+                 video_users=video_device_users, processes=None, dnd=None, windows=None, registry=None):
         self._settings = fill_defaults({"conference": copy.deepcopy(settings or {})})["conference"]
         self._clock = clock
         self._on_change = on_change or self._notify
+        self._windows = IS_WINDOWS if windows is None else bool(windows)
+        self._registry = registry  # created on first use, so winreg is only imported on Windows
         self._read_pipewire = read_pipewire
         self._video_users = video_users
-        self._processes = processes
-        self._dnd = dnd
+        if self._windows:
+            self._processes = processes or windows_running_processes
+            self._dnd = dnd or (lambda: windows_dnd_active(self._hkcu()))
+        else:
+            self._processes = processes or running_processes
+            self._dnd = dnd or dnd_active
         self._mutex = threading.Lock()
         self._signals = {name: [] for name in SIGNALS}
         self._active = False
@@ -370,10 +489,24 @@ class ConferenceDetector:
                 logging.warning(f"Conference probe {name} failed{hint}: {e}; that signal counts as off")
             return None
 
+    def _hkcu(self):
+        if self._registry is None:
+            self._registry = WindowsRegistry()
+        return self._registry
+
+    def _read_windows_devices(self, settings, signals):
+        """Camera and microphone from the consent store. Windows offers no screen share source."""
+        for name, device in (("microphone", "microphone"), ("camera", "webcam")):
+            if settings["signals"].get(name):
+                signals[name] = self._probe(f"{device} registry", lambda d=device: consent_store_users(
+                    d, settings["ignore_apps"], self._hkcu())) or []
+
     def _read_signals(self, settings):
         enabled = settings["signals"]
         signals = {name: [] for name in SIGNALS}
-        if enabled.get("microphone") or enabled.get("camera") or enabled.get("screen_share"):
+        if self._windows:
+            self._read_windows_devices(settings, signals)
+        elif enabled.get("microphone") or enabled.get("camera") or enabled.get("screen_share"):
             nodes = self._probe("pw-dump", self._read_pipewire)
             if nodes is not None:
                 signals.update(pipewire_signals(nodes, settings["ignore_apps"]))
@@ -381,7 +514,7 @@ class ConferenceDetector:
             extension = self._extension if self._extension_fresh() else None
         if extension is not None and extension[0]:
             signals["screen_share"] = sorted(set(signals["screen_share"]) | {"GNOME Shell"})
-        if enabled.get("camera"):
+        if enabled.get("camera") and not self._windows:
             users = self._probe("/proc fd scan", self._video_users) or []
             signals["camera"] = sorted(set(signals["camera"]) | set(users))
         if enabled.get("processes"):

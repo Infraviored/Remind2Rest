@@ -75,7 +75,7 @@ def validate_config(config):
         for sig in ("screen_share", "microphone", "camera", "processes", "do_not_disturb"):
             if sig in conf["signals"]:
                 conf["signals"][sig] = bool(conf["signals"][sig])
-        for key, default in (("ignore_apps", ["VibeVoice"]), ("processes", ["teams", "teams-for-linux", "zoom"])):
+        for key, default in (("ignore_apps", ["VibeVoice"]), ("processes", ["teams", "teams-for-linux", "ms-teams", "zoom"])):
             if not isinstance(conf.get(key), list):
                 conf[key] = default
             else:

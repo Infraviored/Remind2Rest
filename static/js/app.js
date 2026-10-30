@@ -12,13 +12,16 @@ const COLLISION_MINUTES = 2;
 // Pointer travel (px) below which pressing a marker counts as a click (remove), not a drag.
 const DRAG_THRESHOLD = 4;
 
-// Conference signals in the order of src/conference.py SIGNALS.
+// Conference signals in the order of src/conference.py SIGNALS. winHint replaces hint on Windows;
+// winHint null = the signal cannot be detected there.
 const CONFERENCE_SIGNALS = [
-    { key: 'screen_share', label: 'Screen share', hint: 'Screen sharing or a screencast (top bar extension, else PipeWire)' },
+    { key: 'screen_share', label: 'Screen share', hint: 'Screen sharing or a screencast (top bar extension, else PipeWire)',
+      winHint: null },
     { key: 'microphone', label: 'Microphone', hint: 'An app records from the microphone' },
     { key: 'camera', label: 'Camera', hint: 'An app uses the camera' },
     { key: 'processes', label: 'Apps', hint: 'One of the apps below runs' },
-    { key: 'do_not_disturb', label: 'Do Not Disturb', hint: "GNOME's Do Not Disturb is on" }
+    { key: 'do_not_disturb', label: 'Do Not Disturb', hint: "GNOME's Do Not Disturb is on",
+      winHint: 'Windows notifications are switched off (best effort)' }
 ];
 
 // distributeReminders() and circularDistance() come from static/js/distribute.js, loaded before this file.
@@ -30,7 +33,8 @@ new Vue({
             // Filled from the reminder library (src/library.py) in mounted().
             config: { global_interval: 60 },
             modules: [],
-            conferenceSignals: CONFERENCE_SIGNALS,
+            // 'windows' or 'linux', from the Api in mounted().
+            platform: 'linux',
             serviceStatus: 'Unknown',
             isServiceRunning: false,
             isServiceEnabled: false,
@@ -48,6 +52,16 @@ new Vue({
     computed: {
         cycle() {
             return this.config.global_interval;
+        },
+        // CONFERENCE_SIGNALS for this platform: { key, label, hint, unavailable }.
+        conferenceSignals() {
+            const windows = this.platform === 'windows';
+            return CONFERENCE_SIGNALS.map(s => {
+                const unavailable = windows && s.winHint === null;
+                const hint = unavailable ? 'Not available on Windows'
+                    : windows && s.winHint ? s.winHint : s.hint;
+                return { key: s.key, label: s.label, hint, unavailable };
+            });
         },
         enabledModules() {
             return this.modules.filter(m => this.config[m.key].enabled);
@@ -300,6 +314,10 @@ new Vue({
                 this.updateNow();
             })
             .catch(error => this.showStatus(false, `Could not load config: ${error.message || error}`));
+
+        call('get_platform')
+            .then(platform => { this.platform = platform; })
+            .catch(() => {});
 
         call('service_info')
             .then(info => {

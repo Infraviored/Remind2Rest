@@ -216,6 +216,175 @@ class DetectorTest(unittest.TestCase):
             self.assertFalse(conference.dnd_active())
 
 
+STORE = conference.CONSENT_STORE
+CHROME = "C:#Program Files#Google#Chrome#Application#chrome.exe"
+VIBEVOICE = "C:#Users#me#VibeVoice#VibeVoice.exe"
+
+
+class FakeRegistry:
+    """Stands in for WindowsRegistry: keys maps a path to its values; subkeys are derived from paths."""
+
+    def __init__(self, keys):
+        self.keys = keys
+
+    def subkeys(self, path):
+        prefix = path + "\\"
+        return sorted({p[len(prefix):].split("\\")[0] for p in self.keys if p.startswith(prefix)})
+
+    def value(self, path, name):
+        return self.keys.get(path, {}).get(name)
+
+
+def in_use(start=133000000000000000):
+    return {"LastUsedTimeStart": start, "LastUsedTimeStop": 0}
+
+
+def used_before():
+    return {"LastUsedTimeStart": 133000000000000000, "LastUsedTimeStop": 133000000100000000}
+
+
+class WindowsProbesTest(unittest.TestCase):
+    def test_consent_store_in_use_vs_not(self):
+        reg = FakeRegistry({
+            f"{STORE}\\webcam\\MSTeams_8wekyb3d8bbwe": in_use(),
+            f"{STORE}\\webcam\\Microsoft.WindowsCamera_8wekyb3d8bbwe": used_before(),
+            f"{STORE}\\webcam\\NonPackaged\\{CHROME}": in_use(),
+            f"{STORE}\\webcam\\NonPackaged\\C:#Tools#never.exe": {"LastUsedTimeStart": 0, "LastUsedTimeStop": 0},
+            f"{STORE}\\webcam\\NonPackaged\\C:#Tools#nostop.exe": {"LastUsedTimeStart": 5},
+            f"{STORE}\\microphone\\NonPackaged\\C:#Zoom#Zoom.exe": in_use(),
+        })
+        self.assertEqual(conference.consent_store_users("webcam", [], reg), ["MSTeams", "chrome.exe"])
+        self.assertEqual(conference.consent_store_users("microphone", [], reg), ["Zoom.exe"])
+
+    def test_missing_store_means_nobody(self):
+        self.assertEqual(conference.consent_store_users("webcam", [], FakeRegistry({})), [])
+
+    def test_app_names(self):
+        self.assertEqual(conference.windows_app_name(CHROME, packaged=False), "chrome.exe")
+        self.assertEqual(conference.windows_app_name("MSTeams_8wekyb3d8bbwe", packaged=True), "MSTeams")
+        self.assertEqual(conference.windows_app_name("NoPublisherHash", packaged=True), "NoPublisherHash")
+
+    def test_ignore_apps_and_settings_meter(self):
+        reg = FakeRegistry({
+            f"{STORE}\\microphone\\NonPackaged\\{VIBEVOICE}": in_use(),
+            f"{STORE}\\microphone\\windows.immersivecontrolpanel_cw5n1h2txyewy": in_use(),
+            f"{STORE}\\microphone\\MSTeams_8wekyb3d8bbwe": in_use(),
+        })
+        # "VibeVoice" matches VibeVoice.exe, case-insensitively and without ".exe".
+        self.assertEqual(conference.consent_store_users("microphone", ["vibevoice"], reg), ["MSTeams"])
+        self.assertEqual(conference.consent_store_users("microphone", ["VibeVoice", "msteams"], reg), [])
+        self.assertEqual(conference.consent_store_users("microphone", [], reg), ["MSTeams", "VibeVoice.exe"])
+
+    def test_dnd_value(self):
+        path = conference.NOTIFICATION_SETTINGS
+        self.assertTrue(conference.windows_dnd_active(
+            FakeRegistry({path: {"NOC_GLOBAL_SETTING_TOASTS_ENABLED": 0}})))
+        self.assertFalse(conference.windows_dnd_active(
+            FakeRegistry({path: {"NOC_GLOBAL_SETTING_TOASTS_ENABLED": 1}})))
+        self.assertFalse(conference.windows_dnd_active(FakeRegistry({})))
+
+    def test_tasklist_parsing_and_matching(self):
+        csv_text = ('"System Idle Process","0","Services","0","8 K"\n'
+                    '"ms-teams.exe","4242","Console","1","200.000 K"\n'
+                    '"Zoom.exe","77","Console","1","1,024 K"\n'
+                    '"explorer.exe","100","Console","1","90,000 K"\n'
+                    '\n')
+        self.assertEqual(conference.parse_tasklist(csv_text),
+                         {"System Idle Process", "ms-teams.exe", "Zoom.exe", "explorer.exe"})
+        found = conference.windows_running_processes(["teams", "ms-teams", "ZOOM.EXE", "Teams.exe"],
+                                                     tasklist=lambda: csv_text)
+        self.assertEqual(found, ["ZOOM.EXE", "ms-teams"])
+        # tasklist's localized "no tasks" line is not CSV and matches nothing.
+        self.assertEqual(conference.windows_running_processes(["teams"], tasklist=lambda: "INFO: none.\n"), [])
+
+    def test_tasklist_runs_without_console_window(self):
+        class Done:
+            stdout = '"Zoom.exe","1","Console","1","1 K"\n'
+        with patch("src.conference.subprocess.run", return_value=Done()) as run:
+            self.assertEqual(conference.run_tasklist(), Done.stdout)
+        kwargs = run.call_args.kwargs
+        self.assertEqual(run.call_args.args[0], ["tasklist", "/FO", "CSV", "/NH"])
+        self.assertEqual(kwargs["creationflags"], 0x08000000)
+        self.assertEqual(kwargs["timeout"], conference.TOOL_TIMEOUT)
+
+
+class WindowsDetectorTest(unittest.TestCase):
+    def linux_probe(self, name):
+        def probe(*args):
+            self.linux_calls.append(name)
+            return []
+        return probe
+
+    def setUp(self):
+        self.linux_calls = []
+        self.changes = []
+
+    def detector(self, registry, settings=None, **kw):
+        return ConferenceDetector(settings or {}, clock=lambda: 1000.0, on_change=lambda a, r: self.changes.append((a, r)),
+                                  read_pipewire=self.linux_probe("pw-dump"), video_users=self.linux_probe("proc"),
+                                  windows=True, registry=registry, **kw)
+
+    def test_idle_windows_is_all_off_without_linux_tools(self):
+        settings = {"signals": {name: True for name in conference.SIGNALS}}
+        with patch("src.conference.subprocess.run",
+                   side_effect=AssertionError("no subprocess on simulated Windows")) as run, \
+             patch("src.conference.os.listdir", side_effect=AssertionError("no /proc on Windows")):
+            d = self.detector(FakeRegistry({}), settings, processes=lambda names: [])
+            d.poll()
+        run.assert_not_called()
+        self.assertEqual(self.linux_calls, [])
+        self.assertFalse(d.active)
+        self.assertEqual(self.changes, [(False, [])])
+        self.assertTrue(all(not s["active"] for s in d.state()["signals"].values()))
+
+    def test_os_name_nt_picks_windows_probes(self):
+        with patch.object(conference, "IS_WINDOWS", True):
+            d = ConferenceDetector({}, read_pipewire=self.linux_probe("pw-dump"), registry=FakeRegistry({}))
+        self.assertIs(d._processes, conference.windows_running_processes)
+        d._on_change = lambda a, r: None
+        d.poll()
+        self.assertEqual(self.linux_calls, [])
+        self.assertIs(ConferenceDetector({})._processes, conference.running_processes)
+
+    def test_windows_signals_from_registry(self):
+        reg = FakeRegistry({
+            f"{STORE}\\microphone\\MSTeams_8wekyb3d8bbwe": in_use(),
+            f"{STORE}\\webcam\\NonPackaged\\{CHROME}": in_use(),
+            conference.NOTIFICATION_SETTINGS: {"NOC_GLOBAL_SETTING_TOASTS_ENABLED": 0},
+        })
+        d = self.detector(reg, {"signals": {"processes": True}}, processes=lambda names: ["teams"])
+        d.report_screenshare(True)  # a stray SCREENSHARE stays harmless
+        d.poll()
+        state = d.state()
+        self.assertTrue(state["active"])
+        self.assertEqual(state["signals"]["microphone"]["sources"], ["MSTeams"])
+        self.assertEqual(state["signals"]["camera"]["sources"], ["chrome.exe"])
+        self.assertEqual(state["signals"]["do_not_disturb"]["sources"], ["Do Not Disturb"])
+        self.assertEqual(state["signals"]["processes"]["sources"], ["teams"])
+        self.assertEqual(self.linux_calls, [])
+
+    def test_broken_registry_never_crashes(self):
+        class Broken:
+            def subkeys(self, path):
+                raise PermissionError("access denied")
+
+            def value(self, path, name):
+                raise OSError("boom")
+        d = self.detector(Broken())
+        with self.assertLogs(level="WARNING") as logs:
+            d.poll()
+            d.poll()
+        self.assertFalse(d.active)
+        self.assertEqual(len([line for line in logs.output if "webcam registry" in line]), 1)
+
+    def test_missing_winreg_never_crashes(self):
+        # On Linux there is no winreg: the import error is logged once per probe and the signals stay off.
+        d = ConferenceDetector({}, on_change=lambda a, r: None, windows=True, processes=lambda names: [])
+        with self.assertLogs(level="WARNING"):
+            d.poll()
+        self.assertFalse(d.active)
+
+
 class FakeResponse:
     status = 200
 

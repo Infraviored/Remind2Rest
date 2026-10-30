@@ -350,10 +350,12 @@
                 <p class="flex-1 text-[11px] text-outline truncate">Reminders wait while any checked signal is active and show when the call has been over for {{ config.conference.end_grace_seconds }} s</p>
             </div>
             <div class="flex flex-wrap gap-1.5">
-                <label v-for="s in conferenceSignals" :key="s.key" class="field cursor-pointer" :title="s.hint">
-                    <input type="checkbox" v-model="config.conference.signals[s.key]"
+                <label v-for="s in conferenceSignals" :key="s.key" class="field"
+                    :class="s.unavailable ? 'opacity-50' : 'cursor-pointer'" :title="s.hint">
+                    <input type="checkbox" v-model="config.conference.signals[s.key]" :disabled="s.unavailable"
                         class="w-4 h-4 rounded border-outline-variant bg-surface-container-lowest text-rose-300" />
                     <span>{{ s.label }}</span>
+                    <span v-if="s.unavailable" class="text-[10px] text-outline">not available on Windows</span>
                 </label>
                 <label class="field" title="How long no signal must be active before the conference counts as ended">
                     <span>End after</span>

@@ -83,10 +83,23 @@ The daemon checks every 3 s whether a call is running (`src/conference.py`). Eac
 | Screen share | on | The screen is shared or recorded. The top bar extension reports GNOME's own screen-sharing sessions; without it, PipeWire's screencast streams (`meta-screen-cast-src`) are used. |
 | Microphone | on | An app records from the microphone (PipeWire capture stream in state `running`). Recordings of the speakers (monitors), level meters (pavucontrol, GNOME Shell) and the apps in *Ignore mic of* (default `VibeVoice`) do not count. |
 | Camera | on | A camera's PipeWire node is running, or any process other than PipeWire has a `/dev/video*` open (Chrome and Teams open it directly). |
-| Apps | off | One of the listed processes runs (default `teams`, `teams-for-linux`, `zoom`). |
+| Apps | off | One of the listed processes runs (default `teams`, `teams-for-linux`, `ms-teams`, `zoom`). |
 | Do Not Disturb | on | GNOME's Do Not Disturb is on. |
 
 The conference starts as soon as one enabled signal is active and ends after none has been for *End after* seconds (default 60), when deferred reminders show. The log names the signal: `Conference started: microphone (Firefox)`. The top bar shows *In conference (microphone)* with a phone icon. `pw-dump` is needed for the PipeWire signals; without it they count as off.
+
+#### On Windows 10/11
+
+The same settings apply, but the signals come from other sources. `pw-dump`, `gsettings` and `/proc` are not used there at all.
+
+| Signal | Active when |
+|---|---|
+| Screen share | Not available on Windows: there is no reliable way to tell. The settings window shows it as such. A Teams or Zoom screen share usually keeps the microphone open, so *Microphone* covers it. |
+| Microphone, Camera | Windows' privacy store (the source of the "in use" icon in the taskbar) says an app uses the device right now: under `HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone` (or `\webcam`), an app's `LastUsedTimeStop` is 0. Store apps appear by package name (`MSTeams`), desktop apps by their exe (`chrome.exe`, `Zoom.exe`). *Ignore mic of* matches these names, with or without `.exe`. HKCU is enough: it records every app the logged-in user runs. |
+| Apps | One of the listed processes runs, from `tasklist`, matched case-insensitively and with or without `.exe` (`teams` matches `Teams.exe`, `ms-teams` the new Teams). |
+| Do Not Disturb | Best effort: Windows has no stable interface for Focus Assist or Do Not Disturb. The signal is on while Windows 11's notifications are switched off (`NOC_GLOBAL_SETTING_TOASTS_ENABLED` = 0 under `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings`). Elsewhere it stays off. |
+
+`tasklist` runs without a console window and with a 2 s timeout. A source that cannot be read counts as off and is logged once.
 
 #### Webhook (e.g. Home Assistant)
 
