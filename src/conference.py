@@ -251,7 +251,7 @@ class ConferenceDetector:
         return self._active
 
     def report_screenshare(self, sharing):
-        """The GNOME extension's view of screen sharing (SCREENSHARE on|off); wins over pw-dump while fresh."""
+        """The GNOME extension's view of screen sharing (SCREENSHARE on|off); combined with pw-dump."""
         with self._mutex:
             self._extension = (bool(sharing), self._clock())
 
@@ -259,12 +259,13 @@ class ConferenceDetector:
         """Everything for the CONFERENCE command and STATUS."""
         with self._mutex:
             enabled = self._settings["signals"]
+            ext_active = self._extension_fresh() and self._extension[0]
             return {
                 "active": self._active,
                 "reasons": list(self._reasons),
                 "signals": {name: {"enabled": bool(enabled.get(name)), "active": bool(self._signals[name]),
                                    "sources": list(self._signals[name])} for name in SIGNALS},
-                "screen_share_source": "extension" if self._extension_fresh() else "pipewire",
+                "screen_share_source": "extension" if ext_active or (self._extension_fresh() and not self._signals["screen_share"]) else "pipewire",
                 "end_grace_seconds": self._settings["end_grace_seconds"],
             }
 
@@ -295,8 +296,8 @@ class ConferenceDetector:
                 signals.update(pipewire_signals(nodes, settings["ignore_apps"]))
         with self._mutex:
             extension = self._extension if self._extension_fresh() else None
-        if extension is not None:
-            signals["screen_share"] = ["GNOME Shell"] if extension[0] else []
+        if extension is not None and extension[0]:
+            signals["screen_share"] = sorted(set(signals["screen_share"]) | {"GNOME Shell"})
         if enabled.get("camera"):
             users = self._probe("/proc fd scan", self._video_users) or []
             signals["camera"] = sorted(set(signals["camera"]) | set(users))

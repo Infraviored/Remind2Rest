@@ -141,19 +141,28 @@ class DetectorTest(unittest.TestCase):
         self.d.poll()
         self.assertEqual(self.d.state()["reasons"], ["do_not_disturb"])
 
-    def test_extension_report_wins_while_fresh(self):
+    def test_extension_and_pipewire_screen_share_combine_with_or(self):
+        # Fresh extension report of False does not suppress PipeWire screencast detection
         self.p.nodes = [SCREENCAST]
         self.d.report_screenshare(False)
         self.d.poll()
-        self.assertFalse(self.d.active)
-        self.assertEqual(self.d.state()["screen_share_source"], "extension")
-        self.p.now += EXTENSION_FRESH
-        self.d.poll()  # report expired: PipeWire again
+        self.assertTrue(self.d.active)
         self.assertEqual(self.d.state()["reasons"], ["screen_share"])
+        self.assertEqual(self.d.state()["signals"]["screen_share"]["sources"], ["gnome-shell"])
+
+        # Extension report of True adds GNOME Shell
         self.p.nodes = []
         self.d.report_screenshare(True)
         self.d.poll()
+        self.assertTrue(self.d.active)
         self.assertEqual(self.d.state()["signals"]["screen_share"]["sources"], ["GNOME Shell"])
+        self.assertEqual(self.d.state()["screen_share_source"], "extension")
+
+        # When extension report expires and grace elapses, it reverts to PipeWire
+        self.p.now += EXTENSION_FRESH + 60
+        self.d.poll()
+        self.assertFalse(self.d.active)
+        self.assertEqual(self.d.state()["screen_share_source"], "pipewire")
 
     def test_camera_from_proc_scan(self):
         self.p.video = ["chrome"]
