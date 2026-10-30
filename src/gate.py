@@ -6,29 +6,35 @@ import time
 
 UNLOCK_DELAY = 45       # s after unlock or wake-up before a deferred reminder shows
 AFTER_CLOSE_DELAY = 30  # s after a reminder window closed before the next one shows
+CONFERENCE_END_DELAY = 60  # s after a video conference ended before a deferred reminder shows
 LOCK_POLL = 5           # s between two lock checks
 WAKE_JUMP = 60          # s of wall clock between two ticks that count as a suspend
 
 
 class ReminderGate:
-    """At most one reminder window at a time, and none while the session is locked.
+    """At most one reminder window at a time, and none while the session is locked or a video
+    conference runs (a reminder asked for by hand, manual=True, still shows during a conference).
 
     A reminder that cannot open now becomes the one pending reminder (a newer one replaces it) and
     opens a little after the way is clear: UNLOCK_DELAY after unlock or wake-up, AFTER_CLOSE_DELAY
-    after the open window closed. A snoozed window keeps its process alive, so it still counts as
-    open and holds back everything else until it is closed.
+    after the open window closed, CONFERENCE_END_DELAY after the conference ended. A snoozed window
+    keeps its process alive, so it still counts as open and holds back everything else until it is
+    closed.
 
     spawn(module, settings) starts the window and returns its process (anything with poll()).
     is_locked() returns True, False or None (unknown, counts as unlocked); it is asked at most every
-    LOCK_POLL seconds. find_missed(since, until) returns the (module, settings) of the latest reminder
+    LOCK_POLL seconds. in_conference() returns whether a conference runs (cheap, read every tick).
+    find_missed(since, until) returns the (module, settings) of the latest reminder
     due between two wall-clock times, for a suspend. skip_reason() returns why a deferred reminder
-    should be dropped instead of shown (paused, conference) or None.
+    should be dropped instead of shown (paused) or None.
     """
 
     def __init__(self, spawn, is_locked=lambda: None, clock=time.time,
-                 find_missed=lambda since, until: None, skip_reason=lambda: None):
+                 find_missed=lambda since, until: None, skip_reason=lambda: None,
+                 in_conference=lambda: False):
         self._spawn = spawn
         self._is_locked = is_locked
+        self._in_conference = in_conference
         self._clock = clock
         self._find_missed = find_missed
         self._skip_reason = skip_reason
@@ -39,6 +45,7 @@ class ReminderGate:
         self._ready_at = 0.0
         self._hold_reason = ""
         self._locked = False
+        self._conference = False
         self._lock_checked_at = None
         self._last_tick = None
 
@@ -85,6 +92,15 @@ class ReminderGate:
             logging.info("Screen unlocked")
             self._hold(now, UNLOCK_DELAY, "unlock")
 
+        was_conference = self._conference
+        try:
+            self._conference = bool(self._in_conference())
+        except Exception as e:
+            logging.debug(f"Conference check failed: {e}")
+            self._conference = False
+        if was_conference and not self._conference:
+            self._hold(now, CONFERENCE_END_DELAY, "the conference ended")
+
         if self._proc is not None and self._proc.poll() is not None:
             self._proc = None
             self._open_module = None
@@ -102,6 +118,8 @@ class ReminderGate:
             return "screen locked"
         if self._window_open():
             return f"{self._open_module} is still open"
+        if not manual and self._conference:
+            return "video conference"
         if not manual and now < self._ready_at:
             return f"waiting after {self._hold_reason}"
         return None

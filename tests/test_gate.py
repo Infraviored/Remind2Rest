@@ -6,7 +6,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.gate import ReminderGate, UNLOCK_DELAY, AFTER_CLOSE_DELAY, LOCK_POLL
+from src.gate import ReminderGate, UNLOCK_DELAY, AFTER_CLOSE_DELAY, LOCK_POLL, CONFERENCE_END_DELAY
 
 
 class FakeProc:
@@ -25,8 +25,10 @@ class Harness:
         self.spawned = []  # (module, settings, proc)
         self.skip = None
         self.missed = None
+        self.conference = False
         self.gate = ReminderGate(self.spawn, is_locked=self.is_locked, clock=lambda: self.now,
-                                 find_missed=lambda since, until: self.missed, skip_reason=lambda: self.skip)
+                                 find_missed=lambda since, until: self.missed, skip_reason=lambda: self.skip,
+                                 in_conference=lambda: self.conference)
 
     def spawn(self, module, settings):
         proc = FakeProc()
@@ -177,6 +179,62 @@ class GateTest(unittest.TestCase):
         self.assertEqual(h.shown(), ["posture"])
         h.run(2)
         self.assertEqual(h.shown(), ["posture", "eye_relax"])
+
+    def test_conference_defers_newest_and_shows_after_end_delay(self):
+        h = self.h
+        h.conference = True
+        h.run(1)
+        with self.assertLogs(level="INFO") as logs:
+            self.assertEqual(h.gate.request("posture", {}), "deferred")
+            self.assertEqual(h.gate.request("eye_relax", {"x": 1}), "deferred")
+        self.assertIn("Deferred posture: video conference", "\n".join(logs.output))
+        h.run(3600)
+        self.assertEqual(h.shown(), [])
+        h.conference = False
+        h.run(CONFERENCE_END_DELAY - 1)
+        self.assertEqual(h.shown(), [])
+        with self.assertLogs(level="INFO") as logs:
+            h.run(2)
+        self.assertEqual(h.spawned[0][:2], ("eye_relax", {"x": 1}))  # newest wins
+        self.assertIn("after the conference ended", "\n".join(logs.output))
+        self.assertEqual(len(h.spawned), 1)
+
+    def test_manual_trigger_shows_during_conference(self):
+        h = self.h
+        h.conference = True
+        h.run(1)
+        self.assertEqual(h.gate.request("water", {}, manual=True), "shown")
+        self.assertEqual(h.shown(), ["water"])
+
+    def test_conference_end_while_locked_waits_for_unlock(self):
+        h = self.h
+        h.conference = True
+        h.run(1)
+        h.gate.request("posture", {})
+        h.locked = True
+        h.run(LOCK_POLL)
+        h.conference = False
+        h.run(CONFERENCE_END_DELAY + 10)
+        self.assertEqual(h.shown(), [])
+        h.locked = False
+        h.run(LOCK_POLL + UNLOCK_DELAY + 1)
+        self.assertEqual(h.shown(), ["posture"])
+
+    def test_paused_during_conference_still_drops(self):
+        h = self.h
+        h.conference = True
+        h.run(1)
+        h.gate.request("posture", {})
+        h.skip = "paused"
+        h.conference = False
+        h.run(CONFERENCE_END_DELAY + 1)
+        self.assertEqual(h.shown(), [])
+        self.assertIsNone(h.gate.pending)
+
+    def test_conference_check_failure_counts_as_no_conference(self):
+        h = Harness()
+        gate = ReminderGate(h.spawn, clock=lambda: h.now, in_conference=lambda: 1 / 0)
+        self.assertEqual(gate.request("posture", {}), "shown")
 
 
 from unittest.mock import patch

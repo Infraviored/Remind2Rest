@@ -6,6 +6,7 @@ import subprocess
 from datetime import datetime, timedelta
 from apscheduler.triggers.interval import IntervalTrigger
 
+from src.conference import detector as conference
 from src.gate import ReminderGate
 from src.library import LIBRARY, page_settings
 from src.logs import water_today_ml
@@ -25,6 +26,8 @@ def get_current_status():
         status["paused_until"] = paused_until.isoformat(timespec="seconds")
     config = current_config or {}
     # Enabled types, so the top bar can offer "<title> now" for each without knowing the library.
+    conf = conference.state()
+    status["conference"] = {"active": conf["active"], "reasons": conf["reasons"]}
     status["types"] = [{"key": key, "title": entry["title"]}
                        for key, entry in LIBRARY.items() if config.get(key, {}).get("enabled")]
     water = config.get("water", {})
@@ -61,20 +64,8 @@ def update_status(status):
         )
     current_status = status
 
-def is_conference_active() -> bool:
-    try:
-        state_file = "/tmp/conference_mode.txt"
-        if os.path.exists(state_file):
-            with open(state_file, "r") as f:
-                return f.read().strip().lower() == "on"
-    except Exception as e:
-        logging.error(f"Error reading conference mode state file: {e}")
-    return False
-
 def trigger_reminder(module, settings):
-    if is_conference_active():
-        logging.info(f"Skipping {module} reminder during active video conference")
-        return
+    # During a video conference the gate defers the reminder until the conference has ended.
     if is_paused():
         logging.info(f"Skipping {module} reminder while paused")
         return
@@ -133,12 +124,11 @@ def find_missed(since, until):
 def skip_reason():
     if is_paused():
         return "paused"
-    if is_conference_active():
-        return "video conference"
     return None
 
 
-gate = ReminderGate(spawn_reminder, is_locked=is_locked, find_missed=find_missed, skip_reason=skip_reason)
+gate = ReminderGate(spawn_reminder, is_locked=is_locked, find_missed=find_missed, skip_reason=skip_reason,
+                    in_conference=lambda: conference.active)
 
 def schedule_reminders(scheduler, config):
     if not config or not isinstance(config, dict):
@@ -147,6 +137,8 @@ def schedule_reminders(scheduler, config):
 
     global current_config
     current_config = config
+    conference.configure(config.get("conference"))
+    conference.start()
     scheduler.remove_all_jobs()
     interval_minutes = config["global_interval"]
     logging.info(f"Scheduling reminders with {interval_minutes} minute intervals")

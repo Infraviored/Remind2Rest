@@ -1,5 +1,7 @@
 import copy
 
+from src import conference
+
 # One entry per reminder type; the page lives in reminders/<type>/reminder.html (see reminders/README.md).
 # icon: Material Symbols name for the settings window, symbolic_icon: GNOME icon for the top bar.
 # defaults["every"]: how often the type should fire (minutes). It is only the input of the settings window's
@@ -73,6 +75,7 @@ def fill_defaults(config):
             module.pop(name, None)
         for name, value in entry["defaults"].items():
             module.setdefault(name, copy.deepcopy(value))
+    conference.fill_defaults(config)
     return config
 
 

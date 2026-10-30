@@ -11,6 +11,7 @@ from logging.handlers import RotatingFileHandler
 
 from src.config import CONFIG_PATH, LOG_PATH, SOCKET_FAMILY, ADDR, load_config
 from src.library import LIBRARY
+from src.conference import detector as conference
 from src.ipc import create_server_socket, cleanup_socket
 from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume
 
@@ -121,6 +122,16 @@ def main():
                                         conn.sendall(b"OK")
                                 except ValueError:
                                     conn.sendall(b"ERR PAUSE minutes must be an integer")
+                        elif command == "CONFERENCE":
+                            conn.sendall(json.dumps(conference.state()).encode())
+                        elif command.startswith("SCREENSHARE "):
+                            # The GNOME extension's view of screen sharing, resent every 5 s.
+                            state = command.split(maxsplit=1)[1].strip()
+                            if state not in ("on", "off"):
+                                conn.sendall(b"ERR SCREENSHARE takes on or off")
+                            else:
+                                conference.report_screenshare(state == "on")
+                                conn.sendall(b"OK")
                         elif command == "RESUME":
                             resume()
                             conn.sendall(b"OK")
