@@ -137,8 +137,10 @@ new Vue({
         matchesEvery(key) {
             const every = this.config[key].every;
             const times = this.config[key].reminders;
-            if (!(every >= 1) || this.cycle % every !== 0 || times.length !== this.cycle / every) return false;
-            return times.every(t => (t - times[0]) % every === 0);
+            const count = this.cycle / every;
+            if (!(every >= 1) || this.cycle % every !== 0 || times.length !== count) return false;
+            const sorted = [...times].sort((a, b) => a - b);
+            return sorted.every((t, i) => t === sorted[0] + i * every);
         },
 
         // Cycle length typed in by hand. Times that no longer fit in the cycle are dropped.
