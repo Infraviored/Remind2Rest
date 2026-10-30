@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 import threading
 from datetime import datetime
@@ -143,3 +144,10 @@ def show_reminder(module, settings):
         background_color="#000000",
     )
     webview.start()
+    # The window is gone, but the pywebview thread that answers the page's close() call can still
+    # wait in evaluate_js for a main loop that has ended. It is not a daemon thread, so a normal exit
+    # would wait for it forever, and the daemon would count this reminder as open. Exit hard instead.
+    logging.shutdown()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
