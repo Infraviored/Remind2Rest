@@ -140,6 +140,21 @@ class DetectorTest(unittest.TestCase):
         self.d.poll()
         self.assertEqual(self.d.state()["reasons"], ["camera"])
 
+    def test_disabled_microphone_does_not_probe_processes(self):
+        self.p.apps = []
+        self.p.nodes = [MIC_FIREFOX]
+        self.p.video = ["firefox"]
+        probed = []
+        d = ConferenceDetector(
+            {"signals": {"microphone": False, "camera": True, "processes": False}},
+            clock=lambda: self.p.now, on_change=lambda a, r: self.p.changes.append((a, r)),
+            read_pipewire=lambda: self.p.nodes, video_users=lambda: self.p.video,
+            processes=lambda names: probed.append(names) or [], dnd=lambda: self.p.dnd
+        )
+        d.poll()
+        self.assertEqual(probed, [])
+        self.assertFalse(d.state()["signals"]["microphone"]["active"])
+
     def test_first_poll_reports_state_once(self):
         with self.assertLogs(level="INFO"):
             self.d.poll()
@@ -421,6 +436,25 @@ class WindowsDetectorTest(unittest.TestCase):
             d.poll()
         self.assertFalse(d.active)
 
+    def test_windows_microphone_without_app_is_no_conference(self):
+        reg = FakeRegistry({
+            f"{STORE}\\microphone\\MSTeams_8wekyb3d8bbwe": in_use(),
+        })
+        d = self.detector(reg, processes=lambda names: [])
+        d.poll()
+        self.assertFalse(d.active)
+        self.assertEqual(d.state()["signals"]["microphone"]["sources"], [])
+
+    def test_windows_microphone_alone_counts_when_app_not_required(self):
+        reg = FakeRegistry({
+            f"{STORE}\\microphone\\MSTeams_8wekyb3d8bbwe": in_use(),
+        })
+        d = self.detector(reg, {"microphone_needs_app": False}, processes=lambda names: [])
+        d.poll()
+        self.assertTrue(d.active)
+        self.assertEqual(d.state()["reasons"], ["microphone"])
+        self.assertEqual(d.state()["signals"]["microphone"]["sources"], ["MSTeams"])
+
 
 class FakeResponse:
     status = 200
@@ -515,6 +549,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(conf["ignore_apps"], [])
         self.assertEqual(conf["webhook_url"], "")
         self.assertEqual(conf["end_grace_seconds"], 60)
+        self.assertTrue(conf["microphone_needs_app"])
 
     def test_conference_config_coercion_and_validation(self):
         from src.config import validate_config
@@ -525,6 +560,7 @@ class ConfigTest(unittest.TestCase):
                 "signals": {"camera": "true", "microphone": 0},
                 "ignore_apps": "not-a-list",
                 "webhook_url": 12345,
+                "microphone_needs_app": None,
             }
         }
         validate_config(config)
@@ -534,6 +570,15 @@ class ConfigTest(unittest.TestCase):
         self.assertFalse(conf["signals"]["microphone"])
         self.assertEqual(conf["ignore_apps"], ["VibeVoice"])
         self.assertEqual(conf["webhook_url"], "12345")
+        self.assertTrue(conf["microphone_needs_app"])
+
+        for val, expected in [("", True), (False, False), (0, False), (True, True), ("true", True)]:
+            c = {"global_interval": 60, "conference": {"microphone_needs_app": val}}
+            validate_config(c)
+            self.assertIs(c["conference"]["microphone_needs_app"], expected)
+        c_missing = {"global_interval": 60, "conference": {}}
+        validate_config(c_missing)
+        self.assertTrue(c_missing["conference"]["microphone_needs_app"])
 
     @unittest.skipIf(os.name == "nt", "POSIX file modes")
     def test_config_file_is_owner_only(self):

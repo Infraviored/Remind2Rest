@@ -535,7 +535,7 @@ class ConferenceDetector:
         if enabled.get("processes"):
             apps = self._probe("processes", self._processes, settings["processes"]) or []
             signals["processes"] = apps
-        if signals["microphone"] and settings.get("microphone_needs_app", True):
+        if enabled.get("microphone") and signals["microphone"] and settings.get("microphone_needs_app", True):
             if apps is None:
                 apps = self._probe("processes", self._processes, settings["processes"]) or []
             if not apps:

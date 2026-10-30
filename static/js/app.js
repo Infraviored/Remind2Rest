@@ -314,6 +314,9 @@ new Vue({
                 saved = saved || {};
                 const types = Object.fromEntries(library.map(m => [m.key, { ...JSON.parse(JSON.stringify(m.defaults)), ...saved[m.key] }]));
                 this.config = { ...this.config, ...saved, ...types };
+                if (this.config.conference && this.config.conference.microphone_needs_app === undefined) {
+                    this.$set(this.config.conference, 'microphone_needs_app', true);
+                }
                 this.modules = library;
                 this.updateNow();
             })
