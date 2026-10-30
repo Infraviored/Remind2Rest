@@ -4,6 +4,7 @@ import os
 import stat
 import sys
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -231,6 +232,32 @@ class WebhookTest(unittest.TestCase):
         text = "\n".join(logs.output)
         self.assertNotIn("PLACEHOLDER-ID", text)
         self.assertIn("https://ha.example.invalid/…", text)
+
+    def test_newer_state_supersedes_pending_retries(self):
+        posted = []
+        started_first_post = threading.Event()
+        release_first_post = threading.Event()
+
+        def mock_post(url, state, reasons):
+            posted.append(state)
+            if state == "on":
+                started_first_post.set()
+                release_first_post.wait(5)
+                raise OSError("failed to send on")
+
+        dispatcher = conference.WebhookDispatcher(post=mock_post, attempts=3, sleep=lambda s: None)
+        task1 = dispatcher.send(WEBHOOK, "on", ["camera"])
+        started_first_post.wait(5)
+        # While "on" is in progress / failing, queue a newer "off" state
+        task2 = dispatcher.send(WEBHOOK, "off", [])
+        release_first_post.set()
+
+        task1.join(5)
+        task2.join(5)
+        dispatcher.stop()
+
+        # "on" was attempted once; its pending retries were superseded by "off"
+        self.assertEqual(posted, ["on", "off"])
 
     def test_redact_drops_credentials_and_path(self):
         self.assertEqual(conference.redact("https://user:pw@ha.example.invalid:8123/api/webhook/x"),

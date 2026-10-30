@@ -178,22 +178,95 @@ def post_webhook(url, state, reasons):
         return response.status
 
 
-def send_webhook(url, state, reasons, attempts=WEBHOOK_ATTEMPTS, sleep=time.sleep):
-    """post_webhook in a background thread, retried with backoff (2 s, 4 s); failures are only logged."""
-    def run():
-        for attempt in range(1, attempts + 1):
+class WebhookTask:
+    def __init__(self):
+        self._done = threading.Event()
+
+    def set_done(self):
+        self._done.set()
+
+    def join(self, timeout=None):
+        return self._done.wait(timeout)
+
+
+class WebhookDispatcher:
+    """Serializes webhook dispatches through a single worker thread. If a newer state arrives while
+    an older state is waiting to retry, the pending retries of the older state are superseded."""
+
+    def __init__(self, post=post_webhook, attempts=WEBHOOK_ATTEMPTS, sleep=time.sleep):
+        self._post = post
+        self._attempts = attempts
+        self._sleep = sleep
+        self._cond = threading.Condition()
+        self._queue = []
+        self._latest_generation = 0
+        self._thread = None
+        self._stop = False
+
+    def send(self, url, state, reasons, attempts=None, sleep=None):
+        task = WebhookTask()
+        attempts = self._attempts if attempts is None else attempts
+        sleep = self._sleep if sleep is None else sleep
+        with self._cond:
+            self._latest_generation += 1
+            gen = self._latest_generation
+            self._queue.append((url, state, reasons, gen, attempts, sleep, task))
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._run, name="conference-webhook", daemon=True)
+                self._thread.start()
+            self._cond.notify_all()
+        return task
+
+    def stop(self):
+        with self._cond:
+            self._stop = True
+            self._cond.notify_all()
+        if self._thread is not None:
+            self._thread.join()
+
+    def _run(self):
+        while True:
+            with self._cond:
+                while not self._queue and not self._stop:
+                    self._cond.wait()
+                if self._stop:
+                    return
+                url, state, reasons, gen, attempts, sleep, task = self._queue.pop(0)
+
             try:
-                post_webhook(url, state, reasons)
-                logging.info(f"Conference webhook {redact(url)} sent: {state}")
-                return
-            except Exception as e:
-                logging.warning(f"Conference webhook {redact(url)} attempt {attempt}/{attempts} failed: "
-                                f"{str(e).replace(url, redact(url))}")
-                if attempt < attempts:
-                    sleep(2 ** attempt)
-    thread = threading.Thread(target=run, name="conference-webhook", daemon=True)
-    thread.start()
-    return thread
+                for attempt in range(1, attempts + 1):
+                    with self._cond:
+                        if self._latest_generation > gen:
+                            break
+                    try:
+                        self._post(url, state, reasons)
+                        logging.info(f"Conference webhook {redact(url)} sent: {state}")
+                        break
+                    except Exception as e:
+                        logging.warning(f"Conference webhook {redact(url)} attempt {attempt}/{attempts} failed: "
+                                        f"{str(e).replace(url, redact(url))}")
+                        if attempt < attempts:
+                            delay = 2 ** attempt
+                            with self._cond:
+                                if self._latest_generation > gen:
+                                    break
+                                if sleep != time.sleep:
+                                    sleep(delay)
+                                else:
+                                    self._cond.wait(timeout=delay)
+                                if self._latest_generation > gen:
+                                    break
+            finally:
+                task.set_done()
+
+
+_webhook_dispatcher = WebhookDispatcher()
+
+
+def send_webhook(url, state, reasons, attempts=WEBHOOK_ATTEMPTS, sleep=time.sleep):
+    """post_webhook in a serialized background worker thread, retried with backoff (2 s, 4 s).
+    A newer state supersedes pending retries of an older one; failures are only logged."""
+    return _webhook_dispatcher.send(url, state, reasons, attempts=attempts, sleep=sleep)
 
 
 # ---- Detector ----
