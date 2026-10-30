@@ -188,7 +188,7 @@ new Vue({
         startDrag(key, index, event) {
             if (event.button !== 0) return;
             event.currentTarget.setPointerCapture(event.pointerId);
-            this.drag = { key, index, startX: event.clientX, moved: false };
+            this.drag = { key, index, startX: event.clientX, moved: false, originMinute: this.config[key].reminders[index] };
         },
         moveDrag(event) {
             const d = this.drag;
@@ -210,6 +210,21 @@ new Vue({
                     this.suppressLaneClick = false;
                 }, 100);
                 this.setTimes(d.key, this.config[d.key].reminders);   // sort, merge duplicates
+            }
+        },
+        cancelDrag() {
+            const d = this.drag;
+            if (!d) return;
+            this.drag = null;
+            this.suppressClick = true;
+            this.suppressLaneClick = true;
+            setTimeout(() => {
+                this.suppressClick = false;
+                this.suppressLaneClick = false;
+            }, 100);
+            if (d.moved) {
+                this.$set(this.config[d.key].reminders, d.index, d.originMinute);
+                this.setTimes(d.key, this.config[d.key].reminders);
             }
         },
         // Arrow keys move a focused marker by 1 min (Shift: 5), Delete/Backspace removes it.

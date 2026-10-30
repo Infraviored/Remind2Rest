@@ -292,7 +292,7 @@
                             class="lane relative h-4 rounded-full cursor-copy" :style="{ '--lane': m.color }">
                             <div v-for="(t, i) in config[m.key].reminders" :key="i" tabindex="0"
                                 :data-marker="m.key + '-' + i" :aria-label="m.title + ' at minute ' + t"
-                                @pointerdown="startDrag(m.key, i, $event)" @pointermove="moveDrag" @pointerup="endDrag" @pointercancel="endDrag"
+                                @pointerdown="startDrag(m.key, i, $event)" @pointermove="moveDrag" @pointerup="endDrag" @pointercancel="cancelDrag"
                                 @click.stop="clickMarker(m.key, i)" @contextmenu.prevent.stop="remove(m.key, i)" @keydown="nudge(m.key, i, $event)"
                                 @mouseenter="hover = { key: m.key, index: i }" @mouseleave="hover = null"
                                 @focus="hover = { key: m.key, index: i }" @blur="hover = null"
