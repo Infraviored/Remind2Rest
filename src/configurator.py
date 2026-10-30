@@ -83,7 +83,7 @@ class Api:
         return load_config()
 
     def get_platform(self):
-        """"windows" or "linux"; the page marks conference signals Windows cannot detect."""
+        """'windows' or 'linux'; the page marks conference signals Windows cannot detect."""
         return "windows" if IS_WINDOWS else "linux"
 
     def save_config(self, config):

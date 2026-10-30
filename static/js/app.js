@@ -58,8 +58,12 @@ new Vue({
             const windows = this.platform === 'windows';
             return CONFERENCE_SIGNALS.map(s => {
                 const unavailable = windows && s.winHint === null;
-                const hint = unavailable ? 'Not available on Windows'
-                    : windows && s.winHint ? s.winHint : s.hint;
+                let hint = s.hint;
+                if (unavailable) {
+                    hint = 'Not available on Windows';
+                } else if (windows && s.winHint) {
+                    hint = s.winHint;
+                }
                 return { key: s.key, label: s.label, hint, unavailable };
             });
         },

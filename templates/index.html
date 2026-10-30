@@ -352,7 +352,8 @@
             <div class="flex flex-wrap gap-1.5">
                 <label v-for="s in conferenceSignals" :key="s.key" class="field"
                     :class="s.unavailable ? 'opacity-50' : 'cursor-pointer'" :title="s.hint">
-                    <input type="checkbox" v-model="config.conference.signals[s.key]" :disabled="s.unavailable"
+                    <input type="checkbox" :checked="!s.unavailable && config.conference.signals[s.key]"
+                        @change="config.conference.signals[s.key] = $event.target.checked" :disabled="s.unavailable"
                         class="w-4 h-4 rounded border-outline-variant bg-surface-container-lowest text-rose-300" />
                     <span>{{ s.label }}</span>
                     <span v-if="s.unavailable" class="text-[10px] text-outline">not available on Windows</span>

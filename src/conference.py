@@ -204,7 +204,7 @@ class WindowsRegistry:
         winreg = self._winreg
         try:
             key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, path)
-        except FileNotFoundError:
+        except OSError:
             return []
         names = []
         with key:
@@ -219,7 +219,7 @@ class WindowsRegistry:
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as key:
                 return winreg.QueryValueEx(key, name)[0]
-        except FileNotFoundError:
+        except OSError:
             return None
 
 
@@ -249,7 +249,10 @@ def consent_store_users(device, ignore_apps=(), registry=None):
     entries += [(f"{base}\\NonPackaged\\{key}", key, False) for key in registry.subkeys(f"{base}\\NonPackaged")]
     users = set()
     for path, key, packaged in entries:
-        start, stop = registry.value(path, "LastUsedTimeStart"), registry.value(path, "LastUsedTimeStop")
+        try:
+            start, stop = registry.value(path, "LastUsedTimeStart"), registry.value(path, "LastUsedTimeStop")
+        except OSError:
+            continue
         if not (isinstance(start, int) and start > 0 and stop == 0):
             continue
         name = windows_app_name(key, packaged)
@@ -454,6 +457,8 @@ class ConferenceDetector:
 
     def report_screenshare(self, sharing):
         """The GNOME extension's view of screen sharing (SCREENSHARE on|off); combined with pw-dump."""
+        if self._windows:
+            return
         with self._mutex:
             self._extension = (bool(sharing), self._clock())
 
@@ -462,12 +467,18 @@ class ConferenceDetector:
         with self._mutex:
             enabled = self._settings["signals"]
             ext_active = self._extension_fresh() and self._extension[0]
+            if self._windows:
+                source = "unavailable"
+            elif ext_active or (self._extension_fresh() and not self._signals["screen_share"]):
+                source = "extension"
+            else:
+                source = "pipewire"
             return {
                 "active": self._active,
                 "reasons": list(self._reasons),
                 "signals": {name: {"enabled": bool(enabled.get(name)), "active": bool(self._signals[name]),
                                    "sources": list(self._signals[name])} for name in SIGNALS},
-                "screen_share_source": "extension" if ext_active or (self._extension_fresh() and not self._signals["screen_share"]) else "pipewire",
+                "screen_share_source": source,
                 "end_grace_seconds": self._settings["end_grace_seconds"],
             }
 
@@ -512,7 +523,7 @@ class ConferenceDetector:
                 signals.update(pipewire_signals(nodes, settings["ignore_apps"]))
         with self._mutex:
             extension = self._extension if self._extension_fresh() else None
-        if extension is not None and extension[0]:
+        if not self._windows and extension is not None and extension[0]:
             signals["screen_share"] = sorted(set(signals["screen_share"]) | {"GNOME Shell"})
         if enabled.get("camera") and not self._windows:
             users = self._probe("/proc fd scan", self._video_users) or []

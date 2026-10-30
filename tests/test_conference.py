@@ -259,6 +259,19 @@ class WindowsProbesTest(unittest.TestCase):
     def test_missing_store_means_nobody(self):
         self.assertEqual(conference.consent_store_users("webcam", [], FakeRegistry({})), [])
 
+    def test_broken_subkey_value_is_skipped(self):
+        class BrokenEntryRegistry(FakeRegistry):
+            def value(self, path, name):
+                if "broken.exe" in path:
+                    raise PermissionError("access denied")
+                return super().value(path, name)
+
+        reg = BrokenEntryRegistry({
+            f"{STORE}\\webcam\\NonPackaged\\C:#Tools#broken.exe": in_use(),
+            f"{STORE}\\webcam\\NonPackaged\\{CHROME}": in_use(),
+        })
+        self.assertEqual(conference.consent_store_users("webcam", [], reg), ["chrome.exe"])
+
     def test_app_names(self):
         self.assertEqual(conference.windows_app_name(CHROME, packaged=False), "chrome.exe")
         self.assertEqual(conference.windows_app_name("MSTeams_8wekyb3d8bbwe", packaged=True), "MSTeams")
@@ -361,6 +374,9 @@ class WindowsDetectorTest(unittest.TestCase):
         self.assertEqual(state["signals"]["camera"]["sources"], ["chrome.exe"])
         self.assertEqual(state["signals"]["do_not_disturb"]["sources"], ["Do Not Disturb"])
         self.assertEqual(state["signals"]["processes"]["sources"], ["teams"])
+        self.assertEqual(state["signals"]["screen_share"]["sources"], [])
+        self.assertFalse(state["signals"]["screen_share"]["active"])
+        self.assertEqual(state["screen_share_source"], "unavailable")
         self.assertEqual(self.linux_calls, [])
 
     def test_broken_registry_never_crashes(self):
