@@ -61,7 +61,7 @@ This will:
 ### 3. Usage
 Once installed, the background service will start automatically on login. Open the settings from the app menu (**Remind2Rest**), the GNOME top bar menu, or with `python configurator.py`.
 
-The top bar extension and the settings window talk to the service over its socket (`~/.Remind2Rest.sock`) with plain-text commands: `STATUS`, `RELOAD`, `PAUSE <minutes>`, `RESUME`, `TRIGGER <type> [<settings json>]` (any type from `src/library.py`). `STATUS` names the next reminder with `next_reminder`, `next_title` and `next_icon`.
+The top bar extension and the settings window talk to the service over its socket (`~/.Remind2Rest.sock`) with plain-text commands: `STATUS`, `RELOAD`, `PAUSE <minutes>`, `RESUME`, `TRIGGER <type> [<settings json>]` (any type from `src/library.py`), `CONFERENCE` (the conference detector's state per signal, for debugging) and `SCREENSHARE on|off` (sent by the top bar extension). `STATUS` names the next reminder with `next_reminder`, `next_title` and `next_icon`, and the conference state as `conference: {active, reasons}`.
 
 ### One reminder at a time
 
@@ -70,7 +70,49 @@ Reminders never stack (`src/gate.py`):
 - **A reminder window is open:** the next one waits and shows 30 s after the open one closes. A second reminder of the same type is dropped. A snoozed window still counts as open (its process lives on), so it holds back the others until it is closed. This also holds for `TRIGGER` and the test button in the settings.
 - **Suspend:** after waking up, missed reminders are not repeated; only the latest one shows, 45 s after unlock.
 
+- **Video conference:** a reminder that falls due waits and shows 60 s after the conference ended (see below). `TRIGGER` and the test button still show at once. While paused, reminders are dropped as before.
+
 Only one reminder waits at a time; a newer one replaces it. The log says `Deferred posture: screen locked` and `Showing deferred posture after unlock`.
+
+### Video conferences
+
+The daemon checks every 3 s whether a call is running (`src/conference.py`). Each signal can be switched on or off in the settings window (section *Conference*):
+
+| Signal | Default | Active when |
+|---|---|---|
+| Screen share | on | The screen is shared or recorded. The top bar extension reports GNOME's own screen-sharing sessions; without it, PipeWire's screencast streams (`meta-screen-cast-src`) are used. |
+| Microphone | on | An app records from the microphone (PipeWire capture stream in state `running`). Recordings of the speakers (monitors), level meters (pavucontrol, GNOME Shell) and the apps in *Ignore mic of* (default `VibeVoice`) do not count. |
+| Camera | on | A camera's PipeWire node is running, or any process other than PipeWire has a `/dev/video*` open (Chrome and Teams open it directly). |
+| Apps | off | One of the listed processes runs (default `teams`, `teams-for-linux`, `zoom`). |
+| Do Not Disturb | on | GNOME's Do Not Disturb is on. |
+
+The conference starts as soon as one enabled signal is active and ends after none has been for *End after* seconds (default 60). The log names the signal: `Conference started: microphone (Firefox)`. The top bar shows *In conference (microphone)* with a phone icon. `pw-dump` is needed for the PipeWire signals; without it they count as off.
+
+#### Webhook (e.g. Home Assistant)
+
+If *Webhook* is set, every start and end of a conference is POSTed there as JSON, and the current state once when the daemon starts (so Home Assistant is right again after a reboot):
+
+```json
+{"state": "on", "reasons": ["microphone", "camera"], "host": "my-laptop", "time": "2026-10-30T10:15:00+01:00"}
+```
+
+`state` is `on` or `off` (`test` from the *Send test* button). Failed calls are retried three times and logged; they never hold up reminders. The URL usually contains a secret, so the config file is written readable by you only and the log shows only its host.
+
+A Home Assistant automation that receives it:
+
+```yaml
+triggers:
+  - trigger: webhook
+    webhook_id: "remind2rest-REPLACE-WITH-A-RANDOM-ID"
+    allowed_methods: [POST]
+    local_only: false
+actions:
+  - action: "input_boolean.turn_{{ 'on' if trigger.json.state == 'on' else 'off' }}"
+    target:
+      entity_id: input_boolean.in_conference
+```
+
+The URL to enter is then `https://<your Home Assistant>/api/webhook/remind2rest-REPLACE-WITH-A-RANDOM-ID`. A `test` turns the helper off; filter on `trigger.json.state` if that matters.
 
 ## Reminder library
 
