@@ -30,7 +30,9 @@ new Vue({
             hover: null,
             // Position of "now" in the cycle, in minutes (fractional), refreshed by a timer.
             now: 0,
-            status: { show: false, success: false, message: '' }
+            status: { show: false, success: false, message: '' },
+            suppressClick: false,
+            suppressLaneClick: false
         };
     },
     computed: {
@@ -160,11 +162,22 @@ new Vue({
             this.config[key].reminders = [...new Set(times)].sort((a, b) => a - b);
         },
         addAt(key, event) {
+            if (this.suppressLaneClick) return;
+            if (event.target !== event.currentTarget) return;
             this.setTimes(key, [...this.config[key].reminders, this.minuteAt(event, event.currentTarget)]);
         },
         remove(key, index) {
+            this.suppressLaneClick = true;
+            setTimeout(() => { this.suppressLaneClick = false; }, 100);
             this.setTimes(key, this.config[key].reminders.filter((_, i) => i !== index));
             this.hover = null;
+        },
+        clickMarker(key, index) {
+            if (this.suppressClick) {
+                this.suppressClick = false;
+                return;
+            }
+            this.remove(key, index);
         },
         startDrag(key, index, event) {
             if (event.button !== 0) return;
@@ -183,8 +196,15 @@ new Vue({
             const d = this.drag;
             if (!d) return;
             this.drag = null;
-            if (!d.moved) this.remove(d.key, d.index);   // a plain click removes the marker
-            else this.setTimes(d.key, this.config[d.key].reminders);   // sort, merge duplicates
+            if (d.moved) {
+                this.suppressClick = true;
+                this.suppressLaneClick = true;
+                setTimeout(() => {
+                    this.suppressClick = false;
+                    this.suppressLaneClick = false;
+                }, 100);
+                this.setTimes(d.key, this.config[d.key].reminders);   // sort, merge duplicates
+            }
         },
         // Arrow keys move a focused marker by 1 min (Shift: 5), Delete/Backspace removes it.
         nudge(key, index, event) {

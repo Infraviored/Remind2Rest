@@ -293,7 +293,7 @@
                             <div v-for="(t, i) in config[m.key].reminders" :key="i" tabindex="0"
                                 :data-marker="m.key + '-' + i" :aria-label="m.title + ' at minute ' + t"
                                 @pointerdown="startDrag(m.key, i, $event)" @pointermove="moveDrag" @pointerup="endDrag" @pointercancel="endDrag"
-                                @click.stop @contextmenu.prevent.stop="remove(m.key, i)" @keydown="nudge(m.key, i, $event)"
+                                @click.stop="clickMarker(m.key, i)" @contextmenu.prevent.stop="remove(m.key, i)" @keydown="nudge(m.key, i, $event)"
                                 @mouseenter="hover = { key: m.key, index: i }" @mouseleave="hover = null"
                                 @focus="hover = { key: m.key, index: i }" @blur="hover = null"
                                 :class="['marker absolute top-1/2 -translate-x-1/2 -translate-y-1/2', drag && drag.key === m.key && drag.index === i ? 'dragging' : '']"
