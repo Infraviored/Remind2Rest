@@ -6,7 +6,7 @@ import time
 
 UNLOCK_DELAY = 45       # s after unlock or wake-up before a deferred reminder shows
 AFTER_CLOSE_DELAY = 30  # s after a reminder window closed before the next one shows
-CONFERENCE_END_DELAY = 60  # s after a video conference ended before a deferred reminder shows
+CONFERENCE_END_DELAY = 0  # conference end grace is handled by the detector; deferred reminders show immediately
 LOCK_POLL = 5           # s between two lock checks
 WAKE_JUMP = 60          # s of wall clock between two ticks that count as a suspend
 
@@ -17,7 +17,7 @@ class ReminderGate:
 
     A reminder that cannot open now becomes the one pending reminder (a newer one replaces it) and
     opens a little after the way is clear: UNLOCK_DELAY after unlock or wake-up, AFTER_CLOSE_DELAY
-    after the open window closed, CONFERENCE_END_DELAY after the conference ended. A snoozed window
+    after the open window closed, right after the conference ended. A snoozed window
     keeps its process alive, so it still counts as open and holds back everything else until it is
     closed.
 
@@ -99,7 +99,10 @@ class ReminderGate:
             logging.debug(f"Conference check failed: {e}")
             self._conference = False
         if was_conference and not self._conference:
-            self._hold(now, CONFERENCE_END_DELAY, "the conference ended")
+            if CONFERENCE_END_DELAY > 0:
+                self._hold(now, CONFERENCE_END_DELAY, "the conference ended")
+            else:
+                self._hold_reason = "the conference ended"
 
         if self._proc is not None and self._proc.poll() is not None:
             self._proc = None

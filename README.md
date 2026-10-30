@@ -70,7 +70,7 @@ Reminders never stack (`src/gate.py`):
 - **A reminder window is open:** the next one waits and shows 30 s after the open one closes. A second reminder of the same type is dropped. A snoozed window still counts as open (its process lives on), so it holds back the others until it is closed. This also holds for `TRIGGER` and the test button in the settings.
 - **Suspend:** after waking up, missed reminders are not repeated; only the latest one shows, 45 s after unlock.
 
-- **Video conference:** a reminder that falls due waits and shows 60 s after the conference ended (see below). `TRIGGER` and the test button still show at once. While paused, reminders are dropped as before.
+- **Video conference:** a reminder that falls due waits and shows when the call has been over for *End after* seconds (default 60; see below). `TRIGGER` and the test button still show at once. While paused, reminders are dropped as before.
 
 Only one reminder waits at a time; a newer one replaces it. The log says `Deferred posture: screen locked` and `Showing deferred posture after unlock`.
 
@@ -86,7 +86,7 @@ The daemon checks every 3 s whether a call is running (`src/conference.py`). Eac
 | Apps | off | One of the listed processes runs (default `teams`, `teams-for-linux`, `zoom`). |
 | Do Not Disturb | on | GNOME's Do Not Disturb is on. |
 
-The conference starts as soon as one enabled signal is active and ends after none has been for *End after* seconds (default 60). The log names the signal: `Conference started: microphone (Firefox)`. The top bar shows *In conference (microphone)* with a phone icon. `pw-dump` is needed for the PipeWire signals; without it they count as off.
+The conference starts as soon as one enabled signal is active and ends after none has been for *End after* seconds (default 60), when deferred reminders show. The log names the signal: `Conference started: microphone (Firefox)`. The top bar shows *In conference (microphone)* with a phone icon. `pw-dump` is needed for the PipeWire signals; without it they count as off.
 
 #### Webhook (e.g. Home Assistant)
 

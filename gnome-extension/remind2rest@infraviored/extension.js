@@ -229,7 +229,7 @@ class Indicator extends PanelMenu.Button {
             this._label.text = ` ${until}`;
             this._statusItem.label.text = `Paused until ${until}`;
         } else if (this._conference) {
-            // Reminders that fall due now wait until 60 s after the conference.
+            // Reminders that fall due now wait until the conference has ended.
             this._remainingSeconds = null;
             const reasons = (status.conference.reasons ?? []).map(r => CONFERENCE_REASONS[r] ?? r);
             this._icon.icon_name = 'call-start-symbolic';

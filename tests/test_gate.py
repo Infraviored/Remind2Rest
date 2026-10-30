@@ -180,7 +180,7 @@ class GateTest(unittest.TestCase):
         h.run(2)
         self.assertEqual(h.shown(), ["posture", "eye_relax"])
 
-    def test_conference_defers_newest_and_shows_after_end_delay(self):
+    def test_conference_defers_newest_and_shows_when_conference_ends(self):
         h = self.h
         h.conference = True
         h.run(1)
@@ -191,10 +191,8 @@ class GateTest(unittest.TestCase):
         h.run(3600)
         self.assertEqual(h.shown(), [])
         h.conference = False
-        h.run(CONFERENCE_END_DELAY - 1)
-        self.assertEqual(h.shown(), [])
         with self.assertLogs(level="INFO") as logs:
-            h.run(2)
+            h.run(1)
         self.assertEqual(h.spawned[0][:2], ("eye_relax", {"x": 1}))  # newest wins
         self.assertIn("after the conference ended", "\n".join(logs.output))
         self.assertEqual(len(h.spawned), 1)
@@ -214,7 +212,7 @@ class GateTest(unittest.TestCase):
         h.locked = True
         h.run(LOCK_POLL)
         h.conference = False
-        h.run(CONFERENCE_END_DELAY + 10)
+        h.run(10)
         self.assertEqual(h.shown(), [])
         h.locked = False
         h.run(LOCK_POLL + UNLOCK_DELAY + 1)
@@ -227,7 +225,7 @@ class GateTest(unittest.TestCase):
         h.gate.request("posture", {})
         h.skip = "paused"
         h.conference = False
-        h.run(CONFERENCE_END_DELAY + 1)
+        h.run(1)
         self.assertEqual(h.shown(), [])
         self.assertIsNone(h.gate.pending)
 
