@@ -17,7 +17,7 @@ const DRAG_THRESHOLD = 4;
 const CONFERENCE_SIGNALS = [
     { key: 'screen_share', label: 'Screen share', hint: 'Screen sharing or a screencast (top bar extension, else PipeWire)',
       winHint: null },
-    { key: 'microphone', label: 'Microphone', hint: 'An app records from the microphone' },
+    { key: 'microphone', label: 'Microphone', hint: 'An app records from the microphone (with "Mic only with an app": while one of the apps below runs)' },
     { key: 'camera', label: 'Camera', hint: 'An app uses the camera' },
     { key: 'processes', label: 'Apps', hint: 'One of the apps below runs' },
     { key: 'do_not_disturb', label: 'Do Not Disturb', hint: "GNOME's Do Not Disturb is on",

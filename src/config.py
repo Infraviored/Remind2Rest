@@ -80,5 +80,7 @@ def validate_config(config):
                 conf[key] = default
             else:
                 conf[key] = [str(x) for x in conf[key] if x]
+        if "microphone_needs_app" in conf:
+            conf["microphone_needs_app"] = bool(conf["microphone_needs_app"])
         if not isinstance(conf.get("webhook_url"), str):
             conf["webhook_url"] = str(conf.get("webhook_url") or "")

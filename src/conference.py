@@ -41,6 +41,9 @@ DEFAULTS = {
     "signals": {"screen_share": True, "microphone": True, "camera": True, "processes": False,
                 "do_not_disturb": True},
     "ignore_apps": ["VibeVoice"],
+    # The microphone alone is no call (dictation, voice tools); it counts only while an app of
+    # "processes" runs, whether or not the processes signal itself is on.
+    "microphone_needs_app": True,
     # On Windows matched without ".exe": teams = classic Teams.exe, ms-teams = new Teams, zoom = Zoom.exe.
     "processes": ["teams", "teams-for-linux", "ms-teams", "zoom"],
     "end_grace_seconds": 60,
@@ -528,8 +531,15 @@ class ConferenceDetector:
         if enabled.get("camera") and not self._windows:
             users = self._probe("/proc fd scan", self._video_users) or []
             signals["camera"] = sorted(set(signals["camera"]) | set(users))
+        apps = None
         if enabled.get("processes"):
-            signals["processes"] = self._probe("processes", self._processes, settings["processes"]) or []
+            apps = self._probe("processes", self._processes, settings["processes"]) or []
+            signals["processes"] = apps
+        if signals["microphone"] and settings.get("microphone_needs_app", True):
+            if apps is None:
+                apps = self._probe("processes", self._processes, settings["processes"]) or []
+            if not apps:
+                signals["microphone"] = []
         if enabled.get("do_not_disturb"):
             signals["do_not_disturb"] = ["Do Not Disturb"] if self._probe("do not disturb", self._dnd) else []
         return {name: (found if enabled.get(name) else []) for name, found in signals.items()}

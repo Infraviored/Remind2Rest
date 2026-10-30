@@ -106,18 +106,39 @@ class Probes:
         self.nodes = []
         self.video = []
         self.dnd = False
+        self.apps = ["teams"]  # a conference app runs, so the microphone counts
         self.changes = []
 
     def detector(self, **settings):
         return ConferenceDetector(settings, clock=lambda: self.now, on_change=lambda a, r: self.changes.append((a, r)),
                                   read_pipewire=lambda: self.nodes, video_users=lambda: self.video,
-                                  processes=lambda names: [], dnd=lambda: self.dnd)
+                                  processes=lambda names: list(self.apps), dnd=lambda: self.dnd)
 
 
 class DetectorTest(unittest.TestCase):
     def setUp(self):
         self.p = Probes()
         self.d = self.p.detector()
+
+    def test_microphone_without_app_is_no_conference(self):
+        self.p.apps = []
+        self.p.nodes = [MIC_FIREFOX]
+        self.d.poll()
+        self.assertFalse(self.d.active)
+        self.assertEqual(self.d.state()["signals"]["microphone"]["sources"], [])
+
+    def test_microphone_alone_counts_when_app_not_required(self):
+        self.p.apps = []
+        self.p.nodes = [MIC_FIREFOX]
+        d = self.p.detector(microphone_needs_app=False)
+        d.poll()
+        self.assertEqual(d.state()["reasons"], ["microphone"])
+
+    def test_camera_counts_without_app(self):
+        self.p.apps = []
+        self.p.video = ["firefox"]
+        self.d.poll()
+        self.assertEqual(self.d.state()["reasons"], ["camera"])
 
     def test_first_poll_reports_state_once(self):
         with self.assertLogs(level="INFO"):

@@ -370,6 +370,11 @@
                     <input :value="listText('ignore_apps')" @change="setList('ignore_apps', $event)" type="text"
                         placeholder="VibeVoice" />
                 </label>
+                <label class="field cursor-pointer" title="The microphone counts only while one of the apps on the right runs, so dictation or voice tools alone are no call">
+                    <input type="checkbox" v-model="config.conference.microphone_needs_app"
+                        class="w-4 h-4 rounded border-outline-variant bg-surface-container-lowest text-rose-300" />
+                    <span>Mic only with an app</span>
+                </label>
                 <label class="field" style="flex: 1 1 0" :title="'Process names that count as a call while running (comma-separated)' + (config.conference.signals.processes ? '' : '; the Apps signal is off')">
                     <span>Apps</span>
                     <input :value="listText('processes')" @change="setList('processes', $event)" type="text"
