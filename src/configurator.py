@@ -8,7 +8,7 @@ from pathlib import Path
 import threading
 import webview
 
-from src.conference import post_webhook, redact
+from src.conference import post_webhook, redact, format_error
 from src.config import ADDR, SOCKET_FAMILY, load_config, save_config
 from src.library import LIBRARY
 from src.scheduler import spawn_reminder
@@ -109,7 +109,7 @@ class Api:
             code = post_webhook(url, "test", [])
             return {"status": "success", "message": f"Test sent to {redact(url)} (HTTP {code})"}
         except Exception as e:
-            return {"status": "error", "message": f"Test failed: {str(e).replace(url, redact(url))}"}
+            return {"status": "error", "message": f"Test failed: {format_error(e)}"}
 
     def service_info(self):
         running = is_service_running()

@@ -168,6 +168,17 @@ def redact(url):
     return f"{parts.scheme}://{parts.netloc.rpartition('@')[2]}/…"
 
 
+def format_error(e):
+    """Exception class plus HTTP status/reason only, never arbitrary exception strings that could contain the URL."""
+    if isinstance(e, urllib.error.HTTPError):
+        return f"{type(e).__name__} {e.code} {e.reason}"
+    if isinstance(e, urllib.error.URLError):
+        if hasattr(e, "reason") and isinstance(e.reason, Exception):
+            return f"{type(e).__name__} ({type(e.reason).__name__})"
+        return f"{type(e).__name__}"
+    return f"{type(e).__name__}"
+
+
 def post_webhook(url, state, reasons):
     """POST one state change; raises on failure. Used directly by the settings window's test button."""
     body = json.dumps({"state": state, "reasons": list(reasons), "host": socket.gethostname(),
@@ -244,7 +255,7 @@ class WebhookDispatcher:
                         break
                     except Exception as e:
                         logging.warning(f"Conference webhook {redact(url)} attempt {attempt}/{attempts} failed: "
-                                        f"{str(e).replace(url, redact(url))}")
+                                        f"{format_error(e)}")
                         if attempt < attempts:
                             delay = 2 ** attempt
                             with self._cond:

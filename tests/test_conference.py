@@ -263,6 +263,21 @@ class WebhookTest(unittest.TestCase):
         self.assertEqual(conference.redact("https://user:pw@ha.example.invalid:8123/api/webhook/x"),
                          "https://ha.example.invalid:8123/…")
 
+    def test_format_error_never_includes_url(self):
+        secret_url = "https://ha.example.invalid/api/webhook/SUPER_SECRET"
+        err_http = conference.urllib.error.HTTPError(secret_url, 404, "Not Found", {}, None)
+        self.assertEqual(conference.format_error(err_http), "HTTPError 404 Not Found")
+        self.assertNotIn("SUPER_SECRET", conference.format_error(err_http))
+        err_http.close()
+
+        err_url = conference.urllib.error.URLError(ConnectionRefusedError(f"connection refused to {secret_url}"))
+        self.assertEqual(conference.format_error(err_url), "URLError (ConnectionRefusedError)")
+        self.assertNotIn("SUPER_SECRET", conference.format_error(err_url))
+
+        err_os = OSError(f"Failed to connect to {secret_url}")
+        self.assertEqual(conference.format_error(err_os), "OSError")
+        self.assertNotIn("SUPER_SECRET", conference.format_error(err_os))
+
 
 class ConfigTest(unittest.TestCase):
     def test_defaults_filled_without_overwriting(self):
