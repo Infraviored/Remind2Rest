@@ -18,6 +18,15 @@ Gio._promisify(Gio.Subprocess.prototype, 'wait_async');
 
 const SOCKET_PATH = GLib.build_filenamev([GLib.get_home_dir(), '.Remind2Rest.sock']);
 
+// STATUS `conference.reasons` (src/conference.py SIGNALS) as the menu names them.
+const CONFERENCE_REASONS = {
+    screen_share: 'screen share',
+    microphone: 'microphone',
+    camera: 'camera',
+    processes: 'meeting app',
+    do_not_disturb: 'Do Not Disturb',
+};
+
 // Daemons from before STATUS reported `types` get these trigger items.
 const FALLBACK_TYPES = [
     {key: 'eye_relax', title: 'Eye Relax'},
@@ -100,7 +109,21 @@ class Indicator extends PanelMenu.Button {
                 Main.notify('Remind2Rest', 'Remind2Rest.desktop not found. Run setup.py.');
         });
 
+        // Screen sharing and screencasts, tracked like GNOME's own indicator
+        // (ui/status/remoteAccess.js): a handle per session, gone on `stopped`. Sessions that began
+        // before the extension was enabled are not seen; the daemon falls back to PipeWire then.
+        this._shareHandles = new Map(); // handle -> its `stopped` handler id
+        this._controller = global.backend.get_remote_access_controller();
+        this._controllerId = this._controller?.connect('new-handle', (o, handle) => {
+            this._shareHandles.set(handle, handle.connect('stopped', () => {
+                this._shareHandles.delete(handle);
+                this._reportScreenShare();
+            }));
+            this._reportScreenShare();
+        }) ?? 0;
+
         this._running = false;
+        this._conference = false;
         this._polling = false;
         this._pollCounter = 0;
         this._remainingSeconds = null;
@@ -145,7 +168,7 @@ class Indicator extends PanelMenu.Button {
         this._pollCounter = (this._pollCounter || 0) - 1;
         if (this._pollCounter <= 0) {
             this._pollDaemon();
-        } else if (this._running && !this._paused && this._nextTitle && this._remainingSeconds !== null) {
+        } else if (this._running && !this._paused && !this._conference && this._nextTitle && this._remainingSeconds !== null) {
             if (this._remainingSeconds > 0)
                 this._remainingSeconds--;
             const mm = String(Math.floor(this._remainingSeconds / 60)).padStart(2, '0');
@@ -171,6 +194,8 @@ class Indicator extends PanelMenu.Button {
 
         let status = null;
         try {
+            // Resent every poll, so the daemon's copy expires (about 15 s) if the extension goes away.
+            await this._sendScreenShare(cancellable);
             status = JSON.parse(await sendCommand('STATUS', cancellable));
         } catch {
             // Daemon not running, timed out, or unparseable reply.
@@ -186,6 +211,7 @@ class Indicator extends PanelMenu.Button {
 
         this._running = status !== null;
         this._paused = Boolean(status?.paused_until);
+        this._conference = Boolean(status?.conference?.active);
         // The daemon names the next reminder and its icon (src/library.py), so new types need no change here.
         this._nextTitle = status?.next_title ?? null;
 
@@ -202,6 +228,15 @@ class Indicator extends PanelMenu.Button {
             this._icon.opacity = 255;
             this._label.text = ` ${until}`;
             this._statusItem.label.text = `Paused until ${until}`;
+        } else if (this._conference) {
+            // Reminders that fall due now wait until 60 s after the conference.
+            this._remainingSeconds = null;
+            const reasons = (status.conference.reasons ?? []).map(r => CONFERENCE_REASONS[r] ?? r);
+            this._icon.icon_name = 'call-start-symbolic';
+            this._icon.opacity = 255;
+            this._label.text = '';
+            this._statusItem.label.text = reasons.length
+                ? `In conference (${reasons.join(', ')})` : 'In conference';
         } else if (this._nextTitle) {
             if (status.time_to_next) {
                 const parts = status.time_to_next.split(':');
@@ -233,7 +268,25 @@ class Indicator extends PanelMenu.Button {
         this._serviceItem.label.text = this._running ? 'Stop service' : 'Start service';
     }
 
+    _sendScreenShare(cancellable = null) {
+        return sendCommand(`SCREENSHARE ${this._shareHandles.size > 0 ? 'on' : 'off'}`, cancellable);
+    }
+
+    // Tells the daemon at once when sharing starts or stops, not only at the next poll.
+    _reportScreenShare() {
+        this._sendScreenShare().catch(() => {
+            // Daemon not running; the next poll resends.
+        });
+    }
+
     destroy() {
+        if (this._controllerId) {
+            this._controller.disconnect(this._controllerId);
+            this._controllerId = 0;
+        }
+        for (const [handle, id] of this._shareHandles)
+            handle.disconnect(id);
+        this._shareHandles.clear();
         if (this._cancellable) {
             this._cancellable.cancel();
             this._cancellable = null;
