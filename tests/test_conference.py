@@ -575,6 +575,25 @@ class WebhookTest(unittest.TestCase):
         dispatcher.stop()
         self.assertEqual(posted, ["on", "on"])
 
+    def test_stop_sets_pending_done_event(self):
+        posted = []
+        release = threading.Event()
+
+        def mock_post(url, state, reasons):
+            posted.append(state)
+            release.wait(5)
+
+        dispatcher = conference.WebhookDispatcher(post=mock_post, attempts=1, backoff=0)
+        done1 = dispatcher.send(WEBHOOK, "on", [])
+        while not posted:
+            time.sleep(0.01)
+        done2 = dispatcher.send(WEBHOOK, "off", [])
+        threading.Timer(0.05, release.set).start()
+        dispatcher.stop()
+        self.assertTrue(done1.is_set())
+        self.assertTrue(done2.is_set())
+        self.assertEqual(posted, ["on"])
+
     def test_detector_change_goes_to_the_dispatcher(self):
         sent = []
         with patch.object(conference.webhook_dispatcher, "send", side_effect=lambda *a: sent.append(a)):

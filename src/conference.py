@@ -375,6 +375,8 @@ class WebhookDispatcher:
     def stop(self):
         with self._cond:
             self._stop = True
+            if self._pending is not None:
+                self._pending[3].set()
             self._cond.notify()
         if self._thread is not None:
             self._thread.join()
@@ -387,6 +389,8 @@ class WebhookDispatcher:
             with self._cond:
                 self._cond.wait_for(self._superseded)
                 if self._stop:
+                    if self._pending is not None:
+                        self._pending[3].set()
                     return
                 url, state, reasons, done = self._pending
                 self._pending = None
