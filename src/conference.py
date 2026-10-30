@@ -26,7 +26,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 
-from src.config import IS_WINDOWS
+from src.system import IS_WINDOWS
 
 
 POLL_INTERVAL = 3       # s between two polls

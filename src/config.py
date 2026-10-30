@@ -3,9 +3,8 @@ import json
 import socket
 import logging
 
-IS_WINDOWS = os.name == "nt"  # before the imports below: src.conference imports it while they load
-
 from src import conference
+from src.system import IS_WINDOWS
 from src.library import fill_defaults
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
