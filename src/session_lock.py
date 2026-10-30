@@ -37,9 +37,13 @@ def _screensaver_active():
 def is_locked():
     if Gio is None:
         return None
+    any_success = False
     for probe in (_logind_locked, _screensaver_active):
         try:
-            return bool(probe())
+            if probe():
+                return True
+            any_success = True
         except Exception as e:
-            logging.debug(f"Lock probe {probe.__name__} failed: {e}")
-    return None
+            name = getattr(probe, "__name__", str(probe))
+            logging.debug(f"Lock probe {name} failed: {e}")
+    return False if any_success else None

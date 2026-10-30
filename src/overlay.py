@@ -4,11 +4,13 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+import time
 import webview
 
 from src.config import RATINGS_FILE_PATH, WATER_LOG_PATH
 from src.logs import TIME_FORMAT, MAX_WATER_ML, read_ratings, water_today_ml
 from src.library import LIBRARY
+from src.session_lock import is_locked
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
@@ -46,11 +48,30 @@ class OverlayApi:
         self._window.hide()
 
         def wake():
-            self._window.show()
-            try:
-                self._window.evaluate_js("window.dispatchEvent(new CustomEvent('remind2rest:resume'))")
-            except Exception:
-                pass
+            def wait_for_unlock():
+                while not self._closed and is_locked():
+                    time.sleep(5)
+                if self._closed:
+                    return
+                time.sleep(45)
+                if is_locked():
+                    wait_for_unlock()
+                    return
+                if not self._closed:
+                    self._window.show()
+                    try:
+                        self._window.evaluate_js("window.dispatchEvent(new CustomEvent('remind2rest:resume'))")
+                    except Exception:
+                        pass
+
+            if is_locked():
+                threading.Thread(target=wait_for_unlock, daemon=True).start()
+            else:
+                self._window.show()
+                try:
+                    self._window.evaluate_js("window.dispatchEvent(new CustomEvent('remind2rest:resume'))")
+                except Exception:
+                    pass
 
         timer = threading.Timer(mins * 60, wake)
         timer.daemon = True

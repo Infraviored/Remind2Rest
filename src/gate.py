@@ -47,7 +47,7 @@ class ReminderGate:
         Returns "shown", "deferred" or "dropped"."""
         with self._mutex:
             now = self._clock()
-            self._poll_lock(now)
+            self._check_edges(now)
             if self._window_open() and module == self._open_module:
                 logging.info(f"Dropped {module}: the same reminder is still open")
                 return "dropped"
@@ -66,16 +66,7 @@ class ReminderGate:
                 self._woke(self._last_tick, now)
             self._last_tick = now
 
-            was_locked = self._locked
-            self._poll_lock(now)
-            if was_locked and not self._locked:
-                logging.info("Screen unlocked")
-                self._hold(now, UNLOCK_DELAY, "unlock")
-
-            if self._proc is not None and self._proc.poll() is not None:
-                self._proc = None
-                self._open_module = None
-                self._hold(now, AFTER_CLOSE_DELAY, "the last reminder closed")
+            self._check_edges(now)
 
             if self._pending and not self._blocked(now, manual=False):
                 module, settings = self._pending
@@ -86,6 +77,18 @@ class ReminderGate:
                 else:
                     logging.info(f"Showing deferred {module} after {self._hold_reason}")
                     self._launch(module, settings)
+
+    def _check_edges(self, now):
+        was_locked = self._locked
+        self._poll_lock(now)
+        if was_locked and not self._locked:
+            logging.info("Screen unlocked")
+            self._hold(now, UNLOCK_DELAY, "unlock")
+
+        if self._proc is not None and self._proc.poll() is not None:
+            self._proc = None
+            self._open_module = None
+            self._hold(now, AFTER_CLOSE_DELAY, "the last reminder closed")
 
     @property
     def pending(self):
