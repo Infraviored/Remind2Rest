@@ -107,31 +107,36 @@ class Tray:
         self._on_quit = on_quit
         self._logo = Image.open(LOGO_PATH).convert("RGBA").resize((SIZE, SIZE)) if os.path.exists(LOGO_PATH) \
             else Image.new("RGBA", (SIZE, SIZE), "#2dd4bf")
+        self._lock = threading.Lock()
         self._status = {}
         self._shown = None  # (icon key, headline, water line, types) last pushed to the shell
         self._stopped = threading.Event()
         self.icon = pystray.Icon("Remind2Rest", self._logo, "Remind2Rest", menu=self._menu())
+
+    def _status_snapshot(self):
+        with self._lock:
+            return dict(self._status)
 
     # Menu -----------------------------------------------------------------
 
     def _menu(self):
         M, I = pystray.Menu, pystray.MenuItem
         return M(
-            I(lambda item: headline(self._status), None, enabled=False),
-            I(lambda item: water_line(self._status) or "", None, enabled=False,
-              visible=lambda item: water_line(self._status) is not None),
+            I(lambda item: headline(self._status_snapshot()), None, enabled=False),
+            I(lambda item: water_line(self._status_snapshot()) or "", None, enabled=False,
+              visible=lambda item: water_line(self._status_snapshot()) is not None),
             M.SEPARATOR,
-            I("Show now", M(self._show_now_items), visible=lambda item: bool(self._status.get("types"))),
+            I("Show now", M(self._show_now_items), visible=lambda item: bool(self._status_snapshot().get("types"))),
             I("Pause", M(*[I(self._pause_label(m), self._pauser(m)) for m in PAUSE_CHOICES]),
-              visible=lambda item: not self._status.get("paused_until")),
-            I("Resume reminders", self._resume, visible=lambda item: bool(self._status.get("paused_until"))),
+              visible=lambda item: not self._status_snapshot().get("paused_until")),
+            I("Resume reminders", self._resume, visible=lambda item: bool(self._status_snapshot().get("paused_until"))),
             M.SEPARATOR,
             I("Settings…", self._open_settings, default=True),
             I("Quit Remind2Rest", self._quit),
         )
 
     def _show_now_items(self):
-        return [pystray.MenuItem(t["title"], self._shower(t["key"])) for t in self._status.get("types", [])]
+        return [pystray.MenuItem(t["title"], self._shower(t["key"])) for t in self._status_snapshot().get("types", [])]
 
     @staticmethod
     def _pause_label(minutes):
@@ -178,22 +183,25 @@ class Tray:
 
     def refresh(self):
         try:
-            self._status = scheduler.get_current_status()
+            status = scheduler.get_current_status()
         except Exception as e:
             logging.debug(f"Tray: no status yet: {e}")
             return
-        line = headline(self._status)
-        mins = minutes_left(self._status)
-        key = ("paused" if self._status.get("paused_until") else
-               (self._status.get("next_reminder"), mins) if mins is not None else "logo")
-        shown = (key, line, water_line(self._status), tuple(t["key"] for t in self._status.get("types", [])))
-        if shown == self._shown:
-            return
-        if self._shown is None or key != self._shown[0]:
-            self.icon.icon = render_icon(self._status, self._logo)
+        line = headline(status)
+        mins = minutes_left(status)
+        key = ("paused" if status.get("paused_until") else
+               (status.get("next_reminder"), mins) if mins is not None else "logo")
+        shown = (key, line, water_line(status), tuple(t["key"] for t in status.get("types", [])))
+        with self._lock:
+            if shown == self._shown:
+                return
+            need_icon = self._shown is None or key != self._shown[0]
+            self._status = status
+            self._shown = shown
+        if need_icon:
+            self.icon.icon = render_icon(status, self._logo)
         self.icon.title = f"Remind2Rest\n{line}"[:127]
         self.icon.update_menu()
-        self._shown = shown
 
     def _update_loop(self):
         while not self._stopped.wait(UPDATE_EVERY):
