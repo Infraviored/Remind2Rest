@@ -20,9 +20,12 @@ LOGO_PATH = os.path.join(script_dir, "Remind2Rest.png")
 UPDATE_EVERY = 2  # s
 PAUSE_CHOICES = (15, 30, 60, 120)
 SIZE = 64
-BADGE_HEIGHT = 26
+# Part of Remind2Rest.png around the drop: the app icon's margin and most of its dark tile would
+# shrink the drop to a few pixels at tray size.
+LOGO_CROP = (98, 106, 414, 422)
+BADGE_HEIGHT = 32
 BADGE_PAD = 8
-BADGE_FONT = 21
+BADGE_FONT = 27
 BADGE_FILL = "#0b0f14"
 BADGE_RING = "#ffffff"
 BADGE_TEXT = "#ffffff"
@@ -79,6 +82,13 @@ def badge_text(mins):
     return f"{round(mins / 60)}h"
 
 
+def tray_logo(path):
+    """The drop from the app icon, cut tight so it fills the whole tray square (no transparent margin)."""
+    if not os.path.exists(path):
+        return Image.new("RGBA", (SIZE, SIZE), "#2dd4bf")
+    return Image.open(path).convert("RGBA").crop(LOGO_CROP).resize((SIZE, SIZE), Image.LANCZOS)
+
+
 def render_icon(status, logo):
     """The tray picture: the logo, with a small badge in the bottom right corner that holds the
     minutes until the next reminder (pause bars while paused). No badge when nothing is scheduled."""
@@ -98,7 +108,7 @@ def render_icon(status, logo):
                         fill=BADGE_FILL, outline=BADGE_RING, width=2)
     cx, cy = left + w / 2, top + BADGE_HEIGHT / 2
     if paused:
-        bar_w, gap, bar_h = 4, 4, BADGE_HEIGHT // 2
+        bar_w, gap, bar_h = 5, 4, BADGE_HEIGHT // 2
         x0 = cx - bar_w - gap / 2
         d.rectangle((x0, cy - bar_h / 2, x0 + bar_w, cy + bar_h / 2), fill=BADGE_TEXT)
         d.rectangle((x0 + bar_w + gap, cy - bar_h / 2, x0 + 2 * bar_w + gap, cy + bar_h / 2), fill=BADGE_TEXT)
@@ -110,8 +120,7 @@ def render_icon(status, logo):
 class Tray:
     def __init__(self, on_quit):
         self._on_quit = on_quit
-        self._logo = Image.open(LOGO_PATH).convert("RGBA").resize((SIZE, SIZE)) if os.path.exists(LOGO_PATH) \
-            else Image.new("RGBA", (SIZE, SIZE), "#2dd4bf")
+        self._logo = tray_logo(LOGO_PATH)
         self._lock = threading.Lock()
         self._status = {}
         self._shown = None  # (icon key, headline, water line, types) last pushed to the shell
