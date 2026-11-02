@@ -54,5 +54,5 @@ const ease = t => 0.5 - Math.cos(Math.PI * t) / 2;
         cycleEl.textContent = `Breath ${cycle + 1} of ${cycles}`;
         rafId = requestAnimationFrame(tick);
     };
-    rafId = requestAnimationFrame(tick);
+    tick();
 })();

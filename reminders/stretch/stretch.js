@@ -57,5 +57,5 @@ const MOVES = [
         items[i].style.setProperty('--p', `${(inMove / perMove) * 100}%`);
         rafId = requestAnimationFrame(tick);
     };
-    rafId = requestAnimationFrame(tick);
+    tick();
 })();
