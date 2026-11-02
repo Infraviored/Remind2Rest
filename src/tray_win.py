@@ -23,9 +23,9 @@ SIZE = 64
 # Part of Remind2Rest.png around the drop: the app icon's margin and most of its dark tile would
 # shrink the drop to a few pixels at tray size.
 LOGO_CROP = (98, 106, 414, 422)
-BADGE_HEIGHT = 32
+BADGE_HEIGHT = 42
 BADGE_PAD = 8
-BADGE_FONT = 27
+BADGE_FONT = 35
 BADGE_FILL = "#0b0f14"
 BADGE_RING = "#ffffff"
 BADGE_TEXT = "#ffffff"
@@ -108,7 +108,7 @@ def render_icon(status, logo):
                         fill=BADGE_FILL, outline=BADGE_RING, width=2)
     cx, cy = left + w / 2, top + BADGE_HEIGHT / 2
     if paused:
-        bar_w, gap, bar_h = 5, 4, BADGE_HEIGHT // 2
+        bar_w, gap, bar_h = 6, 5, BADGE_HEIGHT // 2
         x0 = cx - bar_w - gap / 2
         d.rectangle((x0, cy - bar_h / 2, x0 + bar_w, cy + bar_h / 2), fill=BADGE_TEXT)
         d.rectangle((x0 + bar_w + gap, cy - bar_h / 2, x0 + 2 * bar_w + gap, cy + bar_h / 2), fill=BADGE_TEXT)
