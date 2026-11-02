@@ -1,6 +1,6 @@
 (async () => {
     const api = await R2R.api;
-    const {now} = await api.get_context();
+    const {now} = await R2R.hold(api.get_context());
     // Night sky outside before 7:00 and from 19:00 (local time of the context).
     const updateSky = (isoTime) => {
         const hour = isoTime ? Number(isoTime.slice(11, 13)) : new Date().getHours();

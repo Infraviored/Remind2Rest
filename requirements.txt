@@ -1,6 +1,7 @@
 apscheduler
 pillow
 pywebview
-# PyGObject is required for Wayland/Linux support (GTK backend)
-# On Windows, the Tkinter backend is used (usually included with Python)
-PyGObject
+# GTK backend for the windows and the session lock check on Linux; does not build on Windows.
+PyGObject; sys_platform == "linux"
+# Tray icon on Windows (GNOME uses the top bar extension instead).
+pystray; sys_platform == "win32"

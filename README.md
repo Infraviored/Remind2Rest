@@ -53,20 +53,31 @@ Run the PowerShell installer script:
    .\Install-Remind2Rest.ps1
    ```
 This will:
-- Create a virtual environment in `%LOCALAPPDATA%\Remind2Rest\venv`.
-- Install all requirements.
+- Create a virtual environment in `%LOCALAPPDATA%\Remind2Rest\venv` and install the requirements (it stops if pip fails).
 - Add Remind2Rest to your **Windows Startup** folder.
-- Create a **Desktop Shortcut** for the settings window.
+- Create a **Start menu** entry and a **Desktop Shortcut** for the settings window.
+- Stop a running Remind2Rest and start the new one. Run it again after `git pull` to update.
+
+On Windows the service shows a **tray icon**: the number is the minutes until the next reminder, in
+that reminder's colour (grey with pause bars while paused); the tooltip names it. Its menu shows the
+next reminder (or the pause, or the call it waits for) and today's water, and offers *Show now*,
+*Pause* 15 min to 2 h, *Resume*, *Settings…* (also a click on the icon) and *Quit Remind2Rest*.
+The settings window's Start/Stop button starts and stops the service.
+
+Logs on Windows are in `%LOCALAPPDATA%\Remind2Rest`: `Remind2Rest.log` (service: schedule, deferrals,
+which reminder opened and closed, warm or cold start), `notifications.log` (reminder windows: how long
+each took to appear, snoozes, crashes) and `overlay-errors.log` (native crash output of the windows).
+On Linux they are in `~/.local/share/Remind2Rest`.
 
 ### 3. Usage
 Once installed, the background service will start automatically on login. Open the settings from the app menu (**Remind2Rest**), the GNOME top bar menu, or with `python configurator.py`.
 
-The top bar extension and the settings window talk to the service over its socket (`~/.Remind2Rest.sock`) with plain-text commands: `STATUS`, `RELOAD`, `PAUSE <minutes>`, `RESUME`, `TRIGGER <type> [<settings json>]` (any type from `src/library.py`), `CONFERENCE` (the conference detector's state per signal, for debugging) and `SCREENSHARE on|off` (sent by the top bar extension). `STATUS` names the next reminder with `next_reminder`, `next_title` and `next_icon`, and the conference state as `conference: {active, reasons}`.
+The top bar extension and the settings window talk to the service over its socket (`~/.Remind2Rest.sock`) with plain-text commands: `STATUS`, `RELOAD`, `PAUSE <minutes>`, `RESUME`, `TRIGGER <type> [<settings json>]` (any type from `src/library.py`), `CONFERENCE` (the conference detector's state per signal, for debugging), `SCREENSHARE on|off` (sent by the top bar extension), `PREWARM` (Windows: start a hidden reminder window now, sent by the settings window so its test buttons open at once) and `QUIT` (stop the service; the settings window's Stop button and the tray use it). On Windows the socket is TCP `127.0.0.1:55555`, bound exclusively, so a second service exits instead of doubling every reminder. `STATUS` names the next reminder with `next_reminder`, `next_title` and `next_icon`, and the conference state as `conference: {active, reasons}`.
 
 ### One reminder at a time
 
 Reminders never stack (`src/gate.py`):
-- **Screen locked:** nothing opens. A reminder that falls due waits and shows about 45 s after unlock. The lock is read from logind (`LockedHint` of the display session), with GNOME's screensaver as fallback, every 5 s. Where neither answers (Windows), reminders show as before.
+- **Screen locked:** nothing opens. A reminder that falls due waits and shows about 45 s after unlock. The lock is read from logind (`LockedHint` of the display session), with GNOME's screensaver as fallback, every 5 s. On Windows the service checks whether it can open the input desktop (it cannot while the lock screen has it).
 - **A reminder window is open:** the next one waits and shows 30 s after the open one closes. A second reminder of the same type is dropped. A snoozed window still counts as open (its process lives on), so it holds back the others until it is closed. This also holds for `TRIGGER` and the test button in the settings.
 - **Suspend:** after waking up, missed reminders are not repeated; only the latest one shows, 45 s after unlock.
 

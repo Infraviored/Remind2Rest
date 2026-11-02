@@ -116,7 +116,7 @@ const rot = (p, deg) => {
     const streamCore = document.getElementById('streamCore');
 
     let state = {today_ml: 0, goal_ml: 2000};
-    try { state = await api.get_water_today(); } catch (e) { /* keep defaults */ }
+    try { state = await R2R.hold(api.get_water_today()); } catch (e) { /* keep defaults */ }
     const goal = () => Math.max(1, Number(state.goal_ml) || 2000);
     let shownMl = Number(state.today_ml) || 0;   // what the carafe shows; animates during a pour
     if (shownMl >= goal()) title.textContent = 'Goal reached';

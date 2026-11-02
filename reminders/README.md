@@ -14,6 +14,12 @@ Stretch walks through four moves with an animated figure, breathing paces 4-7-8 
 growing and shrinking circle, fresh air shows an open window. Pages close right after the user's
 action or when their sequence ends.
 
+On Windows the window stays hidden until the page has built its first view, then appears complete
+and takes the keyboard focus. `common.js` tells it when (`api.ready()`): after the page's own
+`await R2R.api` and the data it wrapped in `R2R.hold(...)` (at most 1.5 s). A page that never calls
+`ready()` is shown after 4 s. Shortly before a reminder is due the service starts the window hidden
+in advance (`notifications.py standby`), so it opens without the cold start of Python and WebView2.
+
 `Escape` must always close the page (call `api.close()`).
 
 ## JavaScript API
@@ -29,10 +35,19 @@ const api = await new Promise(resolve => {
 
 All methods return promises.
 
+Wrap the data the first view needs in `R2R.hold()`, right after `await R2R.api`, so the window
+appears with it filled in:
+
+```js
+const api = await R2R.api;
+const {settings = {}} = await R2R.hold(api.get_context());
+```
+
 | Method | Returns / does |
 |---|---|
 | `get_context()` | `{type, settings, now}`. `settings` = this type's config entry (e.g. `{relax_duration: 20, flash_frequency: 2}` for eye relax), `now` = ISO local time |
 | `close()` | closes the window and ends the process |
+| `ready()` | the first view is built: shows the window (called by `common.js`, pages need not call it) |
 | `snooze(minutes)` | hides the window and shows it again after `minutes` |
 | `save_rating(rating)` | posture: appends `YYYY-MM-DD HH:MM:SS - Rating: <1-5>` to the ratings file |
 | `get_ratings(days)` | posture: `[{time: "YYYY-MM-DD HH:MM:SS", rating: 1-5}, ...]` of the last `days` days, oldest first |

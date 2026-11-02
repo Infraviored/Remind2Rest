@@ -271,8 +271,18 @@ class SessionLockTest(unittest.TestCase):
              patch.object(session_lock, "_screensaver_active", side_effect=RuntimeError("fail")):
             self.assertIsNone(session_lock.is_locked())
 
-        with patch.object(session_lock, "Gio", None):
+        with patch.object(session_lock, "Gio", None), patch.object(session_lock, "_WINDOWS", False):
             self.assertIsNone(session_lock.is_locked())
+
+    def test_windows_uses_input_desktop_probe(self):
+        for answer in (True, False, None):
+            with patch.object(session_lock, "Gio", None), patch.object(session_lock, "_WINDOWS", True), \
+                 patch.object(session_lock, "_windows_locked", return_value=answer):
+                self.assertIs(session_lock.is_locked(), answer)
+
+    @unittest.skipUnless(os.name == "nt", "needs user32")
+    def test_windows_probe_unlocked_in_this_session(self):
+        self.assertFalse(session_lock._windows_locked())
 
 
 class LibraryTest(unittest.TestCase):
@@ -308,6 +318,62 @@ class FindMissedTest(unittest.TestCase):
 
     def test_nothing_due_in_short_gap(self):
         self.assertIsNone(scheduler.find_missed(self.ts(11, 41), self.ts(11, 49, 30)))
+
+
+class FakePopen:
+    started = []
+
+    def __init__(self, args, stdin=None, **kwargs):
+        import io
+        self.args = args
+        self.pid = 1000 + len(FakePopen.started)
+        self.stdin = io.BytesIO() if stdin is not None else None
+        self.alive = True
+        FakePopen.started.append(self)
+
+    def poll(self):
+        return None if self.alive else 0
+
+
+@unittest.skipIf(scheduler is None, "needs apscheduler (use the venv python)")
+class WarmOverlayTest(unittest.TestCase):
+    def setUp(self):
+        FakePopen.started = []
+        scheduler._standby = None
+        patches = [patch.object(scheduler.subprocess, "Popen", FakePopen),
+                   patch.object(scheduler, "WARM_OVERLAY", True),
+                   patch.object(scheduler, "_overlay_io", lambda: {})]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        self.addCleanup(setattr, scheduler, "_standby", None)
+
+    def test_reminder_uses_the_warm_overlay_once(self):
+        import json
+        scheduler.prewarm()
+        scheduler.prewarm()  # one standby at a time
+        self.assertEqual(len(FakePopen.started), 1)
+        standby = FakePopen.started[0]
+        self.assertEqual(standby.args[-1], "standby")
+
+        proc = scheduler.spawn_reminder("posture", {"enabled": True})
+        self.assertIs(proc, standby)
+        self.assertEqual(json.loads(standby.stdin.getvalue())["module"], "posture")
+
+        cold = scheduler.spawn_reminder("eye_relax", {})
+        self.assertIsNot(cold, standby)
+        self.assertEqual(cold.args[-4:-2], ["show", "eye_relax"])
+
+    def test_dead_standby_falls_back_to_cold_start(self):
+        scheduler.prewarm()
+        FakePopen.started[0].alive = False
+        proc = scheduler.spawn_reminder("posture", {})
+        self.assertIn("show", proc.args)
+
+    def test_no_warm_overlay_off_windows(self):
+        with patch.object(scheduler, "WARM_OVERLAY", False):
+            scheduler.prewarm()
+        self.assertEqual(FakePopen.started, [])
 
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ const ease = t => 0.5 - Math.cos(Math.PI * t) / 2;
 
 (async () => {
     const api = await R2R.api;
-    const {settings = {}} = await api.get_context();
+    const {settings = {}} = await R2R.hold(api.get_context());
     const cycles = Math.max(1, Math.round(Number(settings.cycles) || 3));
 
     const orb = document.getElementById('orb');

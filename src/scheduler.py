@@ -3,9 +3,11 @@ import sys
 import json
 import logging
 import subprocess
+import threading
 from datetime import datetime, timedelta
 from apscheduler.triggers.interval import IntervalTrigger
 
+from src.config import LOG_PATH
 from src.conference import detector as conference
 from src.gate import ReminderGate
 from src.library import LIBRARY, page_settings
@@ -86,13 +88,68 @@ def trigger_reminder(module, settings):
     gate.request(module, settings)
 
 
+# Windows: a hidden overlay process is started this many seconds before a reminder is due (and on
+# PREWARM), so the reminder opens without the ~1.3 s cold start of Python, .NET and WebView2. Idle it
+# holds about 200 MB, so it is not kept around all the time.
+WARM_OVERLAY = os.name == "nt"
+PREWARM_LEAD = 30
+_standby = None
+_standby_lock = threading.Lock()
+
+
+def _overlay_command(*args):
+    return [sys.executable, os.path.join(script_dir, "notifications.py"), *args]
+
+
+def _overlay_io():
+    """Popen arguments for an overlay: no console window, and native crash output (a .NET exception
+    from pywebview's WinForms backend is printed by the runtime, not by Python) kept in a log file."""
+    kwargs = {"stdout": subprocess.DEVNULL}
+    try:
+        kwargs["stderr"] = open(os.path.join(os.path.dirname(LOG_PATH), "overlay-errors.log"), "ab")
+    except OSError:
+        kwargs["stderr"] = subprocess.DEVNULL
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+    return kwargs
+
+
+def prewarm():
+    """Start the hidden standby overlay unless one is ready already (Windows only)."""
+    global _standby
+    if not WARM_OVERLAY:
+        return
+    with _standby_lock:
+        if _standby is not None and _standby.poll() is None:
+            return
+        try:
+            _standby = subprocess.Popen(_overlay_command("standby"), stdin=subprocess.PIPE, **_overlay_io())
+            logging.info(f"Warming up an overlay for the next reminder (pid {_standby.pid})")
+        except OSError as e:
+            _standby = None
+            logging.error(f"Could not start a warm overlay: {e}")
+
+
 def spawn_reminder(module, settings):
-    """Start the overlay for one reminder in its own process; returns the process."""
+    """Start the overlay for one reminder in its own process; returns the process. Uses the warm
+    standby overlay when there is one."""
+    global _standby
     if module not in LIBRARY:
         raise ValueError(f"Unknown reminder module: {module}")
-    notifications_script = os.path.join(script_dir, "notifications.py")
-    return subprocess.Popen([sys.executable, notifications_script, "show", module,
-                             "--settings", json.dumps(page_settings(module, settings))])
+    page = page_settings(module, settings)
+    with _standby_lock:
+        proc, _standby = _standby, None
+    if proc is not None and proc.poll() is None:
+        try:
+            proc.stdin.write((json.dumps({"module": module, "settings": page}) + "\n").encode())
+            proc.stdin.flush()
+            logging.info(f"Opening {module} in the warm overlay (pid {proc.pid})")
+            return proc
+        except OSError as e:
+            logging.warning(f"Warm overlay did not take {module} ({e}); starting a new one")
+    proc = subprocess.Popen(_overlay_command("show", module, "--settings", json.dumps(page)), **_overlay_io())
+    logging.info(f"Opening {module} with a cold start (pid {proc.pid})")
+    return proc
 
 
 def launch_reminder(module, settings):
@@ -198,6 +255,10 @@ def schedule_reminders(scheduler, config):
 
                     if elapsed_minutes == (reminder % interval_minutes) and elapsed_seconds < 1:
                         trigger_reminder(module, config[module])
+
+        # Not at 0: that is the tick the reminder fires in, which just used the warm overlay.
+        if (0 < time_to_next <= PREWARM_LEAD or gate.pending) and not is_paused():
+            prewarm()
 
         if time_to_next == float("inf"):
             minutes_to_next, seconds_to_next = 0, 0

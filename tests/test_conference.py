@@ -112,7 +112,7 @@ class Probes:
     def detector(self, **settings):
         return ConferenceDetector(settings, clock=lambda: self.now, on_change=lambda a, r: self.changes.append((a, r)),
                                   read_pipewire=lambda: self.nodes, video_users=lambda: self.video,
-                                  processes=lambda names: list(self.apps), dnd=lambda: self.dnd)
+                                  processes=lambda names: list(self.apps), dnd=lambda: self.dnd, windows=False)
 
 
 class DetectorTest(unittest.TestCase):
@@ -149,7 +149,7 @@ class DetectorTest(unittest.TestCase):
             {"signals": {"microphone": False, "camera": True, "processes": False}},
             clock=lambda: self.p.now, on_change=lambda a, r: self.p.changes.append((a, r)),
             read_pipewire=lambda: self.p.nodes, video_users=lambda: self.p.video,
-            processes=lambda names: probed.append(names) or [], dnd=lambda: self.p.dnd
+            processes=lambda names: probed.append(names) or [], dnd=lambda: self.p.dnd, windows=False,
         )
         d.poll()
         self.assertEqual(probed, [])
@@ -220,7 +220,7 @@ class DetectorTest(unittest.TestCase):
         def missing():
             raise FileNotFoundError("pw-dump")
         d = ConferenceDetector({}, clock=lambda: self.p.now, on_change=lambda a, r: None, read_pipewire=missing,
-                               video_users=lambda: [], dnd=lambda: False)
+                               video_users=lambda: [], dnd=lambda: False, windows=False)
         with self.assertLogs(level="WARNING") as logs:
             d.poll()
             d.poll()
@@ -393,7 +393,8 @@ class WindowsDetectorTest(unittest.TestCase):
         d._on_change = lambda a, r: None
         d.poll()
         self.assertEqual(self.linux_calls, [])
-        self.assertIs(ConferenceDetector({})._processes, conference.running_processes)
+        with patch.object(conference, "IS_WINDOWS", False):
+            self.assertIs(ConferenceDetector({})._processes, conference.running_processes)
 
     def test_windows_signals_from_registry(self):
         reg = FakeRegistry({
@@ -432,7 +433,7 @@ class WindowsDetectorTest(unittest.TestCase):
     def test_missing_winreg_never_crashes(self):
         # On Linux there is no winreg: the import error is logged once per probe and the signals stay off.
         d = ConferenceDetector({}, on_change=lambda a, r: None, windows=True, processes=lambda names: [])
-        with self.assertLogs(level="WARNING"):
+        with patch.dict(sys.modules, {"winreg": None}), self.assertLogs(level="WARNING"):
             d.poll()
         self.assertFalse(d.active)
 

@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import logging
 import threading
 from datetime import datetime
@@ -15,25 +16,82 @@ from src.session_lock import is_locked
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
+# On Windows the window is created hidden and shown once the page has built its first view
+# (common.js calls ready()), so the user never sees a black or half-built screen. A page that never
+# calls ready() is shown this many seconds after it was asked to load.
+HIDE_UNTIL_READY = os.name == "nt"
+REVEAL_FALLBACK = 4.0
+BLANK_PAGE = "<html><body style='background:#000'></body></html>"
+
+
+def page_uri(module):
+    return Path(script_dir, "reminders", module, "reminder.html").as_uri()
+
+
+def bring_to_front(window):
+    """Windows only lets the foreground app hand out focus. A short Alt press counts as user input
+    and lifts that lock for this process, so Escape and the page's keys work without a click."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        user32.SetForegroundWindow.argtypes = (wintypes.HWND,)
+        hwnd = window.native.Handle.ToInt64()
+        VK_MENU, KEYEVENTF_KEYUP = 0x12, 0x0002
+        user32.keybd_event(VK_MENU, 0, 0, 0)
+        user32.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+        if not user32.SetForegroundWindow(hwnd):
+            logging.warning("Could not bring the reminder window to the front")
+    except Exception as e:
+        logging.warning(f"Could not bring the reminder window to the front: {e}")
+
 
 class OverlayApi:
     """Methods the reminder page calls as window.pywebview.api.<name>(); see reminders/README.md."""
 
-    def __init__(self, module, settings):
+    def __init__(self, module, settings, warm=False):
         # Underscore names are not exposed to the page.
         self._module = module
         self._settings = settings
         self._window = None
         self._closed = False
+        self._revealed = False
+        self._warm = warm
+        self._requested_at = time.monotonic()
+        self._shown_at = None
 
     def get_context(self):
         return {"type": self._module, "settings": self._settings,
                 "now": datetime.now().isoformat(timespec="seconds")}
 
+    def ready(self):
+        """The page has built its first view (called by common.js)."""
+        self._reveal("page ready")
+
+    def _reveal(self, why):
+        if self._revealed or self._closed or self._module is None:
+            return
+        self._revealed = True
+        if HIDE_UNTIL_READY:
+            self._window.show()
+            bring_to_front(self._window)
+        self._shown_at = time.monotonic()
+        logging.info(f"{self._module} visible {self._shown_at - self._requested_at:.2f} s after the request "
+                     f"({'warm' if self._warm else 'cold'} start, {why})")
+
+    def _reveal_later(self):
+        timer = threading.Timer(REVEAL_FALLBACK, self._reveal, args=("page never called ready()",))
+        timer.daemon = True
+        timer.start()
+
     def close(self):
         if self._closed:
             return
         self._closed = True
+        if self._shown_at is not None:
+            logging.info(f"{self._module} closed after {time.monotonic() - self._shown_at:.0f} s")
         if self._window:
             self._window.destroy()
 
@@ -47,6 +105,16 @@ class OverlayApi:
         if not (0 < mins < 1440):
             raise ValueError(f"Minutes must be between 0 and 1440, got {minutes!r}")
         self._window.hide()
+        logging.info(f"{self._module} snoozed for {mins:g} min")
+
+        def show_again():
+            logging.info(f"{self._module} back after snooze")
+            self._window.show()
+            bring_to_front(self._window)
+            try:
+                self._window.evaluate_js("window.dispatchEvent(new CustomEvent('remind2rest:resume'))")
+            except Exception:
+                pass
 
         def wake():
             def wait_for_unlock():
@@ -59,20 +127,12 @@ class OverlayApi:
                     wait_for_unlock()
                     return
                 if not self._closed:
-                    self._window.show()
-                    try:
-                        self._window.evaluate_js("window.dispatchEvent(new CustomEvent('remind2rest:resume'))")
-                    except Exception:
-                        pass
+                    show_again()
 
             if is_locked():
                 threading.Thread(target=wait_for_unlock, daemon=True).start()
             else:
-                self._window.show()
-                try:
-                    self._window.evaluate_js("window.dispatchEvent(new CustomEvent('remind2rest:resume'))")
-                except Exception:
-                    pass
+                show_again()
 
         timer = threading.Timer(mins * 60, wake)
         timer.daemon = True
@@ -120,8 +180,7 @@ class OverlayApi:
         return {"today_ml": water_today_ml(), "goal_ml": self._settings.get("daily_goal_ml", 2000)}
 
 
-def show_reminder(module, settings):
-    """Show reminders/<module>/reminder.html fullscreen until the page calls close()."""
+def _set_gnome_app_name():
     if os.name != "nt":
         # Lets GNOME match the window to Remind2Rest.desktop (StartupWMClass) for the dock icon.
         try:
@@ -130,20 +189,23 @@ def show_reminder(module, settings):
             GLib.set_application_name("Remind2Rest")
         except ImportError:
             pass
-    page = Path(script_dir, "reminders", module, "reminder.html")
-    logging.info(f"Showing {module} reminder ({page})")
-    api = OverlayApi(module, settings)
-    api._window = webview.create_window(
-        LIBRARY[module]["title"],
-        url=page.as_uri(),
+
+
+def _create_window(api, title, **page):
+    return webview.create_window(
+        title,
         js_api=api,
         fullscreen=True,
         frameless=True,
         on_top=True,
         focus=True,
+        hidden=HIDE_UNTIL_READY,
         background_color="#000000",
+        **page,
     )
-    webview.start()
+
+
+def _exit_hard():
     # The window is gone, but the pywebview thread that answers the page's close() call can still
     # wait in evaluate_js for a main loop that has ended. It is not a daemon thread, so a normal exit
     # would wait for it forever, and the daemon would count this reminder as open. Exit hard instead.
@@ -151,3 +213,53 @@ def show_reminder(module, settings):
     sys.stdout.flush()
     sys.stderr.flush()
     os._exit(0)
+
+
+def show_reminder(module, settings):
+    """Show reminders/<module>/reminder.html fullscreen until the page calls close()."""
+    _set_gnome_app_name()
+    logging.info(f"Opening {module} reminder (cold start)")
+    api = OverlayApi(module, settings)
+    api._window = _create_window(api, LIBRARY[module]["title"], url=page_uri(module))
+    webview.start(api._reveal_later)
+    _exit_hard()
+
+
+def standby():
+    """A hidden overlay with WebView2 already running, started by the daemon shortly before a reminder
+    is due. It waits for one line on stdin, {"module": ..., "settings": {...}}, then loads that page and
+    shows it like show_reminder. An empty line or a closed stdin (the daemon is gone) ends it unused."""
+    _set_gnome_app_name()
+    api = OverlayApi(None, {}, warm=True)
+    api._window = _create_window(api, "Remind2Rest", html=BLANK_PAGE)
+
+    def end_unused():
+        api._closed = True
+        # Destroying the window while WebView2 still initialises makes it throw (E_ABORT).
+        api._window.events.loaded.wait(15)
+        api._window.destroy()
+
+    def wait_for_request():
+        line = sys.stdin.readline()
+        if not line.strip():
+            logging.info("Warm overlay ended unused")
+            end_unused()
+            return
+        try:
+            request = json.loads(line)
+            module = request["module"]
+            title = LIBRARY[module]["title"]
+        except (ValueError, KeyError, TypeError) as e:
+            logging.error(f"Warm overlay got a bad request {line.strip()!r}: {e}")
+            end_unused()
+            return
+        api._module = module
+        api._settings = request.get("settings") or {}
+        api._requested_at = time.monotonic()
+        logging.info(f"Opening {module} reminder (warm start)")
+        api._window.set_title(title)
+        api._window.load_url(page_uri(module))
+        api._reveal_later()
+
+    webview.start(wait_for_request)
+    _exit_hard()

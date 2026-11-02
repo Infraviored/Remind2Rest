@@ -1,14 +1,21 @@
-"""Whether the desktop session is locked, read over D-Bus without a subprocess (about 3 ms).
-Works from the systemd user service, which has no XDG_SESSION_ID: logind names the user's display
-session. Returns None where it cannot tell (Windows, no D-Bus); the caller then treats it as unlocked."""
+"""Whether the desktop session is locked.
+
+Linux: read over D-Bus without a subprocess (about 3 ms). Works from the systemd user service, which
+has no XDG_SESSION_ID: logind names the user's display session.
+Windows: the input desktop is the Winlogon desktop while the screen is locked, and a user process
+cannot open it then.
+Returns None where it cannot tell; the caller then treats it as unlocked."""
 import logging
+import os
 
 try:
     from gi.repository import Gio, GLib
 except ImportError:
     Gio = None
 
+_WINDOWS = os.name == "nt"
 _TIMEOUT_MS = 1000
+_DESKTOP_SWITCHDESKTOP = 0x0100
 
 
 def _get_property(bus, name, path, interface, prop):
@@ -34,9 +41,28 @@ def _screensaver_active():
     return reply.unpack()[0]
 
 
+def _windows_locked():
+    """True while the lock screen (or another secure desktop, e.g. a UAC prompt) has the input."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        user32.OpenInputDesktop.restype = wintypes.HANDLE
+        user32.OpenInputDesktop.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        user32.CloseDesktop.argtypes = (wintypes.HANDLE,)
+        desktop = user32.OpenInputDesktop(0, False, _DESKTOP_SWITCHDESKTOP)
+        if not desktop:
+            return True
+        user32.CloseDesktop(desktop)
+        return False
+    except Exception as e:
+        logging.debug(f"Windows lock probe failed: {e}")
+        return None
+
+
 def is_locked():
     if Gio is None:
-        return None
+        return _windows_locked() if _WINDOWS else None
     any_success = False
     for probe in (_logind_locked, _screensaver_active):
         try:

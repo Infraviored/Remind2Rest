@@ -4,7 +4,9 @@ import json
 import time
 import socket
 import logging
+import platform
 import subprocess
+import threading
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from logging.handlers import RotatingFileHandler
@@ -13,7 +15,7 @@ from src.config import CONFIG_PATH, LOG_PATH, SOCKET_FAMILY, ADDR, load_config
 from src.library import LIBRARY
 from src.conference import detector as conference
 from src.ipc import create_server_socket, cleanup_socket
-from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume
+from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume, prewarm
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -29,23 +31,28 @@ def setup_logging():
     handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     logging.getLogger().setLevel(logging.INFO)
     logging.getLogger().addHandler(handler)
+    # A missed 1 s tick after sleep or a busy moment is harmless; apscheduler would log each one.
+    logging.getLogger("apscheduler").setLevel(logging.ERROR)
 
 def main():
     setup_logging()
-    logging.info("Remind2Rest daemon starting up...")
+    logging.info(f"Remind2Rest daemon starting up (pid {os.getpid()}, Python {platform.python_version()}, "
+                 f"{platform.system()} {platform.release()}, {sys.executable})")
 
     scheduler = BackgroundScheduler()
-    scheduler._logger = logging.getLogger("apscheduler")
-    scheduler._logger.setLevel(logging.WARNING)
     scheduler.start()
 
     try:
         s = create_server_socket()
     except Exception as e:
-        logging.error(f"Failed to create server socket: {e}. Exiting.")
+        if os.name == "nt" and getattr(e, "winerror", None) in (10013, 10048):
+            logging.info(f"Another Remind2Rest daemon already listens on {ADDR}; this one exits.")
+        else:
+            logging.error(f"Failed to create server socket: {e}. Exiting.")
         scheduler.shutdown()
         return
 
+    tray = None
     try:
         config = load_config()
         if config is None:
@@ -57,9 +64,17 @@ def main():
         logging.info("Remind2Rest daemon started successfully")
         schedule_reminders(scheduler, config)
 
+        stop = threading.Event()
+        if os.name == "nt":
+            try:
+                from src.tray_win import start_tray
+                tray = start_tray(on_quit=stop.set)
+            except Exception as e:
+                logging.error(f"Tray icon not available: {e}")
+
         notifications_script = os.path.join(script_dir, "notifications.py")
 
-        while True:
+        while not stop.is_set():
             try:
                 conn, _ = s.accept()
                 with conn:
@@ -132,6 +147,13 @@ def main():
                             else:
                                 conference.report_screenshare(state == "on")
                                 conn.sendall(b"OK")
+                        elif command == "QUIT":
+                            logging.info("QUIT received; shutting down")
+                            conn.sendall(b"OK")
+                            stop.set()
+                        elif command == "PREWARM":
+                            prewarm()
+                            conn.sendall(b"OK")
                         elif command == "RESUME":
                             resume()
                             conn.sendall(b"OK")
@@ -161,8 +183,11 @@ def main():
                 logging.error(f"Error in main loop: {str(e)}")
 
             time.sleep(0.1)
+        logging.info("Remind2Rest daemon stopped")
     finally:
-        scheduler.shutdown()
+        if tray:
+            tray.stop()
+        scheduler.shutdown(wait=False)
         s.close()
         cleanup_socket()
 

@@ -41,6 +41,7 @@ class ReminderGate:
         self._mutex = threading.Lock()
         self._proc = None
         self._open_module = None
+        self._opened_at = 0.0
         self._pending = None  # (module, settings)
         self._ready_at = 0.0
         self._hold_reason = ""
@@ -105,6 +106,9 @@ class ReminderGate:
                 self._hold_reason = "the conference ended"
 
         if self._proc is not None and self._proc.poll() is not None:
+            code = self._proc.poll()
+            logging.info(f"{self._open_module} window closed after {now - self._opened_at:.0f} s"
+                         + (f" (exit code {code})" if code else ""))
             self._proc = None
             self._open_module = None
             self._hold(now, AFTER_CLOSE_DELAY, "the last reminder closed")
@@ -135,6 +139,7 @@ class ReminderGate:
     def _launch(self, module, settings):
         self._proc = self._spawn(module, settings)
         self._open_module = module
+        self._opened_at = self._clock()
 
     def _hold(self, now, delay, reason):
         self._ready_at = max(self._ready_at, now + delay)
