@@ -117,6 +117,15 @@ class ReminderGate:
     def pending(self):
         return self._pending[0] if self._pending else None
 
+    @property
+    def blocked_by_lock_or_conference(self):
+        with self._mutex:
+            return bool(self._locked or self._conference)
+
+    @property
+    def can_prewarm_pending(self):
+        return bool(self.pending and not self.blocked_by_lock_or_conference)
+
     def _window_open(self):
         return self._proc is not None and self._proc.poll() is None
 

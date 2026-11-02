@@ -266,7 +266,7 @@ def schedule_reminders(scheduler, config):
                         trigger_reminder(module, config[module])
 
         # Not at 0: that is the tick the reminder fires in, which just used the warm overlay.
-        if (0 < time_to_next <= PREWARM_LEAD or gate.pending) and not is_paused():
+        if (0 < time_to_next <= PREWARM_LEAD or (gate.pending and not gate.blocked_by_lock_or_conference)) and not is_paused():
             prewarm()
 
         if time_to_next == float("inf"):

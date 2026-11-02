@@ -89,6 +89,31 @@ class GateTest(unittest.TestCase):
         self.h.run(60)
         self.assertLessEqual(self.h.lock_checks - checks, 60 // LOCK_POLL + 1)
 
+    def test_blocked_by_lock_or_conference_property(self):
+        h = self.h
+        self.assertFalse(h.gate.blocked_by_lock_or_conference)
+        self.assertFalse(h.gate.can_prewarm_pending)
+
+        self.assertEqual(h.gate.request("posture", {}), "shown")
+        self.assertEqual(h.gate.request("eye_relax", {}), "deferred")
+        self.assertEqual(h.gate.pending, "eye_relax")
+        self.assertFalse(h.gate.blocked_by_lock_or_conference)
+        self.assertTrue(h.gate.can_prewarm_pending)
+
+        h.locked = True
+        h.run(LOCK_POLL)
+        self.assertTrue(h.gate.blocked_by_lock_or_conference)
+        self.assertFalse(h.gate.can_prewarm_pending)
+
+        h.locked = False
+        h.run(LOCK_POLL)
+        self.assertFalse(h.gate.blocked_by_lock_or_conference)
+
+        h.conference = True
+        h.run(1)
+        self.assertTrue(h.gate.blocked_by_lock_or_conference)
+        self.assertFalse(h.gate.can_prewarm_pending)
+
     def test_open_window_defers_until_closed_plus_delay(self):
         h = self.h
         h.gate.request("posture", {})
