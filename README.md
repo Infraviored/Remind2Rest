@@ -58,8 +58,8 @@ This will:
 - Create a **Start menu** entry and a **Desktop Shortcut** for the settings window.
 - Stop a running Remind2Rest and start the new one. Run it again after `git pull` to update.
 
-On Windows the service shows a **tray icon**: the number is the minutes until the next reminder, in
-that reminder's colour (grey with pause bars while paused); the tooltip names it. Its menu shows the
+On Windows the service shows a **tray icon**: the logo with a small badge holding the minutes until
+the next reminder (pause bars while paused); the tooltip names it. Its menu shows the
 next reminder (or the pause, or the call it waits for) and today's water, and offers *Show now*,
 *Pause* 15 min to 2 h, *Resume*, *Settings…* (also a click on the icon) and *Quit Remind2Rest*.
 The settings window's Start/Stop button starts and stops the service.

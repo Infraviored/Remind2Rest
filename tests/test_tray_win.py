@@ -46,15 +46,17 @@ class TrayTextTest(unittest.TestCase):
         self.assertEqual(tray.badge_text(150), "2h")
 
     def test_icons(self):
-        logo = object()
+        from PIL import Image
+        logo = Image.new("RGBA", (tray.SIZE, tray.SIZE), (10, 200, 10, 255))
         self.assertIs(tray.render_icon(status(next_reminder=None), logo), logo)
         for s in (status(), status(time_to_next="59:00"), status(paused_until="2026-11-02T14:30:00")):
             img = tray.render_icon(s, logo)
             self.assertEqual(img.size, (tray.SIZE, tray.SIZE))
             self.assertEqual(img.mode, "RGBA")
-        # The badge takes the next reminder's colour from the library.
-        img = tray.render_icon(status(), logo)
-        self.assertEqual(img.getpixel((tray.SIZE // 2, 3))[:3], (0x2d, 0xd4, 0xbf))
+            # The logo stays untouched except for the small badge in the bottom right corner.
+            self.assertEqual(img.getpixel((5, 5)), (10, 200, 10, 255))
+            self.assertNotEqual(img.getpixel((tray.SIZE - 6, tray.SIZE - tray.BADGE_HEIGHT // 2)), (10, 200, 10, 255))
+        self.assertEqual(logo.getpixel((tray.SIZE - 6, tray.SIZE - 6)), (10, 200, 10, 255))  # not drawn on
 
 
 if __name__ == "__main__":

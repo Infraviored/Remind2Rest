@@ -14,14 +14,18 @@ import pystray
 from PIL import Image, ImageDraw, ImageFont
 
 from src import scheduler
-from src.library import LIBRARY
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 LOGO_PATH = os.path.join(script_dir, "Remind2Rest.png")
 UPDATE_EVERY = 2  # s
 PAUSE_CHOICES = (15, 30, 60, 120)
 SIZE = 64
-PAUSED_COLOR = "#64748b"
+BADGE_HEIGHT = 26
+BADGE_PAD = 8
+BADGE_FONT = 21
+BADGE_FILL = "#0b0f14"
+BADGE_RING = "#ffffff"
+BADGE_TEXT = "#ffffff"
 FONT_FILES = ("segoeuib.ttf", "arialbd.ttf", "DejaVuSans-Bold.ttf")
 
 
@@ -72,33 +76,34 @@ def _font(px):
 def badge_text(mins):
     if mins < 100:
         return str(mins)
-    return f"{mins // 60}h"
+    return f"{round(mins / 60)}h"
 
 
 def render_icon(status, logo):
-    """The tray picture: the minutes left on the next reminder's colour, pause bars when paused,
-    the logo when nothing is scheduled."""
-    if status.get("paused_until"):
-        img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-        d = ImageDraw.Draw(img)
-        d.rounded_rectangle((2, 2, SIZE - 3, SIZE - 3), radius=14, fill=PAUSED_COLOR)
-        bar_w, gap, top, bottom = 11, 10, 16, SIZE - 16
-        left = (SIZE - 2 * bar_w - gap) // 2
-        d.rectangle((left, top, left + bar_w, bottom), fill="white")
-        d.rectangle((left + bar_w + gap, top, left + 2 * bar_w + gap, bottom), fill="white")
-        return img
+    """The tray picture: the logo, with a small badge in the bottom right corner that holds the
+    minutes until the next reminder (pause bars while paused). No badge when nothing is scheduled."""
+    paused = bool(status.get("paused_until"))
     mins = minutes_left(status)
-    if mins is None:
+    if not paused and mins is None:
         return logo
-    color = LIBRARY.get(status["next_reminder"], {}).get("color", "#2dd4bf")
-    img = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+    img = logo.copy()
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((0, 0, SIZE - 1, SIZE - 1), radius=14, fill=color)
-    text = badge_text(mins)
-    font = _font(46 if len(text) == 1 else 40)
-    box = d.textbbox((0, 0), text, font=font)
-    w, h = box[2] - box[0], box[3] - box[1]
-    d.text(((SIZE - w) / 2 - box[0], (SIZE - h) / 2 - box[1]), text, font=font, fill="#0b0f14")
+    text = "" if paused else badge_text(mins)
+    # Big enough to read at 16-24 px tray size: the badge covers the lower right part of the logo.
+    font = _font(BADGE_FONT)
+    w = BADGE_HEIGHT if len(text) <= 1 else d.textbbox((0, 0), text, font=font)[2] + BADGE_PAD
+    w = min(max(w, BADGE_HEIGHT), SIZE)
+    left, top = SIZE - w, SIZE - BADGE_HEIGHT
+    d.rounded_rectangle((left, top, SIZE - 1, SIZE - 1), radius=BADGE_HEIGHT // 2,
+                        fill=BADGE_FILL, outline=BADGE_RING, width=2)
+    cx, cy = left + w / 2, top + BADGE_HEIGHT / 2
+    if paused:
+        bar_w, gap, bar_h = 4, 4, BADGE_HEIGHT // 2
+        x0 = cx - bar_w - gap / 2
+        d.rectangle((x0, cy - bar_h / 2, x0 + bar_w, cy + bar_h / 2), fill=BADGE_TEXT)
+        d.rectangle((x0 + bar_w + gap, cy - bar_h / 2, x0 + 2 * bar_w + gap, cy + bar_h / 2), fill=BADGE_TEXT)
+    else:
+        d.text((cx, cy), text, font=font, fill=BADGE_TEXT, anchor="mm")
     return img
 
 
