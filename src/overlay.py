@@ -257,6 +257,7 @@ def standby():
         api._settings = request.get("settings") or {}
         api._requested_at = time.monotonic()
         logging.info(f"Opening {module} reminder (warm start)")
+        api._window.events.loaded.wait(15)
         api._window.set_title(title)
         api._window.load_url(page_uri(module))
         api._reveal_later()
