@@ -122,12 +122,16 @@ def prewarm():
     with _standby_lock:
         if _standby is not None and _standby.poll() is None:
             return
+        io = _overlay_io()
         try:
-            _standby = subprocess.Popen(_overlay_command("standby"), stdin=subprocess.PIPE, **_overlay_io())
+            _standby = subprocess.Popen(_overlay_command("standby"), stdin=subprocess.PIPE, **io)
             logging.info(f"Warming up an overlay for the next reminder (pid {_standby.pid})")
         except OSError as e:
             _standby = None
             logging.error(f"Could not start a warm overlay: {e}")
+        finally:
+            if hasattr(io.get("stderr"), "close"):
+                io["stderr"].close()
 
 
 def spawn_reminder(module, settings):
@@ -147,9 +151,14 @@ def spawn_reminder(module, settings):
             return proc
         except OSError as e:
             logging.warning(f"Warm overlay did not take {module} ({e}); starting a new one")
-    proc = subprocess.Popen(_overlay_command("show", module, "--settings", json.dumps(page)), **_overlay_io())
-    logging.info(f"Opening {module} with a cold start (pid {proc.pid})")
-    return proc
+    io = _overlay_io()
+    try:
+        proc = subprocess.Popen(_overlay_command("show", module, "--settings", json.dumps(page)), **io)
+        logging.info(f"Opening {module} with a cold start (pid {proc.pid})")
+        return proc
+    finally:
+        if hasattr(io.get("stderr"), "close"):
+            io["stderr"].close()
 
 
 def launch_reminder(module, settings):
