@@ -356,13 +356,14 @@ def schedule_reminders(scheduler, config):
                         else:
                             logging.info(f"Skipping scheduled {module} reminder: it is snoozed")
 
-        for module in due_snoozes():
-            if config.get(module, {}).get("enabled") and not is_paused():
-                logging.info(f"{module} back after snooze")
-                gate.request(module, config[module])
+        if not is_paused():
+            for module in due_snoozes():
+                if config.get(module, {}).get("enabled"):
+                    logging.info(f"{module} back after snooze")
+                    gate.request(module, config[module])
 
         # Not at 0: that is the tick the reminder fires in, which just used the warm overlay.
-        if (0 < time_to_next <= PREWARM_LEAD or (gate.pending and not gate.blocked_by_lock_or_conference)) and not is_paused():
+        if (0 < time_to_next <= PREWARM_LEAD or gate.can_prewarm_pending) and not is_paused():
             prewarm()
 
         if time_to_next == float("inf"):
