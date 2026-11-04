@@ -145,13 +145,14 @@ def update_status(status):
         not current_status
         or current_status.get("next_reminder") != status["next_reminder"]
     ):
-        minutes_to_next = int(status["time_to_next"].split(":")[0])
-        logging.info(
-            f"Next {status['next_reminder']} reminder in {minutes_to_next} minutes"
-        )
+        if status.get("next_reminder"):
+            minutes_to_next = int(status["time_to_next"].split(":")[0])
+            logging.info(
+                f"Next {status['next_reminder']} reminder in {minutes_to_next} minutes"
+            )
     current_status = status
 
-def goal_reached(module, settings):
+def goal_reached(module, settings, today=None):
     """Water with "Stop at goal" on and today's goal reached: no more water reminders today. A
     reminder shown by hand ("now" in the menu) still opens."""
     if module != "water":
@@ -163,11 +164,18 @@ def goal_reached(module, settings):
         goal = float(settings.get("daily_goal_ml") or 2000)
     except (TypeError, ValueError):
         goal = 2000
-    today = water_today_ml()
-    if today >= goal:
-        logging.info(f"Skipping water reminder: today's goal is reached ({today} / {goal:g} ml)")
-        return True
-    return False
+    today = water_today_ml() if today is None else today
+    return today >= goal
+
+
+def log_goal_skipped(module, settings, today=None, action=""):
+    today = water_today_ml() if today is None else today
+    try:
+        goal = float(page_settings(module, settings).get("daily_goal_ml") or 2000)
+    except (TypeError, ValueError):
+        goal = 2000
+    extra = f" {action}" if action else ""
+    logging.info(f"Skipping {module} reminder{extra}: today's goal is reached ({today} / {goal:g} ml)")
 
 
 def trigger_reminder(module, settings):
@@ -176,6 +184,7 @@ def trigger_reminder(module, settings):
         logging.info(f"Skipping {module} reminder while paused")
         return
     if goal_reached(module, settings):
+        log_goal_skipped(module, settings)
         return
 
     logging.info(f"Triggering {module} reminder")
@@ -287,12 +296,19 @@ def find_missed(since, until):
     until_minute = datetime.fromtimestamp(until).replace(second=0, microsecond=0)
     elapsed = (until_minute.hour * 60 + until_minute.minute) % interval
     latest = None
+    water_skipped = False
     for module in LIBRARY:
         if config.get(module, {}).get("enabled"):
+            at_goal = goal_reached(module, config[module])
             for reminder in config[module].get("reminders", []):
                 due = until_minute - timedelta(minutes=(elapsed - reminder) % interval)
-                if due.timestamp() > since and (latest is None or due > latest[0]):
-                    latest = (due, module)
+                if due.timestamp() > since:
+                    if at_goal:
+                        water_skipped = True
+                    elif latest is None or due > latest[0]:
+                        latest = (due, module)
+    if water_skipped:
+        log_goal_skipped("water", config["water"], action="missed during suspend")
     return (latest[1], config[latest[1]]) if latest else None
 
 
@@ -332,7 +348,7 @@ def schedule_reminders(scheduler, config):
 
     next_times = []
     for module in LIBRARY:
-        if config.get(module, {}).get("enabled"):
+        if config.get(module, {}).get("enabled") and not goal_reached(module, config[module]):
             for reminder in config[module].get("reminders", []):
                 minutes_until = (reminder - elapsed_minutes) % interval_minutes
                 next_times.append((minutes_until, module))
@@ -357,8 +373,13 @@ def schedule_reminders(scheduler, config):
         next_reminder_type = None
         time_to_next = float("inf")
 
+        today_water = None
+        if config.get("water", {}).get("enabled"):
+            today_water = water_today_ml()
+
         for module in LIBRARY:
             if config.get(module, {}).get("enabled"):
+                at_goal = goal_reached(module, config[module], today=today_water)
                 for reminder in config[module].get("reminders", []):
                     time_to_reminder = (
                         (reminder - elapsed_minutes) % interval_minutes
@@ -366,7 +387,7 @@ def schedule_reminders(scheduler, config):
                     if time_to_reminder < 0:
                         time_to_reminder += interval_minutes * 60
 
-                    if 0 <= time_to_reminder < time_to_next:
+                    if not at_goal and 0 <= time_to_reminder < time_to_next:
                         time_to_next = time_to_reminder
                         next_reminder = reminder
                         next_reminder_type = module
@@ -379,7 +400,10 @@ def schedule_reminders(scheduler, config):
 
         if not is_paused():
             for module in due_snoozes():
-                if config.get(module, {}).get("enabled") and not goal_reached(module, config[module]):
+                if config.get(module, {}).get("enabled"):
+                    if goal_reached(module, config[module], today=today_water):
+                        log_goal_skipped(module, config[module], today=today_water, action="after snooze")
+                        continue
                     logging.info(f"{module} back after snooze")
                     gate.request(module, config[module])
 
