@@ -123,6 +123,11 @@ class Surface {
         }
         for (let i = 0; i < n; i++) h[i] = clamp(h[i] + v[i] * dt, -this.limit, this.limit);
     }
+    // Ripple height at x (between columns: linear).
+    heightAt(x) {
+        const f = clamp((x - this.x0) / this.dx, 0, this.n - 1), i = Math.min(this.n - 2, Math.floor(f));
+        return this.h[i] + (this.h[i + 1] - this.h[i]) * (f - i);
+    }
     // Closed SVG path: the surface at height y (+ ripples, + extra(x) for a calm idle swell, a
     // mirrored copy for the back layer), flat beyond the columns out to xl/xr, down to `bottom`.
     path(y, xl, xr, bottom, {extra = () => 0, mirror = false, scale = 1} = {}) {
@@ -304,12 +309,13 @@ const rot = (p, deg) => {
     // Spilt water: drops that fall from the rim and vanish at the table. Not counted.
     const dropLayer = document.getElementById('drops');
     const drops = [];
-    function makeDrop(x, y, vx, vy, r) {
+    // A splash drop starts inside the carafe and just falls back into its water.
+    function makeDrop(x, y, vx, vy, r, splash = false) {
         if (drops.length >= 50) return;
         const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         el.setAttribute('r', r.toFixed(1));
         dropLayer.appendChild(el);
-        drops.push({el, x, y, vx, vy, r, inside: false});
+        drops.push({el, x, y, vx, vy, r, inside: splash, splash});
     }
     function spillDrop(g, corner) {
         const p = glassPoint(g, RIM[corner]);
@@ -326,17 +332,87 @@ const rot = (p, deg) => {
             d.vy += GRAVITY * geo.s * dt;
             d.x += d.vx * dt; d.y += d.vy * dt;
             if (above && d.y >= geo.open.y && Math.abs(d.x - geo.open.x) < CARAFE.neckHalf * geo.s) d.inside = true;
-            if (d.inside ? d.y > water : d.y > geo.floor) {
-                if (d.inside) landed(d);
+            const at = (d.x - geo.left) / geo.s;
+            if (d.inside ? d.vy > 0 && d.y > water + carafeSurface.heightAt(at) * geo.s : d.y > geo.floor) {
+                if (d.inside && !d.splash) landed(d, at);
                 d.el.remove(); drops.splice(i, 1); continue;
             }
             d.el.setAttribute('cx', d.x.toFixed(1));
             d.el.setAttribute('cy', d.y.toFixed(1));
         }
     }
-    // A drop reached the carafe water: a small dent where it fell in.
-    function landed(d) {
-        carafeSurface.poke((d.x - geo.left) / geo.s, d.r / geo.s * 14, 1);
+    // A drop fell into the carafe water: a small dent, two tiny splashes, two bubbles.
+    function landed(d, at) {
+        carafeSurface.poke(at, d.r / geo.s * 14, 1);
+        for (let k = 0; k < 2; k++) {
+            splash(at, 0.45);
+            bubble(at + (Math.random() - 0.5) * 4, 3 + Math.random() * 6, 0.7 + Math.random() * 0.8);
+        }
+    }
+
+    // --- in the carafe: splashes, bubbles and foam where the water lands (viewBox units) ---
+    const surfaceAt = x => carafeY(carafeLevel) + carafeSurface.heightAt(x);
+    function splash(at, strength) {
+        makeDrop(geo.left + at * geo.s, geo.top + (surfaceAt(at) - 1.5) * geo.s,
+                 (Math.random() - 0.5) * 220 * strength * geo.s,
+                 -(90 + Math.random() * 260) * strength * geo.s,
+                 (0.7 + Math.random() * 1.1) * geo.s * Math.sqrt(strength), true);
+    }
+    const bubbleLayer = document.getElementById('bubbles');
+    const foam = document.getElementById('foam');
+    const bubbles = [];
+    let foamAmount = 0, foamX = CARAFE.openX;
+    function bubble(x, depth, r) {
+        if (bubbles.length >= 36) return;
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        el.setAttribute('r', r.toFixed(2));
+        bubbleLayer.appendChild(el);
+        const y = Math.min(surfaceAt(x) + depth, CARAFE.emptyY - r - 2);
+        bubbles.push({el, x, y, r, vy: -10, phase: Math.random() * 6, pop: 0});
+    }
+    // Bubbles rise faster the bigger they are, sway a little and pop at the surface.
+    function moveBubbles(dt, s) {
+        for (let i = bubbles.length - 1; i >= 0; i--) {
+            const b = bubbles[i];
+            if (b.pop) {
+                b.pop += dt;
+                if (b.pop > 0.09) { b.el.remove(); bubbles.splice(i, 1); continue; }
+                b.el.setAttribute('r', (b.r * (1 + b.pop * 9)).toFixed(2));
+                b.el.setAttribute('opacity', (1 - b.pop / 0.09).toFixed(2));
+                continue;
+            }
+            b.vy = Math.max(-(30 + b.r * 22), b.vy - 140 * dt);
+            b.y += b.vy * dt;
+            const x = b.x + Math.sin(s * 9 + b.phase + b.y / 7) * b.r * 0.6;
+            if (b.y - b.r <= surfaceAt(x)) { b.pop = 1e-3; b.y = surfaceAt(x) + b.r * 0.3; }
+            b.el.setAttribute('cx', x.toFixed(1));
+            b.el.setAttribute('cy', b.y.toFixed(1));
+        }
+    }
+    // Where the stream lands: splashes and bubbles at a rate that follows its strength, and foam
+    // that builds up there and, once the stream stops, spreads out and fades.
+    let spawnSplash = 0, spawnBubble = 0;
+    function churn(impact, dt) {
+        if (impact) {
+            const strength = clamp(impact.force / (IMPACT * 8), 0.3, 1.2);
+            foamX = impact.x;
+            foamAmount += (1 - foamAmount) * (1 - Math.exp(-dt * 6));
+            for (spawnSplash += dt * 28 * strength; spawnSplash >= 1; spawnSplash--) splash(impact.x, strength);
+            for (spawnBubble += dt * 40 * strength; spawnBubble >= 1; spawnBubble--) {
+                bubble(impact.x + (Math.random() - 0.5) * 10, 6 + Math.random() * 45 * strength,
+                       0.8 + Math.random() * 2.4);
+            }
+        } else {
+            foamAmount *= Math.exp(-dt * 2.4);
+        }
+        if (foamAmount < 0.02) { foam.setAttribute('opacity', '0'); return; }
+        const half = 12 + 26 * (1 - foamAmount);
+        let d = '';
+        for (let x = Math.max(23, foamX - half); x <= Math.min(177, foamX + half); x += 3) {
+            d += `${d ? ' L' : 'M'}${x.toFixed(1)} ${(surfaceAt(x) - 0.4).toFixed(2)}`;
+        }
+        foam.setAttribute('d', d);
+        foam.setAttribute('opacity', (foamAmount * 0.8).toFixed(2));
     }
     const nearOpening = (g, factor = 1) => {
         const p = lip(g);
@@ -608,6 +684,8 @@ const rot = (p, deg) => {
             if (impact) carafeSurface.poke(impact.x, impact.force * h, 2);
             carafeSurface.step(h);
         }
+        churn(impact, dt);
+        moveBubbles(dt, s);
         const y = carafeY(carafeLevel);
         carafeWater.setAttribute('d', carafeSurface.path(y, -10, 210, 370,
             {extra: x => Math.sin(x / 18 + s * 1.1) * 0.5}));
