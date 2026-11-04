@@ -574,18 +574,21 @@ const rot = (p, deg) => {
         pour = {g, start: performance.now(), fromMl: shownMl, toMl: shownMl + g.ml, area: g.area,
                 drips: [...DRIPS], finished: new Promise(r => { landedAll = r; })};
         pour.finish = landedAll;
-        let saved = true;
-        try {
-            state = await api.log_water(g.ml);
-        } catch (e) {
-            saved = false;
-        }
+        const savePromise = api.log_water(g.ml).then(res => ({saved: true, state: res}))
+            .catch(() => ({saved: false, state: null}));
         await Promise.race([pour.finished, R2R.wait(4000)]);
-        title.textContent = !saved ? 'Could not save'
-            : state.today_ml >= state.goal_ml ? 'Goal reached' : `+${g.ml} ml`;
-        if (saved) showAmount(state.today_ml);
-        await R2R.wait(CLOSE_AFTER);
-        api.close();
+        const {saved, state: newState} = await Promise.race([savePromise, R2R.wait(1500)])
+            || {saved: false, state: null};
+        if (saved && newState) {
+            state = newState;
+            title.textContent = state.today_ml >= state.goal_ml ? 'Goal reached' : `+${g.ml} ml`;
+            showAmount(state.today_ml);
+            await R2R.wait(CLOSE_AFTER);
+        } else {
+            title.textContent = 'Could not save';
+            await R2R.wait(1500);
+        }
+        R2R.close();
     }
 
     let snoozed = false;
