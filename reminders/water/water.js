@@ -286,7 +286,7 @@ const rot = (p, deg) => {
             }
         }
         animating = false;
-        api.snooze(5);
+        api.snooze();
     });
 
     window.addEventListener('remind2rest:resume', async () => {

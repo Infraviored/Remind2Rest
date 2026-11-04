@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import logging
+import socket
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 import time
 import webview
 
-from src.config import RATINGS_FILE_PATH, WATER_LOG_PATH
+from src.config import ADDR, SOCKET_FAMILY, RATINGS_FILE_PATH, WATER_LOG_PATH
 from src.logs import TIME_FORMAT, MAX_WATER_ML, read_ratings, water_today_ml
 from src.library import LIBRARY
 from src.session_lock import is_locked
@@ -95,7 +96,34 @@ class OverlayApi:
         if self._window:
             self._window.destroy()
 
-    def snooze(self, minutes):
+    def snooze(self, minutes=None):
+        """Later: the daemon brings this reminder back (its snooze_minutes, longer with every Later
+        in a row) and the window closes, so other reminders are not held back meanwhile. Without a
+        daemon the window hides and comes back after `minutes` itself."""
+        if self._module is not None and self._snooze_via_daemon():
+            self.close()
+            return
+        if minutes is None:
+            minutes = self._settings.get("snooze_minutes", 10)
+        self._snooze_here(minutes)
+
+    def _snooze_via_daemon(self):
+        try:
+            with socket.socket(SOCKET_FAMILY, socket.SOCK_STREAM) as s:
+                s.settimeout(3)
+                s.connect(ADDR)
+                s.sendall(f"SNOOZE {self._module}".encode())
+                reply = s.recv(64).decode(errors="replace")
+        except OSError as e:
+            logging.warning(f"Could not hand the snooze to the daemon ({e}); snoozing in this window")
+            return False
+        if not reply.startswith("OK"):
+            logging.warning(f"Daemon refused the snooze ({reply}); snoozing in this window")
+            return False
+        logging.info(f"{self._module} snoozed by the daemon for {reply[3:]} min")
+        return True
+
+    def _snooze_here(self, minutes):
         if isinstance(minutes, bool) or not isinstance(minutes, (int, float, str)):
             raise ValueError(f"Minutes must be a number, got {minutes!r}")
         try:

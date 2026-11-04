@@ -18,6 +18,6 @@
     document.getElementById('later').addEventListener('click', () => {
         if (snoozed || R2R._closing) return;
         snoozed = true;
-        api.snooze(10);
+        api.snooze();
     });
 })();

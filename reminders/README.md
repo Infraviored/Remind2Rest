@@ -48,7 +48,7 @@ const {settings = {}} = await R2R.hold(api.get_context());
 | `get_context()` | `{type, settings, now}`. `settings` = this type's config entry (e.g. `{relax_duration: 20, flash_frequency: 2}` for eye relax), `now` = ISO local time |
 | `close()` | closes the window and ends the process |
 | `ready()` | the first view is built: shows the window (called by `common.js`, pages need not call it) |
-| `snooze(minutes)` | hides the window and shows it again after `minutes` |
+| `snooze()` | "Later": closes the window; the daemon shows it again after the type's `snooze_minutes`, doubled with each further Later in a row (at most 4 h). Without a daemon the window hides and comes back itself after `minutes` (optional argument) |
 | `save_rating(rating)` | posture: appends `YYYY-MM-DD HH:MM:SS - Rating: <1-5>` to the ratings file |
 | `get_ratings(days)` | posture: `[{time: "YYYY-MM-DD HH:MM:SS", rating: 1-5}, ...]` of the last `days` days, oldest first |
 | `log_water(ml)` | water: appends `YYYY-MM-DD HH:MM:SS <ml>` to the water log (`ml` a whole number, 1-2000), returns `{today_ml, goal_ml}` |
@@ -63,7 +63,7 @@ const {settings = {}} = await R2R.hold(api.get_context());
 | `water` | `daily_goal_ml` ml per day (default 2000) |
 | `stretch` | `move_duration` s per move (default 20); four moves, then the page closes |
 | `breathing` | `cycles` 4-7-8 breaths (default 3); closes after the last exhale |
-| `airing` | none. "Done" closes, "Later" snoozes 10 min |
+| `airing` | none. "Done" closes, "Later" snoozes (see `snooze()`) |
 
 Each type's config entry also has `enabled`, `every` (minutes between two reminders of the type) and
 `reminders` (minutes within the global interval, computed from `every` by the settings window).

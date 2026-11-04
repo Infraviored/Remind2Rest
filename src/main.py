@@ -15,7 +15,7 @@ from src.config import CONFIG_PATH, LOG_PATH, SOCKET_FAMILY, ADDR, load_config
 from src.library import LIBRARY
 from src.conference import detector as conference
 from src.ipc import create_server_socket, cleanup_socket
-from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume, prewarm
+from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume, prewarm, snooze
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -157,6 +157,13 @@ def main():
                         elif command == "RESUME":
                             resume()
                             conn.sendall(b"OK")
+                        elif command.startswith("SNOOZE "):
+                            # SNOOZE <type>: Later on a reminder page; the reply names the minutes.
+                            module = command.split(maxsplit=1)[1].strip()
+                            if module not in LIBRARY:
+                                conn.sendall(b"ERR unknown reminder module")
+                            else:
+                                conn.sendall(f"OK {snooze(module):g}".encode())
                         elif command.startswith("TRIGGER "):
                             # TRIGGER <type> [<settings json>]; the settings window sends unsaved settings.
                             parts = command.split(maxsplit=2)

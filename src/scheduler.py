@@ -54,6 +54,66 @@ def resume():
 def is_paused() -> bool:
     return paused_until is not None and datetime.now() < paused_until
 
+
+# "Later" on a reminder page: the window closes and the daemon brings the reminder back after the
+# type's snooze_minutes, doubled with every further Later in a row (30, 60, 120 ...), at most
+# SNOOZE_MAX. Other reminders go on meanwhile; the type's own scheduled times are left out until the
+# snoozed one is back. The count starts again at the type's next scheduled reminder.
+SNOOZE_MAX = 240  # min
+DEFAULT_SNOOZE = 10  # min, for a type without snooze_minutes
+_snoozes = {}  # module -> {"count": Laters in a row, "due": datetime the reminder comes back, or None}
+_snooze_lock = threading.Lock()
+
+
+def snooze_minutes(base, count):
+    """Minutes for the count-th Later in a row (count 1 = the first)."""
+    return min(base * 2 ** (count - 1), SNOOZE_MAX)
+
+
+def snooze(module, now=None):
+    """Later was pressed on <module>; returns the minutes until it comes back."""
+    if module not in LIBRARY:
+        raise ValueError(f"Unknown reminder module: {module}")
+    now = now or datetime.now()
+    try:
+        base = float(page_settings(module, (current_config or {}).get(module)).get("snooze_minutes", DEFAULT_SNOOZE))
+    except (TypeError, ValueError):
+        base = DEFAULT_SNOOZE
+    base = min(max(base, 1), SNOOZE_MAX)
+    with _snooze_lock:
+        count = _snoozes.get(module, {}).get("count", 0) + 1
+        minutes = snooze_minutes(base, count)
+        _snoozes[module] = {"count": count, "due": now + timedelta(minutes=minutes)}
+    logging.info(f"{module} snoozed for {minutes:g} min (Later #{count} in a row)")
+    return minutes
+
+
+def snoozed(module):
+    """Whether <module> waits for its snooze to end."""
+    with _snooze_lock:
+        return (_snoozes.get(module) or {}).get("due") is not None
+
+
+def due_snoozes(now=None):
+    """Modules whose snooze has ended; they are marked as back (the Later count stays)."""
+    now = now or datetime.now()
+    with _snooze_lock:
+        due = [m for m, s in _snoozes.items() if s.get("due") is not None and s["due"] <= now]
+        for m in due:
+            _snoozes[m]["due"] = None
+    return due
+
+
+def scheduled_reminder_due(module):
+    """The type's own scheduled time came. Returns False to leave it out while it is snoozed;
+    otherwise the Later count starts again."""
+    with _snooze_lock:
+        s = _snoozes.get(module)
+        if s and s.get("due") is not None:
+            return False
+        _snoozes.pop(module, None)
+        return True
+
 def update_status(status):
     global current_status
     if (
@@ -263,7 +323,15 @@ def schedule_reminders(scheduler, config):
                         next_reminder_type = module
 
                     if elapsed_minutes == (reminder % interval_minutes) and elapsed_seconds < 1:
-                        trigger_reminder(module, config[module])
+                        if scheduled_reminder_due(module):
+                            trigger_reminder(module, config[module])
+                        else:
+                            logging.info(f"Skipping scheduled {module} reminder: it is snoozed")
+
+        for module in due_snoozes():
+            if config.get(module, {}).get("enabled") and not is_paused():
+                logging.info(f"{module} back after snooze")
+                gate.request(module, config[module])
 
         # Not at 0: that is the tick the reminder fires in, which just used the warm overlay.
         if (0 < time_to_next <= PREWARM_LEAD or (gate.pending and not gate.blocked_by_lock_or_conference)) and not is_paused():

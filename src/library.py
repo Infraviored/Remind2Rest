@@ -32,8 +32,9 @@ LIBRARY = {
         "icon": "water_drop",
         "symbolic_icon": "weather-showers-symbolic",
         "color": "#38bdf8",
-        "defaults": {"enabled": False, "every": 40, "reminders": [], "daily_goal_ml": 2000},
-        "fields": [{"key": "daily_goal_ml", "label": "Goal (ml/day)"}],
+        "defaults": {"enabled": False, "every": 40, "reminders": [], "daily_goal_ml": 2000, "snooze_minutes": 30},
+        "fields": [{"key": "daily_goal_ml", "label": "Goal (ml/day)"},
+                   {"key": "snooze_minutes", "label": "Later (min)"}],
     },
     "stretch": {
         "title": "Stretch",
@@ -56,8 +57,8 @@ LIBRARY = {
         "icon": "air",
         "symbolic_icon": "weather-windy-symbolic",
         "color": "#4ade80",
-        "defaults": {"enabled": False, "every": 120, "reminders": []},
-        "fields": [],
+        "defaults": {"enabled": False, "every": 120, "reminders": [], "snooze_minutes": 30},
+        "fields": [{"key": "snooze_minutes", "label": "Later (min)"}],
     },
 }
 
