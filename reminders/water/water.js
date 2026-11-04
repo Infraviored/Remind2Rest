@@ -608,6 +608,9 @@ const rot = (p, deg) => {
     });
 
     window.addEventListener('remind2rest:resume', async () => {
+        snoozed = false;
+        committed = false;
+        pour = null;
         try {
             state = await api.get_water_today();
             shownMl = Number(state.today_ml) || 0;
@@ -615,6 +618,19 @@ const rot = (p, deg) => {
             if (shownMl >= goal()) title.textContent = 'Goal reached';
         } catch (e) {}
         actions.classList.remove('gone');
+        shelf.classList.remove('done');
+        for (const g of glasses) {
+            g.area = FULL_AREA;
+            g.spilled = 0;
+            g.mode = 'rest';
+            g.off = {x: 0, y: 0};
+            g.vel = {x: 0, y: 0};
+            g.tilt = 0;
+            g.slosh.reset();
+            g.el.classList.remove('held', 'pouring');
+            delete g._restCache;
+        }
+        measure();
         if (!animating) {
             animating = true;
             last = performance.now();
