@@ -6,6 +6,7 @@ const POUR_MS = 650;    // stream running, glass emptying, carafe rising
 const CLOSE_AFTER = 250; // after the pour, then close
 const POUR_TILT = 104;  // degrees, glass rim pointing down into the carafe
 const MAX_CARRY_TILT = 86;
+const IMPACT = 120;    // push of the stream on the carafe surface, per viewBox unit of stream width
 // Carafe geometry in its viewBox (0 0 200 360): opening at the top, water between EMPTY_Y and FULL_Y.
 const CARAFE = {openX: 100, openY: 12, neckHalf: 56, emptyY: 342, fullY: 72};
 
@@ -82,19 +83,62 @@ function glassSvg(id) {
     </svg>`;
 }
 
-// Glass water surface between x=-60 and 180 so it still fills the glass when rotated.
-function wavePath(h, phase, amp) {
-    const top = 152 - h * 142;
-    let d = `M-60 ${top}`;
-    for (let x = -60; x <= 180; x += 8) d += ` L${x} ${top + Math.sin(x / 14 + phase) * amp}`;
-    return d + ' L180 260 L-60 260 Z';
+// A water surface as a row of columns between x0 and x1 (viewBox units, + = down). Each column is
+// pulled towards its neighbours, so a push travels sideways as a ripple and bounces off the walls
+// (the end columns mirror themselves); a weak pull to rest and damping let it die out. A few dozen
+// columns at 240 steps/s: a few thousand additions per second, nothing next to drawing the page.
+class Surface {
+    constructor(x0, x1, n, {speed, rest, damping, limit}) {
+        this.x0 = x0; this.dx = (x1 - x0) / (n - 1); this.n = n;
+        this.h = new Float32Array(n); this.v = new Float32Array(n);
+        this.spread = (speed / this.dx) ** 2;
+        this.rest = rest; this.damping = damping; this.limit = limit;
+    }
+    // Velocity added around x, spread over `radius` columns with a soft edge. Water keeps its
+    // volume: what is pushed down there rises everywhere else (the mean is taken out again).
+    poke(x, dv, radius = 1) {
+        const c = Math.round((x - this.x0) / this.dx);
+        let total = 0;
+        for (let i = c - radius; i <= c + radius; i++) {
+            if (i < 0 || i >= this.n) continue;
+            const a = dv * (1 - Math.abs(i - c) / (radius + 1));
+            this.v[i] += a;
+            total += a;
+        }
+        for (let i = 0; i < this.n; i++) this.v[i] -= total / this.n;
+    }
+    // Force per column from f(x), e.g. the sideways acceleration of a carried glass.
+    push(f, dt) {
+        for (let i = 0; i < this.n; i++) this.v[i] += f(this.x0 + i * this.dx) * dt;
+    }
+    step(dt) {
+        const {h, v, n} = this;
+        for (let i = 0; i < n; i++) {
+            const l = h[i > 0 ? i - 1 : 0], r = h[i < n - 1 ? i + 1 : n - 1];
+            v[i] += (this.spread * (l + r - 2 * h[i]) - this.rest * h[i] - this.damping * v[i]) * dt;
+        }
+        for (let i = 0; i < n; i++) h[i] = clamp(h[i] + v[i] * dt, -this.limit, this.limit);
+    }
+    // Closed SVG path: the surface at height y (+ ripples, + extra(x) for a calm idle swell, a
+    // mirrored copy for the back layer), flat beyond the columns out to xl/xr, down to `bottom`.
+    path(y, xl, xr, bottom, {extra = () => 0, mirror = false, scale = 1} = {}) {
+        const {h, n, x0, dx} = this;
+        const pt = i => {
+            const x = x0 + i * dx;
+            return [x, y + scale * h[mirror ? n - 1 - i : i] + extra(x)];
+        };
+        let [px, py] = pt(0);
+        let d = `M${xl} ${py.toFixed(2)} L${px.toFixed(1)} ${py.toFixed(2)}`;
+        for (let i = 1; i < n; i++) {   // through the midpoints, with the columns as control points: smooth
+            const [qx, qy] = pt(i);
+            d += ` Q${px.toFixed(1)} ${py.toFixed(2)} ${((px + qx) / 2).toFixed(1)} ${((py + qy) / 2).toFixed(2)}`;
+            [px, py] = [qx, qy];
+        }
+        return d + ` L${px.toFixed(1)} ${py.toFixed(2)} L${xr} ${py.toFixed(2)} L${xr} ${bottom} L${xl} ${bottom} Z`;
+    }
 }
 
-function carafePath(y, phase, amp) {
-    let d = `M-10 ${y}`;
-    for (let x = -10; x <= 210; x += 10) d += ` L${x} ${y + Math.sin(x / 18 + phase) * amp}`;
-    return d + ' L210 370 L-10 370 Z';
-}
+const glassTop = level => 152 - level * 142;
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const smooth = t => t * t * (3 - 2 * t);
@@ -149,6 +193,7 @@ const rot = (p, deg) => {
             mode: 'rest',          // rest | held | back | fly | pour
             off: {x: 0, y: 0}, vel: {x: 0, y: 0}, want: {x: 0, y: 0},
             tilt: 0, slosh: 0, sloshVel: 0,
+            surface: new Surface(14, 106, 16, {speed: 110, rest: 6, damping: 2.4, limit: 6}),
             level: FULL, phase: ml / 97,
             home: null, k: 1, grab: null,
         };
@@ -327,6 +372,9 @@ const rot = (p, deg) => {
         const push = g.mode === 'rest' ? 0 : ax * 0.16;  // accelerating right piles water up on the left
         g.sloshVel += (-160 * g.slosh - 16 * g.sloshVel + push) * dt;  // well damped: settles in ~0.4 s
         g.slosh = clamp(g.slosh + g.sloshVel * dt, -9, 9);
+        // The same push makes ripples on top: water runs up the trailing wall and back.
+        if (push) g.surface.push(x => (x - 60) / 46 * push * 0.8, dt);
+        g.surface.step(dt);
 
         if (g.mode === 'back' && Math.hypot(g.off.x, g.off.y) < 0.5 && Math.hypot(g.vel.x, g.vel.y) < 5) {
             g.mode = 'rest'; g.off = {x: 0, y: 0}; g.vel = {x: 0, y: 0}; g.tilt = 0;
@@ -335,7 +383,8 @@ const rot = (p, deg) => {
         if (g.mode === 'fly' && Math.hypot(g.want.x - g.off.x, g.want.y - g.off.y) < 30 * geo.s) startPour(g);
     }
 
-    let carafeLevel = 0, wobble = 0;
+    let carafeLevel = 0;
+    const carafeSurface = new Surface(22, 178, 32, {speed: 160, rest: 3, damping: 2.2, limit: 9});
     let last = performance.now();
     const frame = t => {
         const dt = Math.min(0.1, (t - last) / 1000);
@@ -344,6 +393,7 @@ const rot = (p, deg) => {
 
         // Pour progress drives the glass level, the carafe amount and the stream.
         let streamOn = false;
+        let impact = null;   // where the stream lands on the carafe surface (viewBox x) and how hard
         if (pour) {
             const e = t - pour.start;
             const p = clamp((e - 60) / (POUR_MS - 60), 0, 1);
@@ -365,6 +415,7 @@ const rot = (p, deg) => {
                     path.setAttribute('stroke-dasharray', `${head - tail} 2`);
                     path.setAttribute('stroke-dashoffset', `${-tail}`);
                 }
+                if (head >= 1) impact = {x: (end.x - geo.left) / geo.s, force: IMPACT * w / geo.s};
             }
         }
         if (!streamOn) { stream.removeAttribute('d'); streamCore.removeAttribute('d'); }
@@ -375,18 +426,26 @@ const rot = (p, deg) => {
                 : `translate(${g.off.x}px, ${g.off.y}px) rotate(${g.tilt}deg)`;
             // Water rotated back by the glass tilt (stays level) plus the slosh.
             g.water.setAttribute('transform', `rotate(${(g.slosh - g.tilt).toFixed(2)} 60 90)`);
-            const amp = Math.min(1.5, Math.abs(g.sloshVel) * 0.006);
-            g.wave.setAttribute('d', wavePath(g.level, s + g.phase, 1 + amp));
-            g.waveBack.setAttribute('d', wavePath(g.level + 0.012, -s * 1.3 + 1 + g.phase, 1.3 + amp));
+            g.wave.setAttribute('d', g.surface.path(glassTop(g.level), -60, 180, 260,
+                {extra: x => Math.sin(x / 14 + s + g.phase) * 0.6}));
+            g.waveBack.setAttribute('d', g.surface.path(glassTop(g.level + 0.012), -60, 180, 260,
+                {mirror: true, scale: 0.7, extra: x => Math.sin(x / 14 - s * 1.3 + 1 + g.phase) * 0.8}));
         }
 
-        // Carafe: eases to today's amount; the stream stirs the surface.
+        // Carafe: eases to today's amount; where the stream lands it pushes the surface down, and
+        // the dent runs out as rings that bounce off the walls.
         const f = Math.min(CARAFE_MAX_FILL, shownMl / goal());
         carafeLevel += (f - carafeLevel) * (1 - Math.exp(-dt * (pour ? 14 : 3)));
-        wobble += ((streamOn ? 1.6 : 0) - wobble) * (1 - Math.exp(-dt * (streamOn ? 10 : 4)));
+        for (let left = dt; left > 1e-6; left -= 1 / 240) {
+            const h = Math.min(left, 1 / 240);
+            if (impact) carafeSurface.poke(impact.x, impact.force * h, 2);
+            carafeSurface.step(h);
+        }
         const y = carafeY(carafeLevel);
-        carafeWater.setAttribute('d', carafePath(y, s * 1.1, 0.7 + wobble));
-        carafeBack.setAttribute('d', carafePath(y - 1.5, -s * 1.4 + 2, 0.9 + wobble));
+        carafeWater.setAttribute('d', carafeSurface.path(y, -10, 210, 370,
+            {extra: x => Math.sin(x / 18 + s * 1.1) * 0.5}));
+        carafeBack.setAttribute('d', carafeSurface.path(y - 1.5, -10, 210, 370,
+            {mirror: true, scale: 0.6, extra: x => Math.sin(x / 18 - s * 1.4 + 2) * 0.7}));
 
         if (animating) requestAnimationFrame(frame);
     };
