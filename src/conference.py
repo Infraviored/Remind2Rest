@@ -219,6 +219,17 @@ def _init_com():
         _com_ready.done = True
 
 
+def _uninit_com():
+    """Uninitialize COM for this thread if initialized by _init_com."""
+    import comtypes
+    if getattr(_com_ready, "done", False):
+        try:
+            comtypes.CoUninitialize()
+        except Exception:
+            pass
+        _com_ready.done = False
+
+
 def wasapi_capture_users(ignore_apps=()):
     """Processes recording from any active microphone right now: the audio system's capture sessions
     in state Active, by process. This is what the taskbar's microphone icon shows. Newer Windows 11
@@ -235,12 +246,20 @@ def wasapi_capture_users(ignore_apps=()):
     devices = enumerator.EnumAudioEndpoints(1, 1)   # eCapture, DEVICE_STATE_ACTIVE
     users = set()
     for i in range(devices.GetCount()):
-        manager = devices.Item(i).Activate(IAudioSessionManager2._iid_, comtypes.CLSCTX_ALL, None)
-        sessions = manager.QueryInterface(IAudioSessionManager2).GetSessionEnumerator()
-        for j in range(sessions.GetCount()):
-            session = sessions.GetSession(j).QueryInterface(IAudioSessionControl2)
-            pid = session.GetProcessId()
-            if not pid or session.GetState() != AUDIO_SESSION_ACTIVE:
+        try:
+            device = devices.Item(i)
+            manager = device.Activate(IAudioSessionManager2._iid_, comtypes.CLSCTX_ALL, None)
+            sessions = manager.QueryInterface(IAudioSessionManager2).GetSessionEnumerator()
+            count = sessions.GetCount()
+        except Exception:
+            continue
+        for j in range(count):
+            try:
+                session = sessions.GetSession(j).QueryInterface(IAudioSessionControl2)
+                pid = session.GetProcessId()
+                if not pid or session.GetState() != AUDIO_SESSION_ACTIVE:
+                    continue
+            except Exception:
                 continue
             try:
                 name = psutil.Process(pid).name()
@@ -265,6 +284,7 @@ class CameraActivity:
         self._pids = set()
         self._monitor = None
         self._callback = None
+        self._failed = False
 
     def _start(self):
         import ctypes
@@ -346,8 +366,14 @@ class CameraActivity:
 
     def users(self, ignore_apps=()):
         import psutil
-        if self._monitor is None:
-            self._start()
+        if self._monitor is None and not self._failed:
+            with self._lock:
+                if self._monitor is None and not self._failed:
+                    try:
+                        self._start()
+                    except Exception:
+                        self._failed = True
+                        raise
         with self._lock:
             pids = set(self._pids)
         ignore = {_strip_exe(name) for name in ignore_apps}
@@ -360,6 +386,16 @@ class CameraActivity:
             if _strip_exe(name) not in ignore | WINDOWS_METER_APPS:
                 users.add(name)
         return sorted(users)
+
+    def stop(self):
+        with self._lock:
+            if self._monitor is not None:
+                try:
+                    self._monitor.Stop()
+                except Exception:
+                    pass
+                self._monitor = None
+            self._callback = None
 
 
 _camera_activity = None
@@ -767,11 +803,16 @@ class ConferenceDetector:
                 apps = self._running_apps(settings)
             if mics and (cameras or apps):
                 self._call_mics = mics
-            else:
+            elif mics and self._call_mics:
                 # The sign can go while the call goes on (camera switched off, another browser tab in
                 # front so the title no longer says Teams): who recorded for the call counts as long
                 # as it records.
                 self._call_mics &= mics
+            elif "audio capture sessions" in self._failed and self._call_mics:
+                # Keep active call mics during a transient capture probe failure
+                signals["microphone"] = sorted(self._call_mics)
+            else:
+                self._call_mics = set()
             signals["microphone"] = sorted(self._call_mics)
             if not mics:
                 signals["camera"] = []  # the camera alone is no call
@@ -828,18 +869,30 @@ class ConferenceDetector:
             return
 
         def run():
-            while not self._stop.is_set():
-                try:
-                    self.poll()
-                except Exception as e:
-                    logging.error(f"Conference poll failed: {e}")
-                self._stop.wait(POLL_INTERVAL)
+            try:
+                while not self._stop.is_set():
+                    try:
+                        self.poll()
+                    except Exception as e:
+                        logging.error(f"Conference poll failed: {e}")
+                    self._stop.wait(POLL_INTERVAL)
+            finally:
+                if self._windows:
+                    _uninit_com()
 
         self._thread = threading.Thread(target=run, name="conference-detector", daemon=True)
         self._thread.start()
 
     def stop(self):
         self._stop.set()
+        if hasattr(self._camera_users, "stop"):
+            try:
+                self._camera_users.stop()
+            except Exception:
+                pass
+        global _camera_activity
+        if _camera_activity is not None:
+            _camera_activity.stop()
 
 
 detector = ConferenceDetector()

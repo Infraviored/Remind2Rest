@@ -7,7 +7,8 @@ import sys
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
+import ctypes
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -383,6 +384,253 @@ class WindowsProbesTest(unittest.TestCase):
         self.assertEqual(kwargs["creationflags"], 0x08000000)
         self.assertEqual(kwargs["timeout"], conference.TOOL_TIMEOUT)
 
+    def test_wasapi_capture_users(self):
+        class FakeSession:
+            def __init__(self, pid, state):
+                self._pid = pid
+                self._state = state
+
+            def GetProcessId(self):
+                return self._pid
+
+            def GetState(self):
+                return self._state
+
+            def QueryInterface(self, iface):
+                return self
+
+        class FakeEnumerator:
+            def __init__(self, sessions):
+                self._sessions = sessions
+
+            def GetCount(self):
+                return len(self._sessions)
+
+            def GetSession(self, idx):
+                return self._sessions[idx]
+
+        class FakeManager:
+            def __init__(self, enumerator):
+                self._enumerator = enumerator
+
+            def QueryInterface(self, iface):
+                return self
+
+            def GetSessionEnumerator(self):
+                return self._enumerator
+
+        class FakeDevice:
+            def __init__(self, manager):
+                self._manager = manager
+
+            def Activate(self, iid, ctx, params):
+                return self._manager
+
+        class FakeDevices:
+            def __init__(self, devices):
+                self._devices = devices
+
+            def GetCount(self):
+                return len(self._devices)
+
+            def Item(self, idx):
+                return self._devices[idx]
+
+        class FakeMMDeviceEnumerator:
+            def __init__(self, devices):
+                self._devices = devices
+
+            def EnumAudioEndpoints(self, flow, state):
+                return self._devices
+
+        s1 = FakeSession(101, conference.AUDIO_SESSION_ACTIVE)
+        s2 = FakeSession(102, conference.AUDIO_SESSION_ACTIVE)
+        s3 = FakeSession(103, 0)  # inactive
+        s4 = FakeSession(104, conference.AUDIO_SESSION_ACTIVE)  # ignored app
+        s5 = FakeSession(105, conference.AUDIO_SESSION_ACTIVE)  # meter app
+        mgr = FakeManager(FakeEnumerator([s1, s2, s3, s4, s5]))
+        devs = FakeDevices([FakeDevice(mgr)])
+        fake_enum = FakeMMDeviceEnumerator(devs)
+
+        names = {
+            101: "firefox.exe",
+            102: "teams.exe",
+            104: "VibeVoice.exe",
+            105: "SystemSettings.exe",
+        }
+
+        class FakeProc:
+            def __init__(self, pid):
+                if pid not in names:
+                    raise KeyError(pid)
+                self._name = names[pid]
+
+            def name(self):
+                return self._name
+
+        fake_comtypes = MagicMock()
+        fake_comtypes.CoCreateInstance.return_value = fake_enum
+
+        with patch.dict(sys.modules, {
+            "comtypes": fake_comtypes,
+            "pycaw.constants": MagicMock(),
+            "pycaw.pycaw": MagicMock(),
+            "psutil": MagicMock(Process=FakeProc, Error=Exception),
+        }):
+            users = conference.wasapi_capture_users(["VibeVoice"])
+            self.assertEqual(users, ["firefox.exe", "teams.exe"])
+
+    def test_wasapi_capture_users_error_handling(self):
+        class BrokenDevice:
+            def Activate(self, iid, ctx, params):
+                raise OSError("device disconnected")
+
+        class BrokenSession:
+            def QueryInterface(self, iface):
+                raise OSError("session died")
+
+        class GoodSession:
+            def QueryInterface(self, iface):
+                return self
+
+            def GetProcessId(self):
+                return 201
+
+            def GetState(self):
+                return conference.AUDIO_SESSION_ACTIVE
+
+        class FakeDevices:
+            def __init__(self, items):
+                self._items = items
+
+            def GetCount(self):
+                return len(self._items)
+
+            def Item(self, i):
+                return self._items[i]
+
+        class FakeEnumerator:
+            def __init__(self, sessions):
+                self._sessions = sessions
+
+            def GetCount(self):
+                return len(self._sessions)
+
+            def GetSession(self, i):
+                return self._sessions[i]
+
+        class FakeManager:
+            def QueryInterface(self, iface):
+                return self
+
+            def GetSessionEnumerator(self):
+                return FakeEnumerator([BrokenSession(), GoodSession()])
+
+        class GoodDevice:
+            def Activate(self, iid, ctx, params):
+                return FakeManager()
+
+        class GoodProc:
+            def __init__(self, pid):
+                pass
+
+            def name(self):
+                return "good.exe"
+
+        devs = FakeDevices([BrokenDevice(), GoodDevice()])
+        fake_comtypes = MagicMock()
+        fake_comtypes.CoCreateInstance.return_value = MagicMock(EnumAudioEndpoints=lambda f, s: devs)
+        fake_psutil = MagicMock(Process=GoodProc, Error=Exception)
+
+        with patch.dict(sys.modules, {
+            "comtypes": fake_comtypes,
+            "pycaw.constants": MagicMock(),
+            "pycaw.pycaw": MagicMock(),
+            "psutil": fake_psutil,
+        }):
+            users = conference.wasapi_capture_users([])
+            self.assertEqual(users, ["good.exe"])
+
+    def test_windows_title_matches_enumeration(self):
+        windows = [
+            (1, True, "Chat | Microsoft Teams"),
+            (2, False, "Hidden | Microsoft Teams"),
+            (3, True, "Mozilla Firefox — Sharing Indicator"),
+            (4, True, ""),
+            (5, True, "Google Meet: Project Sync"),
+        ]
+
+        class FakeUser32:
+            def EnumWindows(self, callback, lparam):
+                for hwnd, visible, title in windows:
+                    callback(hwnd, lparam)
+                return 1
+
+            def IsWindowVisible(self, hwnd):
+                for h, vis, _ in windows:
+                    if h == hwnd:
+                        return vis
+                return False
+
+            def GetWindowTextLengthW(self, hwnd):
+                for h, _, title in windows:
+                    if h == hwnd:
+                        return len(title)
+                return 0
+
+            def GetWindowTextW(self, hwnd, buf, max_len):
+                for h, _, title in windows:
+                    if h == hwnd:
+                        buf.value = title
+                        return len(title)
+                return 0
+
+        with patch.object(ctypes, "windll", MagicMock(user32=FakeUser32()), create=True):
+            res = conference.windows_title_matches(["Microsoft Teams", "Sharing Indicator", "zoom"])
+            self.assertEqual(res, ["Microsoft Teams", "Sharing Indicator"])
+
+    def test_camera_activity_lifecycle_and_users(self):
+        activity = conference.CameraActivity()
+        self.assertFalse(activity._failed)
+
+        class DictProc:
+            def __init__(self, pid):
+                self._pid = pid
+
+            def name(self):
+                return names[self._pid]
+
+        activity._monitor = MagicMock()
+        activity._pids = {301, 302, 303}
+        names = {301: "firefox.exe", 302: "VibeVoice.exe", 303: "windows.immersivecontrolpanel.exe"}
+        fake_psutil = MagicMock(Process=DictProc, Error=Exception)
+        with patch.dict(sys.modules, {"psutil": fake_psutil}):
+            users = activity.users(["VibeVoice"])
+            self.assertEqual(users, ["firefox.exe"])
+
+        activity.stop()
+        self.assertIsNone(activity._monitor)
+
+        fail_activity = conference.CameraActivity()
+        with patch.object(fail_activity, "_start", side_effect=OSError("media foundation missing")):
+            with patch.dict(sys.modules, {"psutil": MagicMock()}):
+                with self.assertRaises(OSError):
+                    fail_activity.users()
+                self.assertTrue(fail_activity._failed)
+                self.assertEqual(fail_activity.users(), [])
+
+    def test_com_init_and_uninit(self):
+        fake_comtypes = MagicMock()
+        with patch.dict(sys.modules, {"comtypes": fake_comtypes}):
+            conference._com_ready.done = False
+            conference._init_com()
+            self.assertTrue(conference._com_ready.done)
+            fake_comtypes.CoInitializeEx.assert_called_once_with(fake_comtypes.COINIT_MULTITHREADED)
+
+            conference._uninit_com()
+            self.assertFalse(conference._com_ready.done)
+            fake_comtypes.CoUninitialize.assert_called_once()
+
 
 def shown(*titles):
     """A fake window_titles probe for these visible window titles (matches like the real one)."""
@@ -518,6 +766,35 @@ class WindowsDetectorTest(unittest.TestCase):
         mics[0] = ["firefox.exe"]      # later dictation in the browser, no Teams: no call
         d.poll()
         self.assertEqual(d.state()["signals"]["microphone"]["sources"], [])
+
+    def test_windows_call_retains_call_mics_during_transient_capture_failure(self):
+        mics, titles = [["firefox.exe"]], [["Chat | Microsoft Teams"]]
+        fail_capture = [False]
+
+        def capture(ignore):
+            if fail_capture[0]:
+                raise OSError("transient audio service failure")
+            return mics[0]
+
+        d = self.detector(FakeRegistry({}), capture_users=capture,
+                          processes=lambda names: [], window_titles=lambda patterns: shown(*titles[0])(patterns))
+        d.poll()
+        self.assertTrue(d.active)
+        self.assertEqual(d.state()["signals"]["microphone"]["sources"], ["firefox.exe"])
+
+        # Tab goes to background, then capture probe transiently fails
+        titles[0] = []
+        fail_capture[0] = True
+        with self.assertLogs(level="WARNING") as logs:
+            d.poll()
+        self.assertEqual(len([line for line in logs.output if "audio capture sessions" in line]), 1)
+        self.assertEqual(d.state()["signals"]["microphone"]["sources"], ["firefox.exe"])
+
+        # Probe recovers while still in background tab
+        fail_capture[0] = False
+        d.poll()
+        self.assertEqual(d.state()["signals"]["microphone"]["sources"], ["firefox.exe"])
+        self.assertTrue(d.active)
 
     def test_windows_browser_microphone_without_meeting_window_is_no_conference(self):
         d = self.detector(FakeRegistry({}), capture_users=lambda ignore: ["firefox.exe"],
