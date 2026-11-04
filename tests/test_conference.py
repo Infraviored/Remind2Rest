@@ -134,11 +134,37 @@ class DetectorTest(unittest.TestCase):
         d.poll()
         self.assertEqual(d.state()["reasons"], ["microphone"])
 
-    def test_camera_counts_without_app(self):
+    def test_camera_alone_is_no_conference(self):
+        # A camera app or face unlock: video without sound is no call.
         self.p.apps = []
         self.p.video = ["firefox"]
         self.d.poll()
-        self.assertEqual(self.d.state()["reasons"], ["camera"])
+        self.assertFalse(self.d.active)
+        self.assertEqual(self.d.state()["signals"]["camera"]["sources"], [])
+
+    def test_camera_and_microphone_are_a_call_without_app(self):
+        self.p.apps = []
+        self.p.video = ["firefox"]
+        self.p.nodes = [MIC_FIREFOX]
+        self.d.poll()
+        self.assertEqual(self.d.state()["reasons"], ["microphone", "camera"])
+
+    def test_call_goes_on_when_the_camera_is_switched_off(self):
+        self.p.apps = []
+        self.p.video = ["firefox"]
+        self.p.nodes = [MIC_FIREFOX]
+        self.d.poll()
+        self.p.video = []
+        self.d.poll()
+        self.assertEqual(self.d.state()["reasons"], ["microphone"])
+
+    def test_camera_alone_counts_when_not_required_or_microphone_off(self):
+        self.p.apps = []
+        self.p.video = ["firefox"]
+        for settings in ({"microphone_needs_app": False}, {"signals": {"microphone": False}}):
+            d = self.p.detector(**settings)
+            d.poll()
+            self.assertEqual(d.state()["reasons"], ["camera"], settings)
 
     def test_disabled_microphone_does_not_probe_processes(self):
         self.p.apps = []
@@ -213,6 +239,7 @@ class DetectorTest(unittest.TestCase):
 
     def test_camera_from_proc_scan(self):
         self.p.video = ["chrome"]
+        self.p.nodes = [MIC_FIREFOX]
         self.d.poll()
         self.assertEqual(self.d.state()["signals"]["camera"]["sources"], ["chrome"])
 
@@ -357,6 +384,11 @@ class WindowsProbesTest(unittest.TestCase):
         self.assertEqual(kwargs["timeout"], conference.TOOL_TIMEOUT)
 
 
+def shown(*titles):
+    """A fake window_titles probe for these visible window titles (matches like the real one)."""
+    return lambda patterns: sorted(p for p in patterns if any(p.lower() in t.lower() for t in titles))
+
+
 class WindowsDetectorTest(unittest.TestCase):
     def linux_probe(self, name):
         def probe(*args):
@@ -371,6 +403,7 @@ class WindowsDetectorTest(unittest.TestCase):
     def detector(self, registry, settings=None, **kw):
         kw.setdefault("capture_users", lambda ignore: [])
         kw.setdefault("window_titles", lambda patterns: [])
+        kw.setdefault("camera_users", lambda ignore: [])
         return ConferenceDetector(settings or {}, clock=lambda: 1000.0, on_change=lambda a, r: self.changes.append((a, r)),
                                   read_pipewire=self.linux_probe("pw-dump"), video_users=self.linux_probe("proc"),
                                   windows=True, registry=registry, **kw)
@@ -415,7 +448,7 @@ class WindowsDetectorTest(unittest.TestCase):
         self.assertEqual(state["signals"]["processes"]["sources"], ["teams"])
         self.assertEqual(state["signals"]["screen_share"]["sources"], [])
         self.assertFalse(state["signals"]["screen_share"]["active"])
-        self.assertEqual(state["screen_share_source"], "unavailable")
+        self.assertEqual(state["screen_share_source"], "indicator window")
         self.assertEqual(self.linux_calls, [])
 
     def test_broken_registry_never_crashes(self):
@@ -435,7 +468,8 @@ class WindowsDetectorTest(unittest.TestCase):
     def test_missing_winreg_never_crashes(self):
         # On Linux there is no winreg: the import error is logged once per probe and the signals stay off.
         d = ConferenceDetector({}, on_change=lambda a, r: None, windows=True, processes=lambda names: [],
-                               capture_users=lambda ignore: [], window_titles=lambda patterns: [])
+                               capture_users=lambda ignore: [], window_titles=lambda patterns: [],
+                               camera_users=lambda ignore: [])
         with patch.dict(sys.modules, {"winreg": None}), self.assertLogs(level="WARNING"):
             d.poll()
         self.assertFalse(d.active)
@@ -463,16 +497,16 @@ class WindowsDetectorTest(unittest.TestCase):
         titles = []
         d = self.detector(FakeRegistry({}), capture_users=lambda ignore: ["firefox.exe"],
                           processes=lambda names: [],
-                          window_titles=lambda patterns: titles.append(patterns) or ["Microsoft Teams"])
+                          window_titles=lambda patterns: titles.append(patterns) or shown("Chat | Microsoft Teams")(patterns))
         d.poll()
         self.assertTrue(d.active)
         self.assertEqual(d.state()["reasons"], ["microphone"])
-        self.assertIn("Microsoft Teams", titles[0])
+        self.assertIn(conference.DEFAULTS["window_titles"], titles)
 
     def test_windows_call_goes_on_when_the_teams_tab_goes_to_the_back(self):
-        mics, titles = [["firefox.exe"]], [["Microsoft Teams"]]
+        mics, titles = [["firefox.exe"]], [["Chat | Microsoft Teams"]]
         d = self.detector(FakeRegistry({}), capture_users=lambda ignore: mics[0],
-                          processes=lambda names: [], window_titles=lambda patterns: titles[0])
+                          processes=lambda names: [], window_titles=lambda patterns: shown(*titles[0])(patterns))
         d.poll()
         self.assertTrue(d.active)
         titles[0] = []                 # another tab in front: the title no longer says Teams
@@ -493,7 +527,7 @@ class WindowsDetectorTest(unittest.TestCase):
 
     def test_windows_meeting_window_shows_in_processes_signal(self):
         d = self.detector(FakeRegistry({}), {"signals": {"processes": True}}, processes=lambda names: [],
-                          window_titles=lambda patterns: ["Microsoft Teams"])
+                          window_titles=shown("Chat | Microsoft Teams"))
         d.poll()
         self.assertEqual(d.state()["signals"]["processes"]["sources"], ["Microsoft Teams window"])
 
@@ -506,6 +540,58 @@ class WindowsDetectorTest(unittest.TestCase):
             d.poll()
         self.assertFalse(d.active)
         self.assertEqual(len([line for line in logs.output if "audio capture sessions" in line]), 1)
+
+    def test_windows_firefox_screen_share_counts(self):
+        titles = []
+        d = self.detector(FakeRegistry({}), processes=lambda names: [],
+                          window_titles=lambda patterns: titles.append(patterns) or
+                          shown("Firefox — Sharing Indicator", "Some page — Mozilla Firefox")(patterns))
+        d.poll()
+        self.assertTrue(d.active)
+        self.assertEqual(d.state()["reasons"], ["screen_share"])
+        self.assertEqual(d.state()["signals"]["screen_share"]["sources"], ["Sharing Indicator window"])
+        self.assertIn(conference.DEFAULTS["share_indicators"], titles)
+
+    def test_windows_chrome_screen_share_counts(self):
+        d = self.detector(FakeRegistry({}), processes=lambda names: [],
+                          window_titles=shown("meet.google.com is sharing your screen."))
+        d.poll()
+        self.assertEqual(d.state()["reasons"], ["screen_share"])
+
+    def test_windows_screen_share_off_is_not_probed(self):
+        titles = []
+        d = self.detector(FakeRegistry({}), {"signals": {"screen_share": False}}, processes=lambda names: [],
+                          window_titles=lambda patterns: titles.append(patterns) or [])
+        d.poll()
+        self.assertNotIn(conference.DEFAULTS["share_indicators"], titles)
+
+    def test_windows_video_call_in_any_app_counts(self):
+        # Camera and microphone together are a call, whatever the app: no meeting app needed.
+        seen = []
+        d = self.detector(FakeRegistry({}), capture_users=lambda ignore: ["firefox.exe"],
+                          camera_users=lambda ignore: seen.append(ignore) or ["firefox.exe"],
+                          processes=lambda names: [])
+        d.poll()
+        self.assertTrue(d.active)
+        self.assertEqual(d.state()["reasons"], ["microphone", "camera"])
+        self.assertEqual(seen, [["VibeVoice"]])
+
+    def test_windows_camera_alone_is_no_conference(self):
+        d = self.detector(FakeRegistry({}), camera_users=lambda ignore: ["WindowsCamera.exe"],
+                          processes=lambda names: [])
+        d.poll()
+        self.assertFalse(d.active)
+
+    def test_windows_broken_camera_probe_counts_as_off(self):
+        def broken(ignore):
+            raise OSError("no media foundation")
+        d = self.detector(FakeRegistry({}), capture_users=lambda ignore: ["firefox.exe"], camera_users=broken,
+                          processes=lambda names: [])
+        with self.assertLogs(level="WARNING") as logs:
+            d.poll()
+            d.poll()
+        self.assertFalse(d.active)
+        self.assertEqual(len([line for line in logs.output if "camera activity" in line]), 1)
 
     def test_windows_microphone_alone_counts_when_app_not_required(self):
         reg = FakeRegistry({

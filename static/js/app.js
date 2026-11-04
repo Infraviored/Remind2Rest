@@ -16,10 +16,12 @@ const DRAG_THRESHOLD = 4;
 // winHint null = the signal cannot be detected there.
 const CONFERENCE_SIGNALS = [
     { key: 'screen_share', label: 'Screen share', icon: 'screen_share',
-      hint: 'Screen sharing or a screencast (top bar extension, else PipeWire)', winHint: null },
+      hint: 'Screen sharing or a screencast (top bar extension, else PipeWire)',
+      winHint: 'A browser shows its screen-sharing indicator (Firefox, Chrome, Edge)' },
     { key: 'microphone', label: 'Microphone', icon: 'mic',
-      hint: 'An app records from the microphone (with "Only with a meeting app": while one of the meeting apps runs)' },
-    { key: 'camera', label: 'Camera', icon: 'videocam', hint: 'An app uses the camera' },
+      hint: 'An app records from the microphone (with "Only as a call": while the camera is on or a meeting app runs)' },
+    { key: 'camera', label: 'Camera', icon: 'videocam',
+      hint: 'An app uses the camera (with "Only as a call": while a microphone records too)' },
     { key: 'processes', label: 'Meeting app', icon: 'apps', hint: 'One of the meeting apps runs' },
     { key: 'do_not_disturb', label: 'Do Not Disturb', icon: 'do_not_disturb_on', hint: "GNOME's Do Not Disturb is on",
       winHint: 'Windows notifications are switched off (best effort)' }

@@ -3,13 +3,15 @@ microphone or camera, a meeting app, GNOME's Do Not Disturb. Polled every POLL_I
 own thread, so a slow pw-dump never holds up the scheduler tick; the gate only reads the result.
 
 On Windows the signals come from elsewhere (see "Windows probes" below): the microphone from the audio
-system's active capture sessions (WASAPI) plus the registry's CapabilityAccessManager consent store, the
-camera from the consent store, processes from tasklist plus visible window titles (Teams in a browser),
-Do Not Disturb (best effort) from the notification settings. Screen sharing has no reliable source there
-and stays off. None of the Linux tools (pw-dump, gsettings, /proc) is run on Windows.
+system's active capture sessions (WASAPI), the camera from Media Foundation's sensor activity monitor
+(both plus the registry's CapabilityAccessManager consent store, which newer builds no longer update),
+screen sharing from the indicator window a browser shows while it shares, processes from tasklist plus
+visible window titles (Teams in a browser), Do Not Disturb (best effort) from the notification settings.
+None of the Linux tools (pw-dump, gsettings, /proc) is run on Windows.
 
-Each signal can be switched off in config["conference"]["signals"]. The conference is on while any
-enabled signal is, and off once none has been for end_grace_seconds (a call that drops for a moment
+With microphone_needs_app (the default) the microphone and the camera count only as a call: both
+together, or the microphone while a meeting app runs. Each signal can be switched off in
+config["conference"]["signals"]. The conference is on while any enabled signal is, and off once none has been for end_grace_seconds (a call that drops for a moment
 does not end it). Each change of state is logged and, if conference.webhook_url is set, POSTed there.
 """
 import copy
@@ -42,14 +44,19 @@ DEFAULTS = {
     "signals": {"screen_share": True, "microphone": True, "camera": True, "processes": False,
                 "do_not_disturb": True},
     "ignore_apps": ["VibeVoice"],
-    # The microphone alone is no call (dictation, voice tools); it counts only while an app of
-    # "processes" runs, whether or not the processes signal itself is on.
+    # The microphone alone is no call (dictation, voice tools), the camera alone neither (a camera app,
+    # face unlock). Both together are a video call; the microphone also counts while an app of
+    # "processes" runs (whether or not the processes signal itself is on). Screen sharing always counts.
     "microphone_needs_app": True,
     # On Windows matched without ".exe": teams = classic Teams.exe, ms-teams = new Teams, zoom = Zoom.exe.
     "processes": ["teams", "teams-for-linux", "ms-teams", "zoom"],
     # Windows only: a visible window whose title contains one of these counts like a meeting app
     # (Teams or Meet in a browser has no process of its own).
     "window_titles": ["Microsoft Teams", "Zoom Meeting", "Google Meet"],
+    # Windows only: the window a browser shows while it shares the screen or a window. Firefox:
+    # "Firefox — Sharing Indicator" (only while sharing, not for microphone or camera); Chrome and
+    # Edge: the bar "<site> is sharing your screen." / "... is sharing a window.".
+    "share_indicators": ["Sharing Indicator", "is sharing your screen", "is sharing a window"],
     "end_grace_seconds": 60,
     "webhook_url": "",
 }
@@ -201,6 +208,17 @@ AUDIO_SESSION_ACTIVE = 1   # AudioSessionStateActive
 _com_ready = threading.local()
 
 
+def _init_com():
+    """COM once per thread (the detector polls in its own)."""
+    import comtypes
+    if not getattr(_com_ready, "done", False):
+        try:
+            comtypes.CoInitializeEx(comtypes.COINIT_MULTITHREADED)
+        except OSError:
+            pass  # already set up in this thread (comtypes does it on import in the main thread)
+        _com_ready.done = True
+
+
 def wasapi_capture_users(ignore_apps=()):
     """Processes recording from any active microphone right now: the audio system's capture sessions
     in state Active, by process. This is what the taskbar's microphone icon shows. Newer Windows 11
@@ -210,12 +228,7 @@ def wasapi_capture_users(ignore_apps=()):
     import psutil
     from pycaw.constants import CLSID_MMDeviceEnumerator
     from pycaw.pycaw import IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator
-    if not getattr(_com_ready, "done", False):
-        try:
-            comtypes.CoInitializeEx(comtypes.COINIT_MULTITHREADED)
-        except OSError:
-            pass  # already set up in this thread (comtypes does it on import in the main thread)
-        _com_ready.done = True
+    _init_com()
     ignore = {_strip_exe(name) for name in ignore_apps}
     enumerator = comtypes.CoCreateInstance(CLSID_MMDeviceEnumerator, IMMDeviceEnumerator,
                                            comtypes.CLSCTX_INPROC_SERVER)
@@ -236,6 +249,128 @@ def wasapi_capture_users(ignore_apps=()):
             if _strip_exe(name) not in ignore | WINDOWS_METER_APPS:
                 users.add(name)
     return sorted(users)
+
+
+MF_VERSION = 0x20070   # MF_SDK_VERSION << 16 | MF_API_VERSION
+
+
+class CameraActivity:
+    """Who streams from a camera right now, from Media Foundation's sensor activity monitor (Windows 10
+    1809 and later, no admin rights needed). Windows calls back on every change with the full picture;
+    the monitor runs from the first call on and the latest picture is kept. The consent store, which
+    the camera signal read before, is no longer kept current by newer Windows 11 builds."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._pids = set()
+        self._monitor = None
+        self._callback = None
+
+    def _start(self):
+        import ctypes
+        from ctypes import HRESULT, POINTER, byref, c_int, c_ulong, c_wchar_p, wintypes
+        import comtypes
+        from comtypes import COMMETHOD, GUID, COMObject, IUnknown
+
+        class IMFSensorProcessActivity(IUnknown):
+            _iid_ = GUID("{39DC7F4A-B141-4719-813C-A7F46162A2B8}")
+            _methods_ = [
+                COMMETHOD([], HRESULT, "GetProcessId", (["out"], POINTER(c_ulong), "pid")),
+                COMMETHOD([], HRESULT, "GetStreamingState", (["out"], POINTER(wintypes.BOOL), "streaming")),
+                COMMETHOD([], HRESULT, "GetStreamingMode", (["out"], POINTER(c_int), "mode")),
+                COMMETHOD([], HRESULT, "GetReportTime", (["out"], POINTER(wintypes.FILETIME), "time")),
+            ]
+
+        class IMFSensorActivityReport(IUnknown):
+            _iid_ = GUID("{3E8C4BE1-A8C2-4528-90DE-2851BDE5FEAD}")
+            _methods_ = [
+                COMMETHOD([], HRESULT, "GetFriendlyName", (["in"], c_wchar_p), (["in"], c_ulong),
+                          (["out"], POINTER(c_ulong))),
+                COMMETHOD([], HRESULT, "GetSymbolicLink", (["in"], c_wchar_p), (["in"], c_ulong),
+                          (["out"], POINTER(c_ulong))),
+                COMMETHOD([], HRESULT, "GetProcessCount", (["out"], POINTER(c_ulong), "count")),
+                COMMETHOD([], HRESULT, "GetProcessActivity", (["in"], c_ulong, "index"),
+                          (["out"], POINTER(POINTER(IMFSensorProcessActivity)), "activity")),
+            ]
+
+        class IMFSensorActivitiesReport(IUnknown):
+            _iid_ = GUID("{683F7A5E-4A19-43CD-B1A9-DBF4AB3F7777}")
+            _methods_ = [
+                COMMETHOD([], HRESULT, "GetCount", (["out"], POINTER(c_ulong), "count")),
+                COMMETHOD([], HRESULT, "GetActivityReport", (["in"], c_ulong, "index"),
+                          (["out"], POINTER(POINTER(IMFSensorActivityReport)), "report")),
+                COMMETHOD([], HRESULT, "GetActivityReportByDeviceName", (["in"], c_wchar_p),
+                          (["out"], POINTER(POINTER(IMFSensorActivityReport)))),
+            ]
+
+        class IMFSensorActivitiesReportCallback(IUnknown):
+            _iid_ = GUID("{DE5072EE-DBE3-46DC-8A87-B6F631194751}")
+            _methods_ = [COMMETHOD([], HRESULT, "OnActivitiesReport",
+                                   (["in"], POINTER(IMFSensorActivitiesReport), "report"))]
+
+        class IMFSensorActivityMonitor(IUnknown):
+            _iid_ = GUID("{D0CEF145-B3F4-4340-A2E5-7A5080CA05CB}")
+            _methods_ = [COMMETHOD([], HRESULT, "Start"), COMMETHOD([], HRESULT, "Stop")]
+
+        owner = self
+
+        class Callback(COMObject):
+            _com_interfaces_ = [IMFSensorActivitiesReportCallback]
+
+            def OnActivitiesReport(self, report):
+                try:
+                    pids = set()
+                    for i in range(report.GetCount()):
+                        device = report.GetActivityReport(i)
+                        for j in range(device.GetProcessCount()):
+                            activity = device.GetProcessActivity(j)
+                            if activity.GetStreamingState():
+                                pids.add(activity.GetProcessId())
+                    with owner._lock:
+                        owner._pids = pids
+                except Exception as e:  # never let an exception escape into Windows' thread
+                    logging.warning(f"Camera activity report unreadable: {e}")
+                return 0
+
+        _init_com()
+        startup = ctypes.WinDLL("mfplat").MFStartup
+        startup.restype = HRESULT
+        startup(MF_VERSION, 0)
+        create = ctypes.WinDLL("mfsensorgroup").MFCreateSensorActivityMonitor
+        create.restype = HRESULT
+        callback = Callback()
+        monitor = POINTER(IMFSensorActivityMonitor)()
+        create(callback.QueryInterface(IMFSensorActivitiesReportCallback), byref(monitor))
+        monitor.Start()
+        self._callback, self._monitor = callback, monitor
+
+    def users(self, ignore_apps=()):
+        import psutil
+        if self._monitor is None:
+            self._start()
+        with self._lock:
+            pids = set(self._pids)
+        ignore = {_strip_exe(name) for name in ignore_apps}
+        users = set()
+        for pid in pids:
+            try:
+                name = psutil.Process(pid).name()
+            except psutil.Error:
+                continue
+            if _strip_exe(name) not in ignore | WINDOWS_METER_APPS:
+                users.add(name)
+        return sorted(users)
+
+
+_camera_activity = None
+
+
+def windows_camera_users(ignore_apps=()):
+    """Processes streaming from a camera right now (see CameraActivity)."""
+    global _camera_activity
+    if _camera_activity is None:
+        _camera_activity = CameraActivity()
+    return _camera_activity.users(ignore_apps)
 
 
 def windows_title_matches(patterns):
@@ -492,7 +627,8 @@ class ConferenceDetector:
 
     def __init__(self, settings=None, clock=time.monotonic, on_change=None, read_pipewire=read_pipewire,
                  video_users=video_device_users, processes=None, dnd=None, windows=None, registry=None,
-                 capture_users=wasapi_capture_users, window_titles=windows_title_matches):
+                 capture_users=wasapi_capture_users, window_titles=windows_title_matches,
+                 camera_users=windows_camera_users):
         self._settings = fill_defaults({"conference": copy.deepcopy(settings or {})})["conference"]
         self._clock = clock
         self._on_change = on_change or self._notify
@@ -502,6 +638,7 @@ class ConferenceDetector:
         self._video_users = video_users
         self._capture_users = capture_users
         self._window_titles = window_titles
+        self._camera_users = camera_users
         if self._windows:
             self._processes = processes or windows_running_processes
             self._dnd = dnd or (lambda: windows_dnd_active(self._hkcu()))
@@ -542,7 +679,7 @@ class ConferenceDetector:
             enabled = self._settings["signals"]
             ext_active = self._extension_fresh() and self._extension[0]
             if self._windows:
-                source = "unavailable"
+                source = "indicator window"
             elif ext_active or (self._extension_fresh() and not self._signals["screen_share"]):
                 source = "extension"
             else:
@@ -580,15 +717,20 @@ class ConferenceDetector:
         return self._registry
 
     def _read_windows_devices(self, settings, signals):
-        """Camera and microphone from the consent store, the microphone also from the audio system's
-        capture sessions. Windows offers no screen share source."""
+        """Microphone and camera live (audio capture sessions, camera activity monitor) plus the consent
+        store; screen sharing from a browser's sharing indicator window."""
+        live_probes = {"microphone": ("audio capture sessions", self._capture_users),
+                       "camera": ("camera activity", self._camera_users)}
         for name, device in (("microphone", "microphone"), ("camera", "webcam")):
             if settings["signals"].get(name):
-                signals[name] = self._probe(f"{device} registry", lambda d=device: consent_store_users(
+                stored = self._probe(f"{device} registry", lambda d=device: consent_store_users(
                     d, settings["ignore_apps"], self._hkcu())) or []
-        if settings["signals"].get("microphone"):
-            live = self._probe("audio capture sessions", self._capture_users, settings["ignore_apps"]) or []
-            signals["microphone"] = sorted(set(signals["microphone"]) | set(live))
+                probe_name, probe = live_probes[name]
+                live = self._probe(probe_name, probe, settings["ignore_apps"]) or []
+                signals[name] = sorted(set(stored) | set(live))
+        if settings["signals"].get("screen_share") and settings.get("share_indicators"):
+            shown = self._probe("sharing indicator", self._window_titles, settings["share_indicators"]) or []
+            signals["screen_share"] = [f"{t} window" for t in shown]
 
     def _running_apps(self, settings):
         """Meeting apps that run: processes, and on Windows windows titled like one (in a browser)."""
@@ -618,17 +760,21 @@ class ConferenceDetector:
         if enabled.get("processes"):
             apps = self._running_apps(settings)
             signals["processes"] = apps
-        if enabled.get("microphone") and signals["microphone"] and settings.get("microphone_needs_app", True):
-            if apps is None:
+        mics, cameras = set(signals["microphone"]), set(signals["camera"])
+        if settings.get("microphone_needs_app", True) and enabled.get("microphone"):
+            # A call: microphone and camera together, or the microphone with a meeting app.
+            if mics and not cameras and apps is None:
                 apps = self._running_apps(settings)
-            mics = set(signals["microphone"])
-            if apps:
+            if mics and (cameras or apps):
                 self._call_mics = mics
             else:
-                # The app sign can go while the call goes on (another browser tab in front, so the
-                # title no longer says Teams): who recorded for the call counts as long as it records.
+                # The sign can go while the call goes on (camera switched off, another browser tab in
+                # front so the title no longer says Teams): who recorded for the call counts as long
+                # as it records.
                 self._call_mics &= mics
-                signals["microphone"] = sorted(self._call_mics)
+            signals["microphone"] = sorted(self._call_mics)
+            if not mics:
+                signals["camera"] = []  # the camera alone is no call
         else:
             self._call_mics = set()
         if enabled.get("do_not_disturb"):
