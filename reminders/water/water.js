@@ -1,5 +1,7 @@
-// Same glass outline for every size; CSS sets the height.
-const OUTLINE = 'M14 10 L106 10 L96 146 Q95 152 89 152 L31 152 Q25 152 24 146 Z';
+// Same glass outline for every size; CSS sets the height. The rim (y 19) leaves little room above
+// the water, so a hard jerk sloshes over. The walls are the lines (14,10)-(24,146), cut at y 19.
+const OUTLINE = 'M14.66 19 L105.34 19 L96 146 Q95 152 89 152 L31 152 Q25 152 24 146 Z';
+const RIM_Y = 19;
 const FULL = 0.74;      // water level of a glass waiting to be drunk
 const FLOW = [0.06, 0.65]; // s after the pour starts: water runs over the rim (the glass empties)
 const DRIPS = [0.07, 0.19, 0.36]; // s after the flow ends: last drops from the rim
@@ -30,7 +32,7 @@ const CARAFE_PROFILE = [
 // Glass clip path (centre x=60): bottom r=29, rounded corner, then a frustum up to r=46 at the rim.
 const GLASS_PROFILE = [
     ...curve(100, quad([29, 152], [35, 152], [36, 146])),
-    ...curve(50, lerp2([36, 146], [46, 10])),
+    ...curve(50, lerp2([36, 146], [45.34, RIM_Y])),
 ];
 // Cumulative volume from the bottom: sum of conical frustums pi*h*(r0^2 + r0*r1 + r1^2)/3.
 function volumeTable(profile) {
@@ -83,7 +85,7 @@ function glassSvg(id) {
             </g>
         </g>
         <path d="${OUTLINE}" fill="none" stroke="rgba(226,232,255,0.75)" stroke-width="3" stroke-linejoin="round"/>
-        <path d="M28 24 L23.5 90" stroke="rgba(255,255,255,0.35)" stroke-width="4" stroke-linecap="round"/>
+        <path d="M27.3 32 L23.5 90" stroke="rgba(255,255,255,0.35)" stroke-width="4" stroke-linecap="round"/>
     </svg>`;
 }
 
@@ -151,7 +153,7 @@ class Surface {
 // excites). Mode n has n half waves across the water; its frequency follows from water waves
 // (w^2 = g k tanh(k depth)), and the small ones die out faster (viscosity). A sideways
 // acceleration a wants the surface tilted by a/g; a jerk goes ~80 % into mode 1, so the water
-// swings from wall to wall a few times (~3 Hz in a 200 ml glass) and settles in a second or two.
+// swings from wall to wall two or three times (~3 Hz in a 200 ml glass) and settles within a second.
 // Units: the glass viewBox; `widthMm` is the real rim width, which sets g in viewBox units.
 class Slosh {
     constructor(widthMm) {
@@ -168,7 +170,7 @@ class Slosh {
             // The tilt a/g as a sum of modes: wall height (L/2)(a/g), share 8/(n pi)^2.
             // 0.4: a hand smooths a mouse jerk; the pointer alone would shake it at several g.
             const target = -0.4 * (accX / g) * (L / 2) * 8 / (n * Math.PI) ** 2;
-            this.v[i] += (w2 * (target - this.a[i]) - 2 * 0.06 * n * w * this.v[i]) * dt;
+            this.v[i] += (w2 * (target - this.a[i]) - 2 * 0.15 * n * w * this.v[i]) * dt;
             this.a[i] += this.v[i] * dt;
         }
         const max = L / 2 * Math.tan(40 * Math.PI / 180);
@@ -180,6 +182,11 @@ class Slosh {
         const L = wr - wl, xi = clamp((x - wl) / L, 0, 1), [a1, a3, a5] = this.a;
         return a1 * Math.cos(Math.PI * xi) + a3 * Math.cos(3 * Math.PI * xi) + a5 * Math.cos(5 * Math.PI * xi)
             - 0.5 * (Math.PI / L) * a1 * a1 * Math.cos(2 * Math.PI * xi);
+    }
+    // How fast the water climbs the wall (viewBox units/s, + = up): side -1 left, +1 right.
+    climb(side) {
+        const [v1, v3, v5] = this.v;
+        return side < 0 ? -(v1 + v3 + v5) : v1 + v3 + v5;
     }
     // The surface tilt of mode 1 (deg, + = clockwise: left side up), for what runs over the rim.
     angle(L) { return Math.atan(-this.a[0] / (L / 2)) * 180 / Math.PI; }
@@ -204,9 +211,9 @@ const glassTop = level => 152 - level * 142;
 
 // --- the water in a tilted glass keeps its amount (2D area of the glass outline below the surface) ---
 // Glass inside as a polygon (glass viewBox), the rounded bottom corners sampled.
-const GLASS_POLY = [[14, 10], [106, 10], [96, 146], [95.5, 150], [93, 151.6], [89, 152],
+const GLASS_POLY = [[14.66, RIM_Y], [105.34, RIM_Y], [96, 146], [95.5, 150], [93, 151.6], [89, 152],
                     [31, 152], [27, 151.6], [24.5, 150], [24, 146]];
-const RIM = [[14, 10], [106, 10]];
+const RIM = [GLASS_POLY[0], GLASS_POLY[1]];
 // The water group is rotated by `angle` (deg) about (60, 90); its surface is the line y = top in that
 // frame. A glass point lies under water when, turned back by -angle, its y is below `top`.
 function waterFrame(angle) {
@@ -315,6 +322,7 @@ const rot = (p, deg) => {
             tilt: 0,
             slosh: new Slosh(75 * Math.cbrt(ml / 200)),   // a 200 ml glass is ~75 mm wide at the rim
             L: 86, depth: 100,                            // water width and depth (viewBox), per frame
+            spray: [0, 0],                                // spray drops due at the left / right wall
             area: FULL_AREA, spilled: 0, phase: ml / 97,
             home: null, k: 1, grab: null,
         };
@@ -334,10 +342,10 @@ const rot = (p, deg) => {
             if (g.mode !== 'rest') continue;
             const r = g.art.getBoundingClientRect();
             g.home = {x: r.left + r.width / 2, y: r.top + r.height / 2};
-            g.k = r.width / 120;
+            g.k = Math.max(0.1, r.width / 120);
         }
         const r = carafe.getBoundingClientRect();
-        const s = r.height / 360;
+        const s = Math.max(0.1, r.height / 360);
         geo = {
             s, top: r.top, left: r.left, floor: r.bottom,
             open: {x: r.left + CARAFE.openX * s, y: r.top + CARAFE.openY * s},
@@ -348,7 +356,7 @@ const rot = (p, deg) => {
     addEventListener('resize', measure);
 
     // The pouring rim (top right corner of the glass) relative to the glass centre.
-    const lipAt = (g, tilt) => rot({x: 46 * g.k, y: -70 * g.k}, tilt);
+    const lipAt = (g, tilt) => rot({x: (RIM[1][0] - 60) * g.k, y: (RIM_Y - 80) * g.k}, tilt);
     const lip = g => {
         const o = lipAt(g, g.tilt);
         return {x: g.home.x + g.off.x + o.x, y: g.home.y + g.off.y + o.y};
@@ -363,7 +371,7 @@ const rot = (p, deg) => {
     const TIP_NEAR = 30, TIP_RANGE = 150;
     const approach = g => {
         const p = pourOffset(g);
-        const d = Math.hypot(g.off.x - p.x, g.off.y - p.y) / geo.s;
+        const d = Math.hypot(g.off.x - p.x, g.off.y - p.y) / Math.max(0.1, geo.s);
         return clamp(1 - (d - TIP_NEAR) / TIP_RANGE, 0, 1);
     };
     // A point of the glass (its viewBox) on the screen, as the glass is now.
@@ -375,13 +383,34 @@ const rot = (p, deg) => {
     // Spilt water: drops that fall from the rim and vanish at the table. Not counted.
     const dropLayer = document.getElementById('drops');
     const drops = [];
-    // A splash drop starts inside the carafe and just falls back into its water.
-    function makeDrop(x, y, vx, vy, r, splash = false) {
+    // A splash drop starts inside the carafe and just falls back into its water. A drop with a
+    // `life` (s) is spray inside a glass: it vanishes when it is back down at the water.
+    function makeDrop(x, y, vx, vy, r, splash = false, life = 0) {
         if (drops.length >= 50) return;
         const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         el.setAttribute('r', r.toFixed(1));
         dropLayer.appendChild(el);
-        drops.push({el, x, y, vx, vy, r, inside: splash, splash});
+        drops.push({el, x, y, vx, vy, r, inside: splash, splash, life});
+    }
+    // Water that runs up a glass wall fast is thrown off it as spray, and falls back in.
+    // At the wall the surface is screen-aligned: the water frame is the glass turned back by its tilt.
+    const SPRAY_FROM = 180;   // climb speed (glass viewBox units/s) where spray starts
+    function spray(g, dt, level, wl, wr) {
+        for (const side of [-1, 1]) {
+            const up = g.slosh.climb(side);
+            const i = side < 0 ? 0 : 1;
+            g.spray[i] = up > SPRAY_FROM ? g.spray[i] + dt * Math.min(50, (up - SPRAY_FROM) * 0.25) : 0;
+            for (; g.spray[i] >= 1; g.spray[i]--) {
+                const x = side < 0 ? wl + 2.5 : wr - 2.5, y = level.top + g.slosh.height(x, wl, wr) - 1;
+                const base = rot({x: 0, y: 10}, g.tilt);
+                const px = g.home.x + g.off.x + (x - 60 + base.x) * g.k;
+                const py = g.home.y + g.off.y + (y - 90 + base.y) * g.k;
+                const vy = -Math.min(up, 500) * (0.35 + Math.random() * 0.4) * g.k;
+                const vx = -side * (15 + Math.random() * 55) * g.k;
+                makeDrop(px, py, g.vel.x + vx, g.vel.y + vy, (0.7 + Math.random() * 1.0) * g.k,
+                         false, 2 * -vy / Math.max(1, GRAVITY * geo.s));
+            }
+        }
     }
     function spillDrop(g, corner) {
         const p = glassPoint(g, RIM[corner]);
@@ -394,11 +423,12 @@ const rot = (p, deg) => {
         const water = geo.surfaceY(carafeLevel);
         for (let i = drops.length - 1; i >= 0; i--) {
             const d = drops[i];
+            if (d.life && (d.life -= dt) <= 0) { d.el.remove(); drops.splice(i, 1); continue; }
             const above = d.y < geo.open.y;
             d.vy += GRAVITY * geo.s * dt;
             d.x += d.vx * dt; d.y += d.vy * dt;
-            if (above && d.y >= geo.open.y && Math.abs(d.x - geo.open.x) < CARAFE.neckHalf * geo.s) d.inside = true;
-            const at = (d.x - geo.left) / geo.s;
+            if (!d.life && above && d.y >= geo.open.y && Math.abs(d.x - geo.open.x) < CARAFE.neckHalf * geo.s) d.inside = true;
+            const at = (d.x - geo.left) / Math.max(0.1, geo.s);
             if (d.inside ? d.vy > 0 && d.y > water + carafeSurface.heightAt(at) * geo.s : d.y > geo.floor) {
                 if (d.inside && !d.splash) landed(d, at);
                 d.el.remove(); drops.splice(i, 1); continue;
@@ -409,7 +439,7 @@ const rot = (p, deg) => {
     }
     // A drop fell into the carafe water: a small dent, two tiny splashes, two bubbles.
     function landed(d, at) {
-        carafeSurface.poke(at, d.r / geo.s * 14, 1);
+        carafeSurface.poke(at, d.r / Math.max(0.1, geo.s) * 14, 1);
         for (let k = 0; k < 2; k++) {
             splash(at, 0.45);
             bubble(at + (Math.random() - 0.5) * 4, 3 + Math.random() * 6, 0.7 + Math.random() * 0.8);
@@ -420,9 +450,9 @@ const rot = (p, deg) => {
     const surfaceAt = x => carafeY(carafeLevel) + carafeSurface.heightAt(x);
     function splash(at, strength) {
         makeDrop(geo.left + at * geo.s, geo.top + (surfaceAt(at) - 1.5) * geo.s,
-                 (Math.random() - 0.5) * 220 * strength * geo.s,
-                 -(90 + Math.random() * 260) * strength * geo.s,
-                 (0.7 + Math.random() * 1.1) * geo.s * Math.sqrt(strength), true);
+                 (Math.random() - 0.5) * 260 * strength * geo.s,
+                 -(120 + Math.random() * 320) * strength * geo.s,
+                 (1.0 + Math.random() * 1.4) * geo.s * Math.sqrt(strength), true);
     }
     const bubbleLayer = document.getElementById('bubbles');
     const foam = document.getElementById('foam');
@@ -544,21 +574,27 @@ const rot = (p, deg) => {
         pour = {g, start: performance.now(), fromMl: shownMl, toMl: shownMl + g.ml, area: g.area,
                 drips: [...DRIPS], finished: new Promise(r => { landedAll = r; })};
         pour.finish = landedAll;
-        let saved = true;
-        try {
-            state = await api.log_water(g.ml);
-        } catch (e) {
-            saved = false;
-        }
+        const savePromise = api.log_water(g.ml).then(res => ({saved: true, state: res}))
+            .catch(() => ({saved: false, state: null}));
         await Promise.race([pour.finished, R2R.wait(4000)]);
-        title.textContent = !saved ? 'Could not save'
-            : state.today_ml >= state.goal_ml ? 'Goal reached' : `+${g.ml} ml`;
-        if (saved) showAmount(state.today_ml);
-        await R2R.wait(CLOSE_AFTER);
-        api.close();
+        const {saved, state: newState} = await Promise.race([savePromise, R2R.wait(1500)])
+            || {saved: false, state: null};
+        if (saved && newState) {
+            state = newState;
+            title.textContent = state.today_ml >= state.goal_ml ? 'Goal reached' : `+${g.ml} ml`;
+            showAmount(state.today_ml);
+            await R2R.wait(CLOSE_AFTER);
+        } else {
+            title.textContent = 'Could not save';
+            await R2R.wait(1500);
+        }
+        R2R.close();
     }
 
+    let snoozed = false;
     document.getElementById('later').addEventListener('click', () => {
+        if (snoozed || committed || R2R._closing) return;
+        snoozed = true;
         actions.classList.add('gone');
         if (held) letGo(held);
         for (const g of glasses) {
@@ -575,6 +611,9 @@ const rot = (p, deg) => {
     });
 
     window.addEventListener('remind2rest:resume', async () => {
+        snoozed = false;
+        committed = false;
+        pour = null;
         try {
             state = await api.get_water_today();
             shownMl = Number(state.today_ml) || 0;
@@ -582,6 +621,19 @@ const rot = (p, deg) => {
             if (shownMl >= goal()) title.textContent = 'Goal reached';
         } catch (e) {}
         actions.classList.remove('gone');
+        shelf.classList.remove('done');
+        for (const g of glasses) {
+            g.area = FULL_AREA;
+            g.spilled = 0;
+            g.mode = 'rest';
+            g.off = {x: 0, y: 0};
+            g.vel = {x: 0, y: 0};
+            g.tilt = 0;
+            g.slosh.reset();
+            g.el.classList.remove('held', 'pouring');
+            delete g._restCache;
+        }
+        measure();
         if (!animating) {
             animating = true;
             last = performance.now();
@@ -721,15 +773,24 @@ const rot = (p, deg) => {
             // Water rotated back by the glass tilt: level, with the slosh drawn on top.
             g.water.setAttribute('transform', `rotate(${(-g.tilt).toFixed(2)} 60 90)`);
             // Same amount of water at any angle; sloshing or tipped too far, the excess runs out as drops.
-            const level = tiltedWater(g.area, -g.tilt);
-            const [wl, wr] = wallsAt(-g.tilt, level.top);
-            g.L = wr - wl; g.depth = Math.max(5, g.area / g.L);
-            const w = tiltedWater(g.area, g.slosh.angle(g.L) - g.tilt);
+            let level, wl, wr, w;
+            if (g.mode === 'rest' && Math.abs(g.tilt) < 0.01 && Math.abs(g.slosh.a[0]) < 0.01 && g._restCache && g._restCache.area === g.area) {
+                ({level, wl, wr, w} = g._restCache);
+            } else {
+                level = tiltedWater(g.area, -g.tilt);
+                [wl, wr] = wallsAt(-g.tilt, level.top);
+                g.L = wr - wl; g.depth = Math.max(5, g.area / g.L);
+                w = tiltedWater(g.area, g.slosh.angle(g.L) - g.tilt);
+                if (g.mode === 'rest' && Math.abs(g.tilt) < 0.01 && Math.abs(g.slosh.a[0]) < 0.01) {
+                    g._restCache = {area: g.area, level, wl, wr, w};
+                }
+            }
             if ((g.mode === 'held' || g.mode === 'back') && g.area > w.capacity) {
                 g.spilled += g.area - w.capacity;
                 g.area = w.capacity;
             }
             for (; g.spilled >= SPILL_DROP_AREA; g.spilled -= SPILL_DROP_AREA) spillDrop(g, w.spillCorner);
+            if (g.mode === 'held' || g.mode === 'back') spray(g, dt, level, wl, wr);
             g.wave.setAttribute('d', g.slosh.path(level.top, wl, wr, -60, 180, 260,
                 {extra: x => Math.sin(x / 14 + s + g.phase) * 0.5}));
             g.waveBack.setAttribute('d', g.slosh.path(level.top - 1.7, wl, wr, -60, 180, 260,
