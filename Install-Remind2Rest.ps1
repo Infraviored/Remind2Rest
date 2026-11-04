@@ -111,16 +111,18 @@ if (-not (Test-Remind2Rest)) {
 }
 
 # 7. Windows 11 puts new tray icons into the overflow menu; pin ours to the taskbar. The entry
-#    appears once the icon has been shown, so wait for it a little.
-$deadline = (Get-Date).AddSeconds(10)
-do {
-    $entries = Get-ChildItem "HKCU:\Control Panel\NotifyIconSettings" -ErrorAction SilentlyContinue |
-        Where-Object { (Get-ItemProperty $_.PSPath).InitialTooltip -eq "Remind2Rest" }
-    if ($entries) { break }
-    Start-Sleep -Milliseconds 500
-} while ((Get-Date) -lt $deadline)
-foreach ($entry in $entries) {
-    Set-ItemProperty $entry.PSPath -Name IsPromoted -Value 1 -Type DWord
+#    appears once the icon has been shown, so wait for it a little (Windows 11 only).
+if (Test-Path "HKCU:\Control Panel\NotifyIconSettings") {
+    $deadline = (Get-Date).AddSeconds(10)
+    do {
+        $entries = Get-ChildItem "HKCU:\Control Panel\NotifyIconSettings" -ErrorAction SilentlyContinue |
+            Where-Object { (Get-ItemProperty $_.PSPath).InitialTooltip -eq "Remind2Rest" }
+        if ($entries) { break }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+    foreach ($entry in $entries) {
+        Set-ItemProperty $entry.PSPath -Name IsPromoted -Value 1 -Type DWord
+    }
 }
 
 Write-Host "Installation complete. Remind2Rest runs in the tray and starts automatically at login."
