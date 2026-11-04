@@ -751,10 +751,18 @@ const rot = (p, deg) => {
             // Water rotated back by the glass tilt: level, with the slosh drawn on top.
             g.water.setAttribute('transform', `rotate(${(-g.tilt).toFixed(2)} 60 90)`);
             // Same amount of water at any angle; sloshing or tipped too far, the excess runs out as drops.
-            const level = tiltedWater(g.area, -g.tilt);
-            const [wl, wr] = wallsAt(-g.tilt, level.top);
-            g.L = wr - wl; g.depth = Math.max(5, g.area / g.L);
-            const w = tiltedWater(g.area, g.slosh.angle(g.L) - g.tilt);
+            let level, wl, wr, w;
+            if (g.mode === 'rest' && Math.abs(g.tilt) < 0.01 && Math.abs(g.slosh.a[0]) < 0.01 && g._restCache && g._restCache.area === g.area) {
+                ({level, wl, wr, w} = g._restCache);
+            } else {
+                level = tiltedWater(g.area, -g.tilt);
+                [wl, wr] = wallsAt(-g.tilt, level.top);
+                g.L = wr - wl; g.depth = Math.max(5, g.area / g.L);
+                w = tiltedWater(g.area, g.slosh.angle(g.L) - g.tilt);
+                if (g.mode === 'rest' && Math.abs(g.tilt) < 0.01 && Math.abs(g.slosh.a[0]) < 0.01) {
+                    g._restCache = {area: g.area, level, wl, wr, w};
+                }
+            }
             if ((g.mode === 'held' || g.mode === 'back') && g.area > w.capacity) {
                 g.spilled += g.area - w.capacity;
                 g.area = w.capacity;
