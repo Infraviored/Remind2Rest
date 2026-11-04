@@ -14,7 +14,8 @@ class SnoozeTest(unittest.TestCase):
         scheduler.current_config = {"global_interval": 120,
                                     "water": {"enabled": True, "reminders": [0, 40, 80]},
                                     "airing": {"enabled": True, "reminders": [60]},
-                                    "posture": {"enabled": False, "reminders": [10]}}
+                                    "posture": {"enabled": True, "reminders": []},
+                                    "eye_relax": {"enabled": False, "reminders": [10]}}
 
     def tearDown(self):
         scheduler._snoozes.clear()
@@ -59,7 +60,7 @@ class SnoozeTest(unittest.TestCase):
 
     def test_type_without_regular_time_comes_back_once_after_ten_minutes(self):
         now = datetime(2026, 11, 4, 10, 5)
-        self.assertEqual(scheduler.snooze("posture", now), 10)  # disabled, shown by hand
+        self.assertEqual(scheduler.snooze("posture", now), 10)  # on, but no times: shown by hand
         scheduler.due_snoozes(now + timedelta(minutes=10))
         self.assertEqual(scheduler.snooze("posture", now + timedelta(minutes=10)), 0)
         self.assertFalse(scheduler.snoozed("posture"))
@@ -67,6 +68,11 @@ class SnoozeTest(unittest.TestCase):
         with mock.patch.object(scheduler.gate, "request", return_value="shown"):
             scheduler.launch_reminder("posture", {})
         self.assertEqual(scheduler.snooze("posture", now + timedelta(hours=2)), 10)
+
+    def test_later_on_a_demo_of_a_turned_off_type_snoozes_nothing(self):
+        self.assertEqual(scheduler.snooze("eye_relax", datetime(2026, 11, 4, 10, 5)), 0)
+        self.assertFalse(scheduler.snoozed("eye_relax"))
+        self.assertNotIn("eye_relax", scheduler._snoozes)
 
     def test_unknown_type_and_other_types_are_not_affected(self):
         with self.assertRaises(ValueError):

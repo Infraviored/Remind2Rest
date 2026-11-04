@@ -1,8 +1,13 @@
 // Same glass outline for every size; CSS sets the height.
 const OUTLINE = 'M14 10 L106 10 L96 146 Q95 152 89 152 L31 152 Q25 152 24 146 Z';
 const FULL = 0.74;      // water level of a glass waiting to be drunk
-const POUR_MS = 650;    // stream running, glass emptying, carafe rising
-const CLOSE_AFTER = 250; // after the pour, then close
+const FLOW = [0.06, 0.65]; // s after the pour starts: water runs over the rim (the glass empties)
+const DRIPS = [0.07, 0.19, 0.36]; // s after the flow ends: last drops from the rim
+const CLOSE_AFTER = 250; // after the last water landed, then close
+const GRAVITY = 2400;   // per carafe viewBox unit (x geo.s = px/s^2)
+// Share of the glass poured after fraction x of the flow time: strongest early, runs out thin.
+const poured = x => 1 - (1 - x) ** 3 * (1 + 3 * x);
+const flowRate = x => 12 * x * (1 - x) ** 2 / (16 / 9);   // its slope, 1 at the peak
 const POUR_TILT = 104;  // degrees, glass rim pointing down into the carafe
 const MAX_CARRY_TILT = 86;
 const IMPACT = 120;    // push of the stream on the carafe surface, per viewBox unit of stream width
@@ -299,27 +304,39 @@ const rot = (p, deg) => {
     // Spilt water: drops that fall from the rim and vanish at the table. Not counted.
     const dropLayer = document.getElementById('drops');
     const drops = [];
-    function spillDrop(g, corner) {
+    function makeDrop(x, y, vx, vy, r) {
         if (drops.length >= 50) return;
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        el.setAttribute('r', r.toFixed(1));
+        dropLayer.appendChild(el);
+        drops.push({el, x, y, vx, vy, r, inside: false});
+    }
+    function spillDrop(g, corner) {
         const p = glassPoint(g, RIM[corner]);
         const out = rot({x: corner ? 60 : -60, y: -30}, g.tilt);   // over the rim, away from the glass
-        const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        el.setAttribute('r', ((1.4 + Math.random() * 1.4) * g.k).toFixed(1));
-        dropLayer.appendChild(el);
-        drops.push({el, x: p.x, y: p.y,
-                    vx: g.vel.x + out.x * g.k + (Math.random() - 0.5) * 40,
-                    vy: g.vel.y + out.y * g.k + (Math.random() - 0.5) * 40});
+        makeDrop(p.x, p.y, g.vel.x + out.x * g.k + (Math.random() - 0.5) * 40,
+                 g.vel.y + out.y * g.k + (Math.random() - 0.5) * 40, (1.4 + Math.random() * 1.4) * g.k);
     }
+    // Falls; through the opening into the carafe it ends at the water, otherwise at the table.
     function moveDrops(dt) {
+        const water = geo.surfaceY(carafeLevel);
         for (let i = drops.length - 1; i >= 0; i--) {
             const d = drops[i];
-            d.vy += 2600 * dt;
+            const above = d.y < geo.open.y;
+            d.vy += GRAVITY * geo.s * dt;
             d.x += d.vx * dt; d.y += d.vy * dt;
-            const intoCarafe = d.y > geo.open.y && Math.abs(d.x - geo.open.x) < CARAFE.neckHalf * geo.s;
-            if (d.y > geo.floor || intoCarafe) { d.el.remove(); drops.splice(i, 1); continue; }
+            if (above && d.y >= geo.open.y && Math.abs(d.x - geo.open.x) < CARAFE.neckHalf * geo.s) d.inside = true;
+            if (d.inside ? d.y > water : d.y > geo.floor) {
+                if (d.inside) landed(d);
+                d.el.remove(); drops.splice(i, 1); continue;
+            }
             d.el.setAttribute('cx', d.x.toFixed(1));
             d.el.setAttribute('cy', d.y.toFixed(1));
         }
+    }
+    // A drop reached the carafe water: a small dent where it fell in.
+    function landed(d) {
+        carafeSurface.poke((d.x - geo.left) / geo.s, d.r / geo.s * 14, 1);
     }
     const nearOpening = (g, factor = 1) => {
         const p = lip(g);
@@ -381,14 +398,17 @@ const rot = (p, deg) => {
         g.el.classList.add('pouring');
         shelf.classList.add('done');
         actions.classList.add('gone');
-        pour = {g, start: performance.now(), fromMl: shownMl, toMl: shownMl + g.ml, area: g.area};
+        let landedAll;
+        pour = {g, start: performance.now(), fromMl: shownMl, toMl: shownMl + g.ml, area: g.area,
+                drips: [...DRIPS], finished: new Promise(r => { landedAll = r; })};
+        pour.finish = landedAll;
         let saved = true;
         try {
             state = await api.log_water(g.ml);
         } catch (e) {
             saved = false;
         }
-        await R2R.wait(Math.max(0, pour.start + POUR_MS - performance.now()));
+        await Promise.race([pour.finished, R2R.wait(4000)]);
         title.textContent = !saved ? 'Could not save'
             : state.today_ml >= state.goal_ml ? 'Goal reached' : `+${g.ml} ml`;
         if (saved) showAmount(state.today_ml);
@@ -464,6 +484,89 @@ const rot = (p, deg) => {
 
     let carafeLevel = 0;
     const carafeSurface = new Surface(22, 178, 32, {speed: 160, rest: 3, damping: 2.2, limit: 9});
+    // The stream: water leaves the rim at each moment tau of the flow with its own speed and then
+    // falls freely, so the stream is a parabola. Same flow, more speed: it gets thinner as it falls.
+    // When the flow ends, its end lets go of the rim and falls after it; then a few drops drip.
+    // Returns where it hits the carafe water (viewBox x) and how hard, or null.
+    const STREAM_SAMPLES = 22;
+    function drawStream(es) {
+        const g = pour.g, [fs, fe] = FLOW;
+        const share = tau => clamp((tau - fs) / (fe - fs), 0, 1);
+        g.area = pour.area * (1 - poured(share(es)));   // whatever was spilt, the glass counts as full
+        const G = GRAVITY * geo.s;
+        const a = lip(g);
+        const dir = rot({x: 0, y: -1}, g.tilt);   // over the rim, along the glass wall
+        const fall = Math.max(4 * geo.s, geo.surfaceY(carafeLevel) - a.y);
+        // Faster while much flows; capped so that it lands well inside the carafe.
+        const vMax = 30 * geo.s /Math.max(0.02, Math.abs(dir.x) * Math.sqrt(2 * fall / G));
+        const speedOf = q => Math.min(vMax, (70 + 150 * Math.sqrt(q)) * geo.s);
+        const landAge = v => (-dir.y * v + Math.sqrt((dir.y * v) ** 2 + 2 * G * fall)) / G;
+        const parcel = tau => {
+            const q = tau < fs || tau > fe ? 0 : flowRate(share(tau));
+            const v = speedOf(q);
+            return {q, v, land: landAge(v)};
+        };
+
+        // The carafe gets what has landed by now.
+        const arrived = poured(share(es - parcel(es - landAge(speedOf(0.5))).land));
+        shownMl = pour.fromMl + (pour.toMl - pour.fromMl) * arrived;
+        if (!pour.done) showAmount(shownMl);
+
+        // Parcels in the air: left the rim between tauLo (lowest) and tauHi (at the rim).
+        const tauHi = Math.min(es, fe);
+        let tauLo = Math.max(fs, es - parcel(es - landAge(speedOf(0.5))).land);
+        tauLo = Math.max(fs, es - parcel(tauLo).land);
+        let impact = null;
+        if (tauHi - tauLo > 0.004) {
+            const wBase = (3.5 + g.ml / 140) * geo.s * 1.3;
+            const left = [], right = [], shineL = [], shineR = [];
+            let tip = null;
+            for (let i = 0; i <= STREAM_SAMPLES; i++) {
+                const tau = tauHi - (tauHi - tauLo) * i / STREAM_SAMPLES;
+                const p = parcel(tau);
+                const age = Math.min(es - tau, p.land);
+                const vx = dir.x * p.v, vy = dir.y * p.v + G * age;
+                const speed = Math.hypot(vx, vy) || 1;
+                const nx = -vy / speed, ny = vx / speed;   // across the stream, to its left
+                const thin = Math.max(0.32, Math.sqrt(p.v / speed));
+                const tremble = 1 + 0.12 * Math.sin(tau * 70) + 0.06 * Math.sin(tau * 131 + 2);
+                const hw = Math.max(0.5, 0.5 * wBase * Math.sqrt(p.q) * thin * tremble);
+                const sway = Math.sin(tau * 43 + 1) * age * 9 * geo.s;
+                const x = a.x + dir.x * p.v * age + nx * sway;
+                const y = a.y + dir.y * p.v * age + G * age * age / 2 + ny * sway;
+                left.push([x + nx * hw, y + ny * hw]);
+                right.push([x - nx * hw, y - ny * hw]);
+                shineL.push([x + nx * hw * 0.55, y + ny * hw * 0.55]);
+                shineR.push([x + nx * hw * 0.15, y + ny * hw * 0.15]);
+                tip = {x, y, hw, ux: vx / speed, uy: vy / speed, reached: es - tau >= p.land, q: p.q};
+            }
+            const outline = (l, r, cap) => {
+                const pts = n => n.map(([x, y]) => `${x.toFixed(1)} ${y.toFixed(1)}`).join(' L');
+                return `M${pts(l)} Q${(tip.x + tip.ux * cap).toFixed(1)} ${(tip.y + tip.uy * cap).toFixed(1)} `
+                    + `${pts(r.reverse())}Z`;
+            };
+            stream.setAttribute('d', outline(left, right, tip.hw * 1.6));
+            streamCore.setAttribute('d', outline(shineL, shineR, tip.hw * 0.4));
+            if (tip.reached && tip.q > 0.02) {
+                impact = {x: (tip.x - geo.left) / geo.s, force: IMPACT * wBase * Math.sqrt(tip.q) / geo.s};
+            }
+        } else {
+            stream.removeAttribute('d'); streamCore.removeAttribute('d');
+        }
+
+        // The last drops from the rim, after the flow.
+        while (pour.drips.length && es >= fe + pour.drips[0]) {
+            pour.drips.shift();
+            makeDrop(a.x, a.y, dir.x * 30 * geo.s + (Math.random() - 0.5) * 10,
+                     dir.y * 30 * geo.s, (1.7 + Math.random() * 0.9) * g.k);
+        }
+        if (!pour.done && !pour.drips.length && es > fe + 0.05 && tauHi - tauLo <= 0.004 && !drops.length) {
+            pour.done = true;
+            pour.finish();
+        }
+        return impact;
+    }
+
     let last = performance.now();
     const frame = t => {
         const dt = Math.min(0.1, (t - last) / 1000);
@@ -471,33 +574,9 @@ const rot = (p, deg) => {
         const s = t / 900;
 
         // Pour progress drives the glass level, the carafe amount and the stream.
-        let streamOn = false;
         let impact = null;   // where the stream lands on the carafe surface (viewBox x) and how hard
-        if (pour) {
-            const e = t - pour.start;
-            const p = clamp((e - 60) / (POUR_MS - 60), 0, 1);
-            pour.g.area = pour.area * (1 - p);   // whatever was spilt, the glass counts as full
-            shownMl = pour.fromMl + (pour.toMl - pour.fromMl) * smooth(clamp((e - 120) / (POUR_MS - 120), 0, 1));
-            if (e < POUR_MS + CLOSE_AFTER) showAmount(shownMl);
-            const head = clamp(e / 140, 0, 1);
-            const tail = clamp((e - POUR_MS + 80) / 200, 0, 1);
-            streamOn = head > tail;
-            if (streamOn) {
-                const a = lip(pour.g);
-                const fillF = shownMl / goal();
-                const end = {x: geo.open.x + Math.sin(t / 60) * 1.5, y: geo.surfaceY(fillF) + 4};
-                const d = `M${a.x} ${a.y} Q${a.x + 10 * geo.s} ${a.y + 10 * geo.s} ${end.x} ${Math.max(end.y, a.y + 10)}`;
-                const w = (3.5 + pour.g.ml / 140) * geo.s * (1 - 0.6 * tail);
-                for (const [path, width] of [[stream, w], [streamCore, w * 0.35]]) {
-                    path.setAttribute('d', d);
-                    path.setAttribute('stroke-width', width);
-                    path.setAttribute('stroke-dasharray', `${head - tail} 2`);
-                    path.setAttribute('stroke-dashoffset', `${-tail}`);
-                }
-                if (head >= 1) impact = {x: (end.x - geo.left) / geo.s, force: IMPACT * w / geo.s};
-            }
-        }
-        if (!streamOn) { stream.removeAttribute('d'); streamCore.removeAttribute('d'); }
+        if (pour) impact = drawStream((t - pour.start) / 1000);
+        else { stream.removeAttribute('d'); streamCore.removeAttribute('d'); }
 
         for (const g of glasses) {
             for (let left = dt; left > 1e-6; left -= 1 / 240) step(g, Math.min(left, 1 / 240));

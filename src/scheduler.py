@@ -88,6 +88,10 @@ def snooze(module, now=None):
     if module not in LIBRARY:
         raise ValueError(f"Unknown reminder module: {module}")
     now = now or datetime.now()
+    if not (current_config or {}).get(module, {}).get("enabled"):
+        # A demo of a turned-off type (settings window): Later just closes it.
+        logging.info(f"{module} is off; Later on its demo snoozes nothing")
+        return 0
     gap = minutes_to_next_regular(module, now)
     with _snooze_lock:
         count = _snoozes.get(module, {}).get("count", 0) + 1
