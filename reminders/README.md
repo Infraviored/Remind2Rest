@@ -23,10 +23,13 @@ in advance (`notifications.py standby`), so it opens without the cold start of P
 `Escape` must always close the page (call `api.close()`).
 
 A page that waits for the user (posture, water, fresh air) can close itself: `settings.auto_close`
-seconds without input (key, click, mouse move) after the window appeared, `common.js` closes it; any
-input starts the count again, a Later stops it until the window comes back. A thin bar at the bottom
-runs down meanwhile. `0` keeps the page open. Defaults: posture 5 s (nobody at the desk means no
-posture to rate), water and fresh air 0. The settings window shows it as "Close after (s)".
+seconds without input after the window appeared, `common.js` closes it. Moving the mouse or
+scrolling restarts the count (at most every 500 ms) while nobody has clicked or typed. The first
+click or keypress (any key except `Escape`) stops auto-close for good (timer cleared, bar hidden,
+never restarted). A Later stops it until the window comes back (unless already stopped for good).
+A thin bar at the bottom runs down meanwhile. `0` keeps the page open. Defaults: posture 5 s
+(nobody at the desk means no posture to rate), water and fresh air 0. The settings window shows
+it as "Close after (s)".
 
 ## JavaScript API
 

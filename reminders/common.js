@@ -35,9 +35,12 @@ R2R.api.then(async api => {
 });
 
 // settings.auto_close > 0: the page closes itself after that many seconds without input (posture by
-// default: when nobody is at the desk, a rating would mean nothing). Any key, click or mouse move starts
-// the count again; a Later stops it until the window comes back. A bar at the bottom runs down meanwhile.
+// default: when nobody is at the desk, a rating would mean nothing). Pointer moves and wheel restart the
+// count while nobody has clicked or typed. The first pointerdown or keydown (any key except Escape) stops
+// auto-close for good: timer cleared, bar hidden, never restarted. A Later stops it until the window comes
+// back (unless stopped for good). A bar at the bottom runs down meanwhile.
 async function autoClose(api) {
+    let stopped = false;
     let snoozed = false;
     let timer = null;
     let bar = null;
@@ -52,6 +55,19 @@ async function autoClose(api) {
         }
     };
 
+    const disarm = () => {
+        stopped = true;
+        stop();
+        if (bar) {
+            bar.style.display = 'none';
+            bar.remove();
+        }
+        document.removeEventListener('pointerdown', onPointerDown);
+        document.removeEventListener('keydown', onKeyDown);
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('wheel', onMove);
+    };
+
     if (api && api.snooze) {
         const snooze = api.snooze.bind(api);
         api.snooze = (...args) => {
@@ -62,7 +78,7 @@ async function autoClose(api) {
     }
 
     const start = () => {
-        if (R2R._closing || snoozed || !(seconds > 0)) return;
+        if (R2R._closing || stopped || snoozed || !(seconds > 0)) return;
         stop();
         bar.style.transform = 'scaleX(1)';
         void bar.offsetWidth;  // apply the full bar before the transition runs it down
@@ -71,22 +87,36 @@ async function autoClose(api) {
         timer = setTimeout(() => R2R.close(), seconds * 1000);
     };
 
+    const onPointerDown = () => disarm();
+    const onKeyDown = e => {
+        if (e.key !== 'Escape') disarm();
+    };
+    const onMove = () => {
+        if (stopped || snoozed || !timer) return;
+        start();
+    };
+
+    document.addEventListener('pointerdown', onPointerDown, {passive: true});
+    document.addEventListener('keydown', onKeyDown, {passive: true});
+    document.addEventListener('pointermove', onMove, {passive: true});
+    document.addEventListener('wheel', onMove, {passive: true});
+
     window.addEventListener('remind2rest:resume', () => {
         snoozed = false;
-        start();
+        if (!stopped) start();
     });
-
-    for (const type of ['keydown', 'pointerdown', 'pointermove', 'wheel']) {
-        document.addEventListener(type, () => { if (timer) start(); }, {passive: true});
-    }
 
     try {
         const {settings = {}} = await api.get_context();
         seconds = Number(settings.auto_close) || 0;
     } catch (e) {
+        disarm();
         return;
     }
-    if (!(seconds > 0)) return;
+    if (!(seconds > 0) || stopped) {
+        disarm();
+        return;
+    }
 
     bar = document.createElement('div');
     bar.className = 'r2r-autoclose';
