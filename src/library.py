@@ -63,7 +63,7 @@ LIBRARY = {
 
 
 # Settings that older versions wrote and that no page reads any more.
-RETIRED = {"posture": ["wait_duration"]}
+RETIRED = {"posture": ["wait_duration"], "water": ["snooze_minutes"], "airing": ["snooze_minutes"]}
 
 
 def fill_defaults(config):

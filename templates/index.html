@@ -350,8 +350,10 @@
                 <div class="flex items-center gap-2">
                     <span class="material-symbols-outlined text-xl" :style="{ color: m.color }">{{ m.icon }}</span>
                     <h3 :class="['text-base font-bold tracking-tight flex-1', config[m.key].enabled ? '' : 'text-outline']">{{ m.title }}</h3>
-                    <button v-if="config[m.key].enabled" @click.prevent="testReminder(m.key)" title="Show this reminder now"
-                        class="w-7 h-7 rounded-lg bg-surface-container-highest hover:bg-white/5" :style="{ color: m.color }">
+                    <!-- Also on disabled cards: a demo of the reminder without turning it on. -->
+                    <button @click.prevent="testReminder(m.key)"
+                        :title="config[m.key].enabled ? 'Show this reminder now' : 'Show a demo of this reminder (it stays off)'"
+                        :class="['w-7 h-7 rounded-lg bg-surface-container-highest hover:bg-white/5', config[m.key].enabled ? '' : 'opacity-60 hover:opacity-100']" :style="{ color: m.color }">
                         <span class="material-symbols-outlined text-base">notifications_active</span>
                     </button>
                     <input type="checkbox" v-model="config[m.key].enabled"
@@ -463,7 +465,6 @@
                             <span class="material-symbols-outlined">{{ s.icon }}</span>{{ s.label }}
                         </label>
                     </div>
-                    <p v-if="conferenceSignals.some(s => s.unavailable)" class="panel-hint">Screen share cannot be detected on Windows.</p>
                     <label class="field mt-auto self-start" title="How long no signal must be active before the conference counts as ended">
                         <span>End after</span>
                         <input v-model.number="config.conference.end_grace_seconds" type="number" min="0" :style="fitWidth(config.conference.end_grace_seconds)" />
@@ -478,10 +479,10 @@
                         <span>Ignore mic of</span>
                         <input :value="listText('ignore_apps')" @change="setList('ignore_apps', $event)" type="text" placeholder="VibeVoice" />
                     </label>
-                    <label class="check-row" title="The microphone counts only while one of the meeting apps runs, so dictation or voice tools alone are no call">
+                    <label class="check-row" title="Microphone and camera count only as a call: both together, or the microphone while one of the meeting apps runs. Dictation, voice tools or a camera app alone are no call">
                         <input type="checkbox" v-model="config.conference.microphone_needs_app"
                             class="w-4 h-4 rounded border-outline-variant bg-surface-container-lowest text-rose-400" />
-                        Only with a meeting app
+                        Only as a call
                     </label>
                     <label class="field" :title="'Process names that count as a meeting app (comma-separated)' + (config.conference.signals.processes ? '' : '; the Meeting app signal is off')">
                         <span>Meeting apps</span>

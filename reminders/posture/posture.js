@@ -3,6 +3,7 @@ const NS = 'http://www.w3.org/2000/svg';
 
 (async () => {
     const api = await R2R.api;
+    const ratingsLoad = R2R.hold(api.get_ratings(14));
 
     const scale = document.getElementById('scale');
     const keys = WORDS.map((word, i) => {
@@ -41,7 +42,7 @@ const NS = 'http://www.w3.org/2000/svg';
     });
 
     let ratings = [];
-    try { ratings = await api.get_ratings(14) || []; } catch (e) { ratings = []; }
+    try { ratings = await ratingsLoad || []; } catch (e) { ratings = []; }
     const draw = () => drawChart(document.getElementById('chart'), ratings);
     draw();
     addEventListener('resize', draw);
