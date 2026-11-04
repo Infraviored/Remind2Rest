@@ -151,10 +151,31 @@ def update_status(status):
         )
     current_status = status
 
+def goal_reached(module, settings):
+    """Water with "Stop at goal" on and today's goal reached: no more water reminders today. A
+    reminder shown by hand ("now" in the menu) still opens."""
+    if module != "water":
+        return False
+    settings = page_settings(module, settings)
+    if not settings.get("stop_at_goal", True):
+        return False
+    try:
+        goal = float(settings.get("daily_goal_ml") or 2000)
+    except (TypeError, ValueError):
+        goal = 2000
+    today = water_today_ml()
+    if today >= goal:
+        logging.info(f"Skipping water reminder: today's goal is reached ({today} / {goal:g} ml)")
+        return True
+    return False
+
+
 def trigger_reminder(module, settings):
     # During a video conference the gate defers the reminder until the conference has ended.
     if is_paused():
         logging.info(f"Skipping {module} reminder while paused")
+        return
+    if goal_reached(module, settings):
         return
 
     logging.info(f"Triggering {module} reminder")
@@ -358,7 +379,7 @@ def schedule_reminders(scheduler, config):
 
         if not is_paused():
             for module in due_snoozes():
-                if config.get(module, {}).get("enabled"):
+                if config.get(module, {}).get("enabled") and not goal_reached(module, config[module]):
                     logging.info(f"{module} back after snooze")
                     gate.request(module, config[module])
 

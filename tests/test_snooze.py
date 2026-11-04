@@ -100,5 +100,32 @@ class SnoozeTest(unittest.TestCase):
         self.assertFalse(scheduler.snoozed("water"))
 
 
+class StopAtGoalTest(unittest.TestCase):
+    WATER = {"enabled": True, "reminders": [0, 40, 80], "daily_goal_ml": 2000}
+
+    def trigger(self, today_ml, **water):
+        scheduler.trigger_reminder.last_triggers = {}
+        with mock.patch.object(scheduler, "water_today_ml", return_value=today_ml), \
+                mock.patch.object(scheduler, "is_paused", return_value=False), \
+                mock.patch.object(scheduler.gate, "request") as request:
+            scheduler.trigger_reminder("water", {**self.WATER, **water})
+        return request.called
+
+    def test_water_stops_once_the_goal_is_reached(self):
+        self.assertTrue(self.trigger(1800))
+        self.assertFalse(self.trigger(2000))
+        self.assertFalse(self.trigger(2200))
+
+    def test_water_goes_on_when_stop_at_goal_is_off(self):
+        self.assertTrue(self.trigger(2200, stop_at_goal=False))
+
+    def test_other_reminders_ignore_the_water_goal(self):
+        with mock.patch.object(scheduler, "water_today_ml", return_value=5000):
+            self.assertFalse(scheduler.goal_reached("posture", {"enabled": True}))
+
+    def test_stop_at_goal_is_on_by_default(self):
+        self.assertTrue(fill_defaults({"water": {"enabled": True}})["water"]["stop_at_goal"])
+
+
 if __name__ == "__main__":
     unittest.main()
