@@ -214,5 +214,16 @@ class StopAtGoalTest(unittest.TestCase):
         self.assertEqual(status["time_to_next"], "15:00")
 
 
+class AutoCloseTest(unittest.TestCase):
+    def test_posture_closes_itself_water_and_airing_stay_open(self):
+        config = fill_defaults({"posture": {"enabled": True}, "water": {}, "airing": {}})
+        self.assertEqual(config["posture"]["auto_close"], 5)
+        self.assertEqual(config["water"]["auto_close"], 0)
+        self.assertEqual(config["airing"]["auto_close"], 0)
+
+    def test_a_chosen_value_is_kept(self):
+        self.assertEqual(fill_defaults({"posture": {"auto_close": 0}})["posture"]["auto_close"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

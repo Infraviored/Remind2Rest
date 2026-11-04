@@ -62,3 +62,18 @@ button:focus-visible {
 @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+/* settings.auto_close: runs down until the page closes itself (common.js). */
+.r2r-autoclose {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    background: var(--teal);
+    opacity: 0.6;
+    transform-origin: left;
+    transform: scaleX(0);
+    pointer-events: none;
+    z-index: 1000;
+}
