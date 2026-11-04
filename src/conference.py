@@ -2,10 +2,11 @@
 microphone or camera, a meeting app, GNOME's Do Not Disturb. Polled every POLL_INTERVAL seconds in its
 own thread, so a slow pw-dump never holds up the scheduler tick; the gate only reads the result.
 
-On Windows the signals come from elsewhere (see "Windows probes" below): camera and microphone from the
-registry's CapabilityAccessManager consent store, processes from tasklist, Do Not Disturb (best effort)
-from the notification settings. Screen sharing has no reliable source there and stays off. None of the
-Linux tools (pw-dump, gsettings, /proc) is run on Windows.
+On Windows the signals come from elsewhere (see "Windows probes" below): the microphone from the audio
+system's active capture sessions (WASAPI) plus the registry's CapabilityAccessManager consent store, the
+camera from the consent store, processes from tasklist plus visible window titles (Teams in a browser),
+Do Not Disturb (best effort) from the notification settings. Screen sharing has no reliable source there
+and stays off. None of the Linux tools (pw-dump, gsettings, /proc) is run on Windows.
 
 Each signal can be switched off in config["conference"]["signals"]. The conference is on while any
 enabled signal is, and off once none has been for end_grace_seconds (a call that drops for a moment
@@ -46,6 +47,9 @@ DEFAULTS = {
     "microphone_needs_app": True,
     # On Windows matched without ".exe": teams = classic Teams.exe, ms-teams = new Teams, zoom = Zoom.exe.
     "processes": ["teams", "teams-for-linux", "ms-teams", "zoom"],
+    # Windows only: a visible window whose title contains one of these counts like a meeting app
+    # (Teams or Meet in a browser has no process of its own).
+    "window_titles": ["Microsoft Teams", "Zoom Meeting", "Google Meet"],
     "end_grace_seconds": 60,
     "webhook_url": "",
 }
@@ -192,7 +196,70 @@ def read_pipewire():
 CONSENT_STORE = r"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore"
 NOTIFICATION_SETTINGS = r"Software\Microsoft\Windows\CurrentVersion\Notifications\Settings"
 # Microphone or camera use that is no call: the Settings app's level meter and camera preview.
-WINDOWS_METER_APPS = {"windows.immersivecontrolpanel"}
+WINDOWS_METER_APPS = {"windows.immersivecontrolpanel", "systemsettings"}
+AUDIO_SESSION_ACTIVE = 1   # AudioSessionStateActive
+_com_ready = threading.local()
+
+
+def wasapi_capture_users(ignore_apps=()):
+    """Processes recording from any active microphone right now: the audio system's capture sessions
+    in state Active, by process. This is what the taskbar's microphone icon shows. Newer Windows 11
+    builds no longer keep the consent store's LastUsedTime values current, so this is the main source.
+    COM is set up once per thread (the detector polls in its own)."""
+    import comtypes
+    import psutil
+    from pycaw.constants import CLSID_MMDeviceEnumerator
+    from pycaw.pycaw import IAudioSessionControl2, IAudioSessionManager2, IMMDeviceEnumerator
+    if not getattr(_com_ready, "done", False):
+        try:
+            comtypes.CoInitializeEx(comtypes.COINIT_MULTITHREADED)
+        except OSError:
+            pass  # already set up in this thread (comtypes does it on import in the main thread)
+        _com_ready.done = True
+    ignore = {_strip_exe(name) for name in ignore_apps}
+    enumerator = comtypes.CoCreateInstance(CLSID_MMDeviceEnumerator, IMMDeviceEnumerator,
+                                           comtypes.CLSCTX_INPROC_SERVER)
+    devices = enumerator.EnumAudioEndpoints(1, 1)   # eCapture, DEVICE_STATE_ACTIVE
+    users = set()
+    for i in range(devices.GetCount()):
+        manager = devices.Item(i).Activate(IAudioSessionManager2._iid_, comtypes.CLSCTX_ALL, None)
+        sessions = manager.QueryInterface(IAudioSessionManager2).GetSessionEnumerator()
+        for j in range(sessions.GetCount()):
+            session = sessions.GetSession(j).QueryInterface(IAudioSessionControl2)
+            pid = session.GetProcessId()
+            if not pid or session.GetState() != AUDIO_SESSION_ACTIVE:
+                continue
+            try:
+                name = psutil.Process(pid).name()
+            except psutil.Error:
+                continue
+            if _strip_exe(name) not in ignore | WINDOWS_METER_APPS:
+                users.add(name)
+    return sorted(users)
+
+
+def windows_title_matches(patterns):
+    """Which of `patterns` occur (case-insensitively) in the title of a visible window. Only the
+    pattern is returned, never the title: that may hold a meeting or contact name."""
+    import ctypes
+    from ctypes import wintypes
+    user32 = ctypes.windll.user32
+    wanted = [(p, p.lower()) for p in patterns if p]
+    found = set()
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def visit(hwnd, _):
+        if user32.IsWindowVisible(hwnd):
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                title = buf.value.lower()
+                found.update(p for p, low in wanted if low in title)
+        return True
+
+    user32.EnumWindows(visit, 0)
+    return sorted(found)
 
 
 class WindowsRegistry:
@@ -424,7 +491,8 @@ class ConferenceDetector:
     """
 
     def __init__(self, settings=None, clock=time.monotonic, on_change=None, read_pipewire=read_pipewire,
-                 video_users=video_device_users, processes=None, dnd=None, windows=None, registry=None):
+                 video_users=video_device_users, processes=None, dnd=None, windows=None, registry=None,
+                 capture_users=wasapi_capture_users, window_titles=windows_title_matches):
         self._settings = fill_defaults({"conference": copy.deepcopy(settings or {})})["conference"]
         self._clock = clock
         self._on_change = on_change or self._notify
@@ -432,6 +500,8 @@ class ConferenceDetector:
         self._registry = registry  # created on first use, so winreg is only imported on Windows
         self._read_pipewire = read_pipewire
         self._video_users = video_users
+        self._capture_users = capture_users
+        self._window_titles = window_titles
         if self._windows:
             self._processes = processes or windows_running_processes
             self._dnd = dnd or (lambda: windows_dnd_active(self._hkcu()))
@@ -446,6 +516,7 @@ class ConferenceDetector:
         self._last_signal_at = None
         self._extension = None  # (screen sharing?, monotonic time of the report)
         self._failed = set()   # probes whose failure was logged already
+        self._call_mics = set()  # microphone users seen together with a meeting app (poll thread only)
         self._thread = None
         self._stop = threading.Event()
 
@@ -509,11 +580,23 @@ class ConferenceDetector:
         return self._registry
 
     def _read_windows_devices(self, settings, signals):
-        """Camera and microphone from the consent store. Windows offers no screen share source."""
+        """Camera and microphone from the consent store, the microphone also from the audio system's
+        capture sessions. Windows offers no screen share source."""
         for name, device in (("microphone", "microphone"), ("camera", "webcam")):
             if settings["signals"].get(name):
                 signals[name] = self._probe(f"{device} registry", lambda d=device: consent_store_users(
                     d, settings["ignore_apps"], self._hkcu())) or []
+        if settings["signals"].get("microphone"):
+            live = self._probe("audio capture sessions", self._capture_users, settings["ignore_apps"]) or []
+            signals["microphone"] = sorted(set(signals["microphone"]) | set(live))
+
+    def _running_apps(self, settings):
+        """Meeting apps that run: processes, and on Windows windows titled like one (in a browser)."""
+        apps = self._probe("processes", self._processes, settings["processes"]) or []
+        if self._windows and settings.get("window_titles"):
+            titles = self._probe("window titles", self._window_titles, settings["window_titles"]) or []
+            apps = sorted(set(apps) | {f"{t} window" for t in titles})
+        return apps
 
     def _read_signals(self, settings):
         enabled = settings["signals"]
@@ -533,13 +616,21 @@ class ConferenceDetector:
             signals["camera"] = sorted(set(signals["camera"]) | set(users))
         apps = None
         if enabled.get("processes"):
-            apps = self._probe("processes", self._processes, settings["processes"]) or []
+            apps = self._running_apps(settings)
             signals["processes"] = apps
         if enabled.get("microphone") and signals["microphone"] and settings.get("microphone_needs_app", True):
             if apps is None:
-                apps = self._probe("processes", self._processes, settings["processes"]) or []
-            if not apps:
-                signals["microphone"] = []
+                apps = self._running_apps(settings)
+            mics = set(signals["microphone"])
+            if apps:
+                self._call_mics = mics
+            else:
+                # The app sign can go while the call goes on (another browser tab in front, so the
+                # title no longer says Teams): who recorded for the call counts as long as it records.
+                self._call_mics &= mics
+                signals["microphone"] = sorted(self._call_mics)
+        else:
+            self._call_mics = set()
         if enabled.get("do_not_disturb"):
             signals["do_not_disturb"] = ["Do Not Disturb"] if self._probe("do not disturb", self._dnd) else []
         return {name: (found if enabled.get(name) else []) for name, found in signals.items()}

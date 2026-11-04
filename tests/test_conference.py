@@ -369,6 +369,8 @@ class WindowsDetectorTest(unittest.TestCase):
         self.changes = []
 
     def detector(self, registry, settings=None, **kw):
+        kw.setdefault("capture_users", lambda ignore: [])
+        kw.setdefault("window_titles", lambda patterns: [])
         return ConferenceDetector(settings or {}, clock=lambda: 1000.0, on_change=lambda a, r: self.changes.append((a, r)),
                                   read_pipewire=self.linux_probe("pw-dump"), video_users=self.linux_probe("proc"),
                                   windows=True, registry=registry, **kw)
@@ -432,7 +434,8 @@ class WindowsDetectorTest(unittest.TestCase):
 
     def test_missing_winreg_never_crashes(self):
         # On Linux there is no winreg: the import error is logged once per probe and the signals stay off.
-        d = ConferenceDetector({}, on_change=lambda a, r: None, windows=True, processes=lambda names: [])
+        d = ConferenceDetector({}, on_change=lambda a, r: None, windows=True, processes=lambda names: [],
+                               capture_users=lambda ignore: [], window_titles=lambda patterns: [])
         with patch.dict(sys.modules, {"winreg": None}), self.assertLogs(level="WARNING"):
             d.poll()
         self.assertFalse(d.active)
@@ -445,6 +448,64 @@ class WindowsDetectorTest(unittest.TestCase):
         d.poll()
         self.assertFalse(d.active)
         self.assertEqual(d.state()["signals"]["microphone"]["sources"], [])
+
+    def test_windows_microphone_from_capture_sessions(self):
+        # Newer Windows 11 no longer updates the consent store; the live capture sessions still show the call.
+        seen = []
+        d = self.detector(FakeRegistry({}), capture_users=lambda ignore: seen.append(ignore) or ["ms-teams.exe"],
+                          processes=lambda names: ["ms-teams"])
+        d.poll()
+        self.assertTrue(d.active)
+        self.assertEqual(d.state()["signals"]["microphone"]["sources"], ["ms-teams.exe"])
+        self.assertEqual(seen, [["VibeVoice"]])
+
+    def test_windows_teams_in_a_browser_counts(self):
+        titles = []
+        d = self.detector(FakeRegistry({}), capture_users=lambda ignore: ["firefox.exe"],
+                          processes=lambda names: [],
+                          window_titles=lambda patterns: titles.append(patterns) or ["Microsoft Teams"])
+        d.poll()
+        self.assertTrue(d.active)
+        self.assertEqual(d.state()["reasons"], ["microphone"])
+        self.assertIn("Microsoft Teams", titles[0])
+
+    def test_windows_call_goes_on_when_the_teams_tab_goes_to_the_back(self):
+        mics, titles = [["firefox.exe"]], [["Microsoft Teams"]]
+        d = self.detector(FakeRegistry({}), capture_users=lambda ignore: mics[0],
+                          processes=lambda names: [], window_titles=lambda patterns: titles[0])
+        d.poll()
+        self.assertTrue(d.active)
+        titles[0] = []                 # another tab in front: the title no longer says Teams
+        d.poll()
+        self.assertEqual(d.state()["signals"]["microphone"]["sources"], ["firefox.exe"])
+        mics[0] = []                   # call over, microphone closed
+        d.poll()
+        self.assertEqual(d.state()["signals"]["microphone"]["sources"], [])
+        mics[0] = ["firefox.exe"]      # later dictation in the browser, no Teams: no call
+        d.poll()
+        self.assertEqual(d.state()["signals"]["microphone"]["sources"], [])
+
+    def test_windows_browser_microphone_without_meeting_window_is_no_conference(self):
+        d = self.detector(FakeRegistry({}), capture_users=lambda ignore: ["firefox.exe"],
+                          processes=lambda names: [], window_titles=lambda patterns: [])
+        d.poll()
+        self.assertFalse(d.active)
+
+    def test_windows_meeting_window_shows_in_processes_signal(self):
+        d = self.detector(FakeRegistry({}), {"signals": {"processes": True}}, processes=lambda names: [],
+                          window_titles=lambda patterns: ["Microsoft Teams"])
+        d.poll()
+        self.assertEqual(d.state()["signals"]["processes"]["sources"], ["Microsoft Teams window"])
+
+    def test_windows_broken_capture_probe_counts_as_off(self):
+        def broken(ignore):
+            raise OSError("no audio service")
+        d = self.detector(FakeRegistry({}), capture_users=broken, processes=lambda names: ["ms-teams"])
+        with self.assertLogs(level="WARNING") as logs:
+            d.poll()
+            d.poll()
+        self.assertFalse(d.active)
+        self.assertEqual(len([line for line in logs.output if "audio capture sessions" in line]), 1)
 
     def test_windows_microphone_alone_counts_when_app_not_required(self):
         reg = FakeRegistry({
