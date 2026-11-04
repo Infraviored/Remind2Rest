@@ -342,10 +342,10 @@ const rot = (p, deg) => {
             if (g.mode !== 'rest') continue;
             const r = g.art.getBoundingClientRect();
             g.home = {x: r.left + r.width / 2, y: r.top + r.height / 2};
-            g.k = r.width / 120;
+            g.k = Math.max(0.1, r.width / 120);
         }
         const r = carafe.getBoundingClientRect();
-        const s = r.height / 360;
+        const s = Math.max(0.1, r.height / 360);
         geo = {
             s, top: r.top, left: r.left, floor: r.bottom,
             open: {x: r.left + CARAFE.openX * s, y: r.top + CARAFE.openY * s},
@@ -371,7 +371,7 @@ const rot = (p, deg) => {
     const TIP_NEAR = 30, TIP_RANGE = 150;
     const approach = g => {
         const p = pourOffset(g);
-        const d = Math.hypot(g.off.x - p.x, g.off.y - p.y) / geo.s;
+        const d = Math.hypot(g.off.x - p.x, g.off.y - p.y) / Math.max(0.1, geo.s);
         return clamp(1 - (d - TIP_NEAR) / TIP_RANGE, 0, 1);
     };
     // A point of the glass (its viewBox) on the screen, as the glass is now.
@@ -408,7 +408,7 @@ const rot = (p, deg) => {
                 const vy = -Math.min(up, 500) * (0.35 + Math.random() * 0.4) * g.k;
                 const vx = -side * (15 + Math.random() * 55) * g.k;
                 makeDrop(px, py, g.vel.x + vx, g.vel.y + vy, (0.7 + Math.random() * 1.0) * g.k,
-                         false, 2 * -vy / (GRAVITY * geo.s));
+                         false, 2 * -vy / Math.max(1, GRAVITY * geo.s));
             }
         }
     }
@@ -428,7 +428,7 @@ const rot = (p, deg) => {
             d.vy += GRAVITY * geo.s * dt;
             d.x += d.vx * dt; d.y += d.vy * dt;
             if (!d.life && above && d.y >= geo.open.y && Math.abs(d.x - geo.open.x) < CARAFE.neckHalf * geo.s) d.inside = true;
-            const at = (d.x - geo.left) / geo.s;
+            const at = (d.x - geo.left) / Math.max(0.1, geo.s);
             if (d.inside ? d.vy > 0 && d.y > water + carafeSurface.heightAt(at) * geo.s : d.y > geo.floor) {
                 if (d.inside && !d.splash) landed(d, at);
                 d.el.remove(); drops.splice(i, 1); continue;
@@ -439,7 +439,7 @@ const rot = (p, deg) => {
     }
     // A drop fell into the carafe water: a small dent, two tiny splashes, two bubbles.
     function landed(d, at) {
-        carafeSurface.poke(at, d.r / geo.s * 14, 1);
+        carafeSurface.poke(at, d.r / Math.max(0.1, geo.s) * 14, 1);
         for (let k = 0; k < 2; k++) {
             splash(at, 0.45);
             bubble(at + (Math.random() - 0.5) * 4, 3 + Math.random() * 6, 0.7 + Math.random() * 0.8);
