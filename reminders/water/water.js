@@ -588,7 +588,10 @@ const rot = (p, deg) => {
         api.close();
     }
 
+    let snoozed = false;
     document.getElementById('later').addEventListener('click', () => {
+        if (snoozed || committed || R2R._closing) return;
+        snoozed = true;
         actions.classList.add('gone');
         if (held) letGo(held);
         for (const g of glasses) {
