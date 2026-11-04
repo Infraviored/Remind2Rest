@@ -1,7 +1,6 @@
 // Same glass outline for every size; CSS sets the height.
 const OUTLINE = 'M14 10 L106 10 L96 146 Q95 152 89 152 L31 152 Q25 152 24 146 Z';
 const FULL = 0.74;      // water level of a glass waiting to be drunk
-const EMPTY = 0.0;
 const POUR_MS = 650;    // stream running, glass emptying, carafe rising
 const CLOSE_AFTER = 250; // after the pour, then close
 const POUR_TILT = 104;  // degrees, glass rim pointing down into the carafe
@@ -140,6 +139,52 @@ class Surface {
 
 const glassTop = level => 152 - level * 142;
 
+// --- the water in a tilted glass keeps its amount (2D area of the glass outline below the surface) ---
+// Glass inside as a polygon (glass viewBox), the rounded bottom corners sampled.
+const GLASS_POLY = [[14, 10], [106, 10], [96, 146], [95.5, 150], [93, 151.6], [89, 152],
+                    [31, 152], [27, 151.6], [24.5, 150], [24, 146]];
+const RIM = [[14, 10], [106, 10]];
+// The water group is rotated by `angle` (deg) about (60, 90); its surface is the line y = top in that
+// frame. A glass point lies under water when, turned back by -angle, its y is below `top`.
+function waterFrame(angle) {
+    const a = -angle * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+    return ([x, y]) => [60 + (x - 60) * c - (y - 90) * s, 90 + (x - 60) * s + (y - 90) * c];
+}
+function areaBelow(pts, top) {   // pts already in the water frame; clip to y >= top, shoelace
+    const out = [];
+    for (let i = 0; i < pts.length; i++) {
+        const p = pts[i], q = pts[(i + 1) % pts.length];
+        const pin = p[1] >= top, qin = q[1] >= top;
+        if (pin) out.push(p);
+        if (pin !== qin) {
+            const t = (top - p[1]) / (q[1] - p[1]);
+            out.push([p[0] + (q[0] - p[0]) * t, top]);
+        }
+    }
+    let a = 0;
+    for (let i = 0; i < out.length; i++) {
+        const p = out[i], q = out[(i + 1) % out.length];
+        a += p[0] * q[1] - q[0] * p[1];
+    }
+    return Math.abs(a) / 2;
+}
+// Surface height (water frame) for `area` at `angle`, and how much fits before it runs over the rim.
+function tiltedWater(area, angle) {
+    const f = waterFrame(angle);
+    const pts = GLASS_POLY.map(f);
+    const rim = RIM.map(f);
+    const spillTop = Math.max(rim[0][1], rim[1][1]);   // the lower rim corner: water can rise to it
+    const capacity = areaBelow(pts, spillTop);
+    let lo = Math.min(...pts.map(p => p[1])) - 1, hi = Math.max(...pts.map(p => p[1]));
+    for (let i = 0; i < 22; i++) {
+        const mid = (lo + hi) / 2;
+        if (areaBelow(pts, mid) > area) lo = mid; else hi = mid;
+    }
+    return {top: (lo + hi) / 2, capacity, spillCorner: rim[0][1] > rim[1][1] ? 0 : 1};
+}
+const FULL_AREA = areaBelow(GLASS_POLY, glassTop(FULL));
+const SPILL_DROP_AREA = 22;   // glass area that leaves as one falling drop
+
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const smooth = t => t * t * (3 - 2 * t);
 const rot = (p, deg) => {
@@ -194,7 +239,7 @@ const rot = (p, deg) => {
             off: {x: 0, y: 0}, vel: {x: 0, y: 0}, want: {x: 0, y: 0},
             tilt: 0, slosh: 0, sloshVel: 0,
             surface: new Surface(14, 106, 16, {speed: 110, rest: 6, damping: 2.4, limit: 6}),
-            level: FULL, phase: ml / 97,
+            area: FULL_AREA, spilled: 0, phase: ml / 97,
             home: null, k: 1, grab: null,
         };
     });
@@ -218,7 +263,7 @@ const rot = (p, deg) => {
         const r = carafe.getBoundingClientRect();
         const s = r.height / 360;
         geo = {
-            s, top: r.top, left: r.left,
+            s, top: r.top, left: r.left, floor: r.bottom,
             open: {x: r.left + CARAFE.openX * s, y: r.top + CARAFE.openY * s},
             surfaceY: f => r.top + carafeY(f) * s,
         };
@@ -237,11 +282,45 @@ const rot = (p, deg) => {
         const o = lipAt(g, POUR_TILT);
         return {x: geo.open.x - 6 * geo.s - o.x - g.home.x, y: geo.open.y - 14 * geo.s - o.y - g.home.y};
     };
-    // 0 at the shelf, 1 where the glass would pour: tilt follows it.
+    // 1 where the glass would pour, 0 from TIP_RANGE away (carafe units): it tips only right at the
+    // opening, as a hand would, and stays upright while carried across.
+    const TIP_NEAR = 30, TIP_RANGE = 150;
     const approach = g => {
-        const x0 = g.home.x + 40, x1 = g.home.x + pourOffset(g).x;
-        return clamp((g.home.x + g.off.x - x0) / Math.max(1, x1 - x0), 0, 1);
+        const p = pourOffset(g);
+        const d = Math.hypot(g.off.x - p.x, g.off.y - p.y) / geo.s;
+        return clamp(1 - (d - TIP_NEAR) / TIP_RANGE, 0, 1);
     };
+    // A point of the glass (its viewBox) on the screen, as the glass is now.
+    const glassPoint = (g, [x, y]) => {
+        const o = rot({x: (x - 60) * g.k, y: (y - 80) * g.k}, g.tilt);
+        return {x: g.home.x + g.off.x + o.x, y: g.home.y + g.off.y + o.y};
+    };
+
+    // Spilt water: drops that fall from the rim and vanish at the table. Not counted.
+    const dropLayer = document.getElementById('drops');
+    const drops = [];
+    function spillDrop(g, corner) {
+        if (drops.length >= 50) return;
+        const p = glassPoint(g, RIM[corner]);
+        const out = rot({x: corner ? 60 : -60, y: -30}, g.tilt);   // over the rim, away from the glass
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        el.setAttribute('r', ((1.4 + Math.random() * 1.4) * g.k).toFixed(1));
+        dropLayer.appendChild(el);
+        drops.push({el, x: p.x, y: p.y,
+                    vx: g.vel.x + out.x * g.k + (Math.random() - 0.5) * 40,
+                    vy: g.vel.y + out.y * g.k + (Math.random() - 0.5) * 40});
+    }
+    function moveDrops(dt) {
+        for (let i = drops.length - 1; i >= 0; i--) {
+            const d = drops[i];
+            d.vy += 2600 * dt;
+            d.x += d.vx * dt; d.y += d.vy * dt;
+            const intoCarafe = d.y > geo.open.y && Math.abs(d.x - geo.open.x) < CARAFE.neckHalf * geo.s;
+            if (d.y > geo.floor || intoCarafe) { d.el.remove(); drops.splice(i, 1); continue; }
+            d.el.setAttribute('cx', d.x.toFixed(1));
+            d.el.setAttribute('cy', d.y.toFixed(1));
+        }
+    }
     const nearOpening = (g, factor = 1) => {
         const p = lip(g);
         return Math.abs(p.x - geo.open.x) < (CARAFE.neckHalf + 18) * geo.s * factor
@@ -302,7 +381,7 @@ const rot = (p, deg) => {
         g.el.classList.add('pouring');
         shelf.classList.add('done');
         actions.classList.add('gone');
-        pour = {g, start: performance.now(), fromMl: shownMl, toMl: shownMl + g.ml, level: g.level};
+        pour = {g, start: performance.now(), fromMl: shownMl, toMl: shownMl + g.ml, area: g.area};
         let saved = true;
         try {
             state = await api.log_water(g.ml);
@@ -397,7 +476,7 @@ const rot = (p, deg) => {
         if (pour) {
             const e = t - pour.start;
             const p = clamp((e - 60) / (POUR_MS - 60), 0, 1);
-            pour.g.level = pour.level + (EMPTY - pour.level) * p;
+            pour.g.area = pour.area * (1 - p);   // whatever was spilt, the glass counts as full
             shownMl = pour.fromMl + (pour.toMl - pour.fromMl) * smooth(clamp((e - 120) / (POUR_MS - 120), 0, 1));
             if (e < POUR_MS + CLOSE_AFTER) showAmount(shownMl);
             const head = clamp(e / 140, 0, 1);
@@ -426,11 +505,20 @@ const rot = (p, deg) => {
                 : `translate(${g.off.x}px, ${g.off.y}px) rotate(${g.tilt}deg)`;
             // Water rotated back by the glass tilt (stays level) plus the slosh.
             g.water.setAttribute('transform', `rotate(${(g.slosh - g.tilt).toFixed(2)} 60 90)`);
-            g.wave.setAttribute('d', g.surface.path(glassTop(g.level), -60, 180, 260,
+            // Same amount of water at any angle; carried too far over, the excess runs out as drops.
+            const w = tiltedWater(g.area, g.slosh - g.tilt);
+            if ((g.mode === 'held' || g.mode === 'back') && g.area > w.capacity) {
+                g.spilled += g.area - w.capacity;
+                g.area = w.capacity;
+            }
+            for (; g.spilled >= SPILL_DROP_AREA; g.spilled -= SPILL_DROP_AREA) spillDrop(g, w.spillCorner);
+            g.wave.setAttribute('d', g.surface.path(w.top, -60, 180, 260,
                 {extra: x => Math.sin(x / 14 + s + g.phase) * 0.6}));
-            g.waveBack.setAttribute('d', g.surface.path(glassTop(g.level + 0.012), -60, 180, 260,
+            g.waveBack.setAttribute('d', g.surface.path(w.top - 1.7, -60, 180, 260,
                 {mirror: true, scale: 0.7, extra: x => Math.sin(x / 14 - s * 1.3 + 1 + g.phase) * 0.8}));
         }
+
+        moveDrops(dt);
 
         // Carafe: eases to today's amount; where the stream lands it pushes the surface down, and
         // the dent runs out as rings that bounce off the walls.
