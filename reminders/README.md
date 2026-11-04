@@ -48,7 +48,7 @@ const {settings = {}} = await R2R.hold(api.get_context());
 | `get_context()` | `{type, settings, now}`. `settings` = this type's config entry (e.g. `{relax_duration: 20, flash_frequency: 2}` for eye relax), `now` = ISO local time |
 | `close()` | closes the window and ends the process |
 | `ready()` | the first view is built: shows the window (called by `common.js`, pages need not call it) |
-| `snooze()` | "Later": closes the window; the daemon shows it again after the type's `snooze_minutes`, doubled with each further Later in a row (at most 4 h). Without a daemon the window hides and comes back itself after `minutes` (optional argument) |
+| `snooze()` | "Later": closes the window; the daemon shows it again halfway to the type's next regular time; a second Later in a row (or one less than 10 min before that time) lets it drop out until the next regular time. Without a daemon the window hides and comes back itself after `minutes` (optional argument, default 10) |
 | `save_rating(rating)` | posture: appends `YYYY-MM-DD HH:MM:SS - Rating: <1-5>` to the ratings file |
 | `get_ratings(days)` | posture: `[{time: "YYYY-MM-DD HH:MM:SS", rating: 1-5}, ...]` of the last `days` days, oldest first |
 | `log_water(ml)` | water: appends `YYYY-MM-DD HH:MM:SS <ml>` to the water log (`ml` a whole number, 1-2000), returns `{today_ml, goal_ml}` |

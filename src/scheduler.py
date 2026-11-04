@@ -55,37 +55,58 @@ def is_paused() -> bool:
     return paused_until is not None and datetime.now() < paused_until
 
 
-# "Later" on a reminder page: the window closes and the daemon brings the reminder back after the
-# type's snooze_minutes, doubled with every further Later in a row (30, 60, 120 ...), at most
-# SNOOZE_MAX. Other reminders go on meanwhile; the type's own scheduled times are left out until the
-# snoozed one is back. The count starts again at the type's next scheduled reminder.
-SNOOZE_MAX = 240  # min
-DEFAULT_SNOOZE = 10  # min, for a type without snooze_minutes
+# "Later" on a reminder page: the window closes and the daemon brings the reminder back halfway to
+# the type's next regular time, so a type that comes every 2 h waits an hour and one that comes every
+# 40 min waits 20. A second Later in a row (or a first one with the next regular time under
+# SKIP_BELOW minutes away) lets the reminder drop out: the next regular time is the next one shown.
+# Other reminders go on meanwhile. A type with no regular time (triggered by hand) comes back once
+# after NO_SCHEDULE_SNOOZE minutes.
+SKIP_BELOW = 10  # min
+NO_SCHEDULE_SNOOZE = 10  # min
 _snoozes = {}  # module -> {"count": Laters in a row, "due": datetime the reminder comes back, or None}
 _snooze_lock = threading.Lock()
 
 
-def snooze_minutes(base, count):
-    """Minutes for the count-th Later in a row (count 1 = the first)."""
-    return min(base * 2 ** (count - 1), SNOOZE_MAX)
+def minutes_to_next_regular(module, now=None):
+    """Minutes from now until <module>'s next scheduled time, or None if it has none."""
+    config = current_config or {}
+    entry = config.get(module) or {}
+    reminders = [r for r in entry.get("reminders", []) if isinstance(r, (int, float))]
+    interval = config.get("global_interval")
+    if not entry.get("enabled") or not reminders or not interval:
+        return None
+    now = now or datetime.now()
+    elapsed = ((now.hour * 60 + now.minute) % interval) * 60 + now.second
+    period = interval * 60
+    # A time due this very second counts as the next period's.
+    return min((r * 60 - elapsed) % period or period for r in reminders) / 60
 
 
 def snooze(module, now=None):
-    """Later was pressed on <module>; returns the minutes until it comes back."""
+    """Later was pressed on <module>; returns the minutes until it is shown again: its snooze, or
+    its next regular time when it drops out (0 if it has none)."""
     if module not in LIBRARY:
         raise ValueError(f"Unknown reminder module: {module}")
     now = now or datetime.now()
-    try:
-        base = float(page_settings(module, (current_config or {}).get(module)).get("snooze_minutes", DEFAULT_SNOOZE))
-    except (TypeError, ValueError):
-        base = DEFAULT_SNOOZE
-    base = min(max(base, 1), SNOOZE_MAX)
+    gap = minutes_to_next_regular(module, now)
     with _snooze_lock:
         count = _snoozes.get(module, {}).get("count", 0) + 1
-        minutes = snooze_minutes(base, count)
-        _snoozes[module] = {"count": count, "due": now + timedelta(minutes=minutes)}
-    logging.info(f"{module} snoozed for {minutes:g} min (Later #{count} in a row)")
-    return minutes
+        if gap is None:
+            minutes = NO_SCHEDULE_SNOOZE if count == 1 else None
+        elif count == 1 and gap >= SKIP_BELOW:
+            minutes = gap / 2
+        else:
+            minutes = None
+        due = now + timedelta(minutes=minutes) if minutes is not None else None
+        _snoozes[module] = {"count": count, "due": due}
+    if minutes is not None:
+        logging.info(f"{module} snoozed for {minutes:.0f} min (Later #{count} in a row)")
+        return minutes
+    if gap is None:
+        logging.info(f"{module} dropped out after Later #{count}; it has no regular time")
+        return 0
+    logging.info(f"{module} dropped out after Later #{count}; next regular time in {gap:.0f} min")
+    return gap
 
 
 def snoozed(module):
@@ -226,6 +247,9 @@ def launch_reminder(module, settings):
     one while the screen is locked or another reminder is open. Returns "shown", "deferred" or "dropped"."""
     if module not in LIBRARY:
         raise ValueError(f"Unknown reminder module: {module}")
+    with _snooze_lock:
+        # Shown fresh by hand: a Later on it is a first Later again, and a pending snooze is moot.
+        _snoozes.pop(module, None)
     return gate.request(module, settings, manual=True)
 
 

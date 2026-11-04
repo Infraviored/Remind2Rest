@@ -32,9 +32,8 @@ LIBRARY = {
         "icon": "water_drop",
         "symbolic_icon": "weather-showers-symbolic",
         "color": "#38bdf8",
-        "defaults": {"enabled": False, "every": 40, "reminders": [], "daily_goal_ml": 2000, "snooze_minutes": 30},
-        "fields": [{"key": "daily_goal_ml", "label": "Goal (ml/day)"},
-                   {"key": "snooze_minutes", "label": "Later (min)"}],
+        "defaults": {"enabled": False, "every": 40, "reminders": [], "daily_goal_ml": 2000},
+        "fields": [{"key": "daily_goal_ml", "label": "Goal (ml/day)"}],
     },
     "stretch": {
         "title": "Stretch",
@@ -57,14 +56,14 @@ LIBRARY = {
         "icon": "air",
         "symbolic_icon": "weather-windy-symbolic",
         "color": "#4ade80",
-        "defaults": {"enabled": False, "every": 120, "reminders": [], "snooze_minutes": 30},
-        "fields": [{"key": "snooze_minutes", "label": "Later (min)"}],
+        "defaults": {"enabled": False, "every": 120, "reminders": []},
+        "fields": [],
     },
 }
 
 
 # Settings that older versions wrote and that no page reads any more.
-RETIRED = {"posture": ["wait_duration"]}
+RETIRED = {"posture": ["wait_duration"], "water": ["snooze_minutes"], "airing": ["snooze_minutes"]}
 
 
 def fill_defaults(config):

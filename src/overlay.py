@@ -97,15 +97,14 @@ class OverlayApi:
             self._window.destroy()
 
     def snooze(self, minutes=None):
-        """Later: the daemon brings this reminder back (its snooze_minutes, longer with every Later
-        in a row) and the window closes, so other reminders are not held back meanwhile. Without a
-        daemon the window hides and comes back after `minutes` itself."""
+        """Later: the window closes and the daemon brings this reminder back halfway to its next
+        regular time, or lets it drop out on a second Later (see scheduler.snooze), so other
+        reminders are not held back meanwhile. Without a daemon the window hides and comes back
+        after `minutes` (default 10) itself."""
         if self._module is not None and self._snooze_via_daemon():
             self.close()
             return
-        if minutes is None:
-            minutes = self._settings.get("snooze_minutes", 10)
-        self._snooze_here(minutes)
+        self._snooze_here(10 if minutes is None else minutes)
 
     def _snooze_via_daemon(self):
         try:

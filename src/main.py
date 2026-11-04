@@ -158,12 +158,13 @@ def main():
                             resume()
                             conn.sendall(b"OK")
                         elif command.startswith("SNOOZE "):
-                            # SNOOZE <type>: Later on a reminder page; the reply names the minutes.
+                            # SNOOZE <type>: Later on a reminder page; the reply names the minutes until
+                            # it is shown again (snooze, or its next regular time when it drops out).
                             module = command.split(maxsplit=1)[1].strip()
                             if module not in LIBRARY:
                                 conn.sendall(b"ERR unknown reminder module")
                             else:
-                                conn.sendall(f"OK {snooze(module):g}".encode())
+                                conn.sendall(f"OK {snooze(module):.0f}".encode())
                         elif command.startswith("TRIGGER "):
                             # TRIGGER <type> [<settings json>]; the settings window sends unsaved settings.
                             parts = command.split(maxsplit=2)
