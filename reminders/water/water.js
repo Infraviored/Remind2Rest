@@ -147,6 +147,59 @@ class Surface {
     }
 }
 
+// Water sloshing in a glass, as its standing waves (modes 1, 3, 5: the ones a sideways push
+// excites). Mode n has n half waves across the water; its frequency follows from water waves
+// (w^2 = g k tanh(k depth)), and the small ones die out faster (viscosity). A sideways
+// acceleration a wants the surface tilted by a/g; a jerk goes ~80 % into mode 1, so the water
+// swings from wall to wall a few times (~3 Hz in a 200 ml glass) and settles in a second or two.
+// Units: the glass viewBox; `widthMm` is the real rim width, which sets g in viewBox units.
+class Slosh {
+    constructor(widthMm) {
+        this.g = 9810 / (widthMm / 92);   // 92 = rim width in the viewBox
+        this.a = [0, 0, 0]; this.v = [0, 0, 0];
+    }
+    reset() { this.a.fill(0); this.v.fill(0); }
+    // accX/accY: acceleration of the glass (viewBox units/s^2, y down); L, depth: of the water.
+    step(dt, accX, accY, L, depth) {
+        const g = Math.max(0.3 * this.g, this.g - accY);   // lifted fast, the water weighs more
+        for (let i = 0; i < 3; i++) {
+            const n = 2 * i + 1, k = n * Math.PI / L;
+            const w2 = g * k * Math.tanh(k * depth), w = Math.sqrt(w2);
+            // The tilt a/g as a sum of modes: wall height (L/2)(a/g), share 8/(n pi)^2.
+            // 0.4: a hand smooths a mouse jerk; the pointer alone would shake it at several g.
+            const target = -0.4 * (accX / g) * (L / 2) * 8 / (n * Math.PI) ** 2;
+            this.v[i] += (w2 * (target - this.a[i]) - 2 * 0.06 * n * w * this.v[i]) * dt;
+            this.a[i] += this.v[i] * dt;
+        }
+        const max = L / 2 * Math.tan(40 * Math.PI / 180);
+        this.a[0] = clamp(this.a[0], -max, max);
+    }
+    // Height (+ = down) at x of water between the walls wl..wr: the modes, plus the second-order
+    // part that makes the crest climbing a wall sharp and the trough flat.
+    height(x, wl, wr) {
+        const L = wr - wl, xi = clamp((x - wl) / L, 0, 1), [a1, a3, a5] = this.a;
+        return a1 * Math.cos(Math.PI * xi) + a3 * Math.cos(3 * Math.PI * xi) + a5 * Math.cos(5 * Math.PI * xi)
+            - 0.5 * (Math.PI / L) * a1 * a1 * Math.cos(2 * Math.PI * xi);
+    }
+    // The surface tilt of mode 1 (deg, + = clockwise: left side up), for what runs over the rim.
+    angle(L) { return Math.atan(-this.a[0] / (L / 2)) * 180 / Math.PI; }
+    // Closed SVG path like Surface.path: the sloshing surface at height y between the walls.
+    path(y, wl, wr, xl, xr, bottom, {extra = () => 0, scale = 1} = {}) {
+        const n = 16, pt = i => {
+            const x = wl + (wr - wl) * i / n;
+            return [x, y + scale * this.height(x, wl, wr) + extra(x)];
+        };
+        let [px, py] = pt(0);
+        let d = `M${xl} ${py.toFixed(2)} L${px.toFixed(1)} ${py.toFixed(2)}`;
+        for (let i = 1; i <= n; i++) {
+            const [qx, qy] = pt(i);
+            d += ` Q${px.toFixed(1)} ${py.toFixed(2)} ${((px + qx) / 2).toFixed(1)} ${((py + qy) / 2).toFixed(2)}`;
+            [px, py] = [qx, qy];
+        }
+        return d + ` L${px.toFixed(1)} ${py.toFixed(2)} L${xr} ${py.toFixed(2)} L${xr} ${bottom} L${xl} ${bottom} Z`;
+    }
+}
+
 const glassTop = level => 152 - level * 142;
 
 // --- the water in a tilted glass keeps its amount (2D area of the glass outline below the surface) ---
@@ -191,6 +244,18 @@ function tiltedWater(area, angle) {
         if (areaBelow(pts, mid) > area) lo = mid; else hi = mid;
     }
     return {top: (lo + hi) / 2, capacity, spillCorner: rim[0][1] > rim[1][1] ? 0 : 1};
+}
+// Where the water line y = top meets the glass walls (water frame): [left x, right x].
+function wallsAt(angle, top) {
+    const pts = GLASS_POLY.map(waterFrame(angle));
+    let wl = Infinity, wr = -Infinity;
+    for (let i = 0; i < pts.length; i++) {
+        const p = pts[i], q = pts[(i + 1) % pts.length];
+        if ((p[1] - top) * (q[1] - top) > 0 || p[1] === q[1]) continue;
+        const x = p[0] + (q[0] - p[0]) * (top - p[1]) / (q[1] - p[1]);
+        wl = Math.min(wl, x); wr = Math.max(wr, x);
+    }
+    return wr - wl > 1 ? [wl, wr] : [55, 65];
 }
 const FULL_AREA = areaBelow(GLASS_POLY, glassTop(FULL));
 const SPILL_DROP_AREA = 22;   // glass area that leaves as one falling drop
@@ -247,8 +312,9 @@ const rot = (p, deg) => {
             waveBack: el.querySelector('.wave-back'),
             mode: 'rest',          // rest | held | back | fly | pour
             off: {x: 0, y: 0}, vel: {x: 0, y: 0}, want: {x: 0, y: 0},
-            tilt: 0, slosh: 0, sloshVel: 0,
-            surface: new Surface(14, 106, 16, {speed: 110, rest: 6, damping: 2.4, limit: 6}),
+            tilt: 0,
+            slosh: new Slosh(75 * Math.cbrt(ml / 200)),   // a 200 ml glass is ~75 mm wide at the rim
+            L: 86, depth: 100,                            // water width and depth (viewBox), per frame
             area: FULL_AREA, spilled: 0, phase: ml / 97,
             home: null, k: 1, grab: null,
         };
@@ -501,8 +567,7 @@ const rot = (p, deg) => {
                 g.off = {x: 0, y: 0};
                 g.vel = {x: 0, y: 0};
                 g.tilt = 0;
-                g.slosh = 0;
-                g.sloshVel = 0;
+                g.slosh.reset();
             }
         }
         animating = false;
@@ -543,13 +608,8 @@ const rot = (p, deg) => {
         else if (g.mode === 'pour') { tiltGoal = POUR_TILT; rate = 9; }
         g.tilt += (tiltGoal - g.tilt) * (1 - Math.exp(-dt * rate));
 
-        // Surface angle (world frame, + = clockwise): underdamped spring driven by the acceleration.
-        const push = g.mode === 'rest' ? 0 : ax * 0.16;  // accelerating right piles water up on the left
-        g.sloshVel += (-160 * g.slosh - 16 * g.sloshVel + push) * dt;  // well damped: settles in ~0.4 s
-        g.slosh = clamp(g.slosh + g.sloshVel * dt, -9, 9);
-        // The same push makes ripples on top: water runs up the trailing wall and back.
-        if (push) g.surface.push(x => (x - 60) / 46 * push * 0.8, dt);
-        g.surface.step(dt);
+        // The water feels the glass's acceleration (screen px -> glass viewBox units).
+        g.slosh.step(dt, ax / g.k, ay / g.k, g.L, g.depth);
 
         if (g.mode === 'back' && Math.hypot(g.off.x, g.off.y) < 0.5 && Math.hypot(g.vel.x, g.vel.y) < 5) {
             g.mode = 'rest'; g.off = {x: 0, y: 0}; g.vel = {x: 0, y: 0}; g.tilt = 0;
@@ -658,19 +718,22 @@ const rot = (p, deg) => {
             for (let left = dt; left > 1e-6; left -= 1 / 240) step(g, Math.min(left, 1 / 240));
             g.art.style.transform = g.mode === 'rest' ? ''
                 : `translate(${g.off.x}px, ${g.off.y}px) rotate(${g.tilt}deg)`;
-            // Water rotated back by the glass tilt (stays level) plus the slosh.
-            g.water.setAttribute('transform', `rotate(${(g.slosh - g.tilt).toFixed(2)} 60 90)`);
-            // Same amount of water at any angle; carried too far over, the excess runs out as drops.
-            const w = tiltedWater(g.area, g.slosh - g.tilt);
+            // Water rotated back by the glass tilt: level, with the slosh drawn on top.
+            g.water.setAttribute('transform', `rotate(${(-g.tilt).toFixed(2)} 60 90)`);
+            // Same amount of water at any angle; sloshing or tipped too far, the excess runs out as drops.
+            const level = tiltedWater(g.area, -g.tilt);
+            const [wl, wr] = wallsAt(-g.tilt, level.top);
+            g.L = wr - wl; g.depth = Math.max(5, g.area / g.L);
+            const w = tiltedWater(g.area, g.slosh.angle(g.L) - g.tilt);
             if ((g.mode === 'held' || g.mode === 'back') && g.area > w.capacity) {
                 g.spilled += g.area - w.capacity;
                 g.area = w.capacity;
             }
             for (; g.spilled >= SPILL_DROP_AREA; g.spilled -= SPILL_DROP_AREA) spillDrop(g, w.spillCorner);
-            g.wave.setAttribute('d', g.surface.path(w.top, -60, 180, 260,
-                {extra: x => Math.sin(x / 14 + s + g.phase) * 0.6}));
-            g.waveBack.setAttribute('d', g.surface.path(w.top - 1.7, -60, 180, 260,
-                {mirror: true, scale: 0.7, extra: x => Math.sin(x / 14 - s * 1.3 + 1 + g.phase) * 0.8}));
+            g.wave.setAttribute('d', g.slosh.path(level.top, wl, wr, -60, 180, 260,
+                {extra: x => Math.sin(x / 14 + s + g.phase) * 0.5}));
+            g.waveBack.setAttribute('d', g.slosh.path(level.top - 1.7, wl, wr, -60, 180, 260,
+                {scale: 0.85, extra: x => Math.sin(x / 14 - s * 1.3 + 1 + g.phase) * 0.7}));
         }
 
         moveDrops(dt);
