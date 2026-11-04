@@ -100,5 +100,119 @@ class SnoozeTest(unittest.TestCase):
         self.assertFalse(scheduler.snoozed("water"))
 
 
+class StopAtGoalTest(unittest.TestCase):
+    WATER = {"enabled": True, "reminders": [0, 40, 80], "daily_goal_ml": 2000}
+
+    def setUp(self):
+        scheduler._snoozes.clear()
+        self._orig_config = scheduler.current_config
+
+    def tearDown(self):
+        scheduler._snoozes.clear()
+        scheduler.current_config = self._orig_config
+
+    def trigger(self, today_ml, **water):
+        scheduler.trigger_reminder.last_triggers = {}
+        with mock.patch.object(scheduler, "water_today_ml", return_value=today_ml), \
+                mock.patch.object(scheduler, "is_paused", return_value=False), \
+                mock.patch.object(scheduler.gate, "request") as request:
+            scheduler.trigger_reminder("water", {**self.WATER, **water})
+        return request.called
+
+    def test_water_stops_once_the_goal_is_reached(self):
+        self.assertTrue(self.trigger(1800))
+        self.assertFalse(self.trigger(2000))
+        self.assertFalse(self.trigger(2200))
+
+    def test_water_goes_on_when_stop_at_goal_is_off(self):
+        self.assertTrue(self.trigger(2200, stop_at_goal=False))
+
+    def test_other_reminders_ignore_the_water_goal(self):
+        with mock.patch.object(scheduler, "water_today_ml", return_value=5000):
+            self.assertFalse(scheduler.goal_reached("posture", {"enabled": True}))
+
+    def test_stop_at_goal_is_on_by_default(self):
+        self.assertTrue(fill_defaults({"water": {"enabled": True}})["water"]["stop_at_goal"])
+
+    def test_snoozed_water_does_not_come_back_once_goal_reached(self):
+        config = {"global_interval": 120, "water": dict(self.WATER)}
+        fake_sched = mock.MagicMock()
+        scheduler.schedule_reminders(fake_sched, config)
+        tick = fake_sched.add_job.call_args[0][0]
+
+        now = datetime(2026, 11, 4, 10, 5)
+        scheduler.snooze("water", now)
+        back = now + timedelta(minutes=17.5)
+
+        mock_dt = mock.MagicMock(wraps=datetime)
+        mock_dt.now.return_value = back
+        with mock.patch.object(scheduler, "water_today_ml", return_value=2500), \
+                mock.patch.object(scheduler, "datetime", mock_dt), \
+                mock.patch.object(scheduler.gate, "request") as request:
+            tick()
+        self.assertFalse(request.called)
+
+        scheduler._snoozes.clear()
+        scheduler.snooze("water", now)
+        with mock.patch.object(scheduler, "water_today_ml", return_value=1500), \
+                mock.patch.object(scheduler, "datetime", mock_dt), \
+                mock.patch.object(scheduler.gate, "request") as request:
+            tick()
+        self.assertTrue(request.called)
+
+    def test_find_missed_skips_water_at_goal(self):
+        scheduler.current_config = {
+            "global_interval": 60,
+            "water": dict(self.WATER, reminders=[40]),
+            "eye_relax": {"enabled": True, "reminders": [20]},
+        }
+        since = datetime(2026, 11, 4, 10, 0).timestamp()
+        until = datetime(2026, 11, 4, 10, 50).timestamp()
+
+        with mock.patch.object(scheduler, "water_today_ml", return_value=2500):
+            missed = scheduler.find_missed(since, until)
+        self.assertIsNotNone(missed)
+        self.assertEqual(missed[0], "eye_relax")
+
+        with mock.patch.object(scheduler, "water_today_ml", return_value=1500):
+            missed = scheduler.find_missed(since, until)
+        self.assertIsNotNone(missed)
+        self.assertEqual(missed[0], "water")
+
+        scheduler.current_config = {
+            "global_interval": 60,
+            "water": dict(self.WATER, reminders=[40]),
+        }
+        with mock.patch.object(scheduler, "water_today_ml", return_value=2500):
+            self.assertIsNone(scheduler.find_missed(since, until))
+
+    def test_next_reminder_computation_ignores_water_at_goal(self):
+        config = {
+            "global_interval": 60,
+            "water": dict(self.WATER, reminders=[20]),
+            "eye_relax": {"enabled": True, "reminders": [40]},
+        }
+        fake_sched = mock.MagicMock()
+        scheduler.schedule_reminders(fake_sched, config)
+        tick = fake_sched.add_job.call_args[0][0]
+
+        mock_dt = mock.MagicMock(wraps=datetime)
+        mock_dt.now.return_value = datetime(2026, 11, 4, 10, 5, 0)
+
+        with mock.patch.object(scheduler, "water_today_ml", return_value=2500), \
+                mock.patch.object(scheduler, "datetime", mock_dt):
+            tick()
+        status = scheduler.get_current_status()
+        self.assertEqual(status["next_reminder"], "eye_relax")
+        self.assertEqual(status["time_to_next"], "35:00")
+
+        with mock.patch.object(scheduler, "water_today_ml", return_value=1500), \
+                mock.patch.object(scheduler, "datetime", mock_dt):
+            tick()
+        status = scheduler.get_current_status()
+        self.assertEqual(status["next_reminder"], "water")
+        self.assertEqual(status["time_to_next"], "15:00")
+
+
 if __name__ == "__main__":
     unittest.main()

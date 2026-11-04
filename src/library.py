@@ -32,8 +32,12 @@ LIBRARY = {
         "icon": "water_drop",
         "symbolic_icon": "weather-showers-symbolic",
         "color": "#38bdf8",
-        "defaults": {"enabled": False, "every": 40, "reminders": [], "daily_goal_ml": 2000},
-        "fields": [{"key": "daily_goal_ml", "label": "Goal (ml/day)"}],
+        "defaults": {"enabled": False, "every": 40, "reminders": [], "daily_goal_ml": 2000,
+                     "stop_at_goal": True},
+        # stop_at_goal: once today's water reaches the goal, no more water reminders until tomorrow.
+        "fields": [{"key": "daily_goal_ml", "label": "Goal (ml/day)"},
+                   {"key": "stop_at_goal", "label": "Stop at goal", "type": "check",
+                    "title": "Once today's goal is reached, no more water reminders until tomorrow"}],
     },
     "stretch": {
         "title": "Stretch",
