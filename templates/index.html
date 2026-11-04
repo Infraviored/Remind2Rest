@@ -390,7 +390,7 @@
                     </label>
                 </div>
                 <!-- Second line: on/off settings and fields marked line2, so the main number fields keep their room -->
-                <div v-if="config[m.key].enabled && m.fields.some(f => f.line2 || f.type === 'check')" class="flex gap-1.5 mt-1.5">
+                <div v-if="config[m.key].enabled && m.fields.some(f => f.line2 || f.type === 'check')" class="flex flex-wrap gap-1.5 mt-1.5">
                     <template v-for="f in m.fields.filter(f => f.line2 || f.type === 'check')" :key="f.key">
                         <label v-if="f.type === 'check'" class="field cursor-pointer" :title="f.title || f.label">
                             <input v-model="config[m.key][f.key]" type="checkbox" :style="{ color: m.color }" />
