@@ -383,18 +383,25 @@
                         <input v-model.number="config[m.key].every" type="number" min="1" :style="fitWidth(config[m.key].every)" />
                         <span>min</span>
                     </label>
-                    <label v-for="f in m.fields.filter(f => f.type !== 'check')" :key="f.key" class="field" :title="f.label">
+                    <label v-for="f in m.fields.filter(f => !f.line2 && f.type !== 'check')" :key="f.key" class="field" :title="f.title || f.label">
                         <span>{{ fieldName(f.label) }}</span>
                         <input v-model.number="config[m.key][f.key]" type="number" :style="fitWidth(config[m.key][f.key])" />
                         <span>{{ fieldUnit(f.label) }}</span>
                     </label>
                 </div>
-                <!-- On/off settings on their own line, so the number fields keep theirs -->
-                <div v-if="config[m.key].enabled && m.fields.some(f => f.type === 'check')" class="flex gap-1.5 mt-1.5">
-                    <label v-for="f in m.fields.filter(f => f.type === 'check')" :key="f.key" class="field cursor-pointer" :title="f.title || f.label">
-                        <input v-model="config[m.key][f.key]" type="checkbox" :style="{ color: m.color }" />
-                        <span>{{ f.label }}</span>
-                    </label>
+                <!-- Second line: on/off settings and fields marked line2, so the main number fields keep their room -->
+                <div v-if="config[m.key].enabled && m.fields.some(f => f.line2 || f.type === 'check')" class="flex gap-1.5 mt-1.5">
+                    <template v-for="f in m.fields.filter(f => f.line2 || f.type === 'check')" :key="f.key">
+                        <label v-if="f.type === 'check'" class="field cursor-pointer" :title="f.title || f.label">
+                            <input v-model="config[m.key][f.key]" type="checkbox" :style="{ color: m.color }" />
+                            <span>{{ f.label }}</span>
+                        </label>
+                        <label v-else class="field" :title="f.title || f.label">
+                            <span>{{ fieldName(f.label) }}</span>
+                            <input v-model.number="config[m.key][f.key]" type="number" min="0" :style="fitWidth(config[m.key][f.key])" />
+                            <span>{{ fieldUnit(f.label) }}</span>
+                        </label>
+                    </template>
                 </div>
             </div>
         </div>

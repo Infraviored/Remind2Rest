@@ -22,6 +22,12 @@ in advance (`notifications.py standby`), so it opens without the cold start of P
 
 `Escape` must always close the page (call `api.close()`).
 
+A page that waits for the user (posture, water, fresh air) can close itself: `settings.auto_close`
+seconds without input (key, click, mouse move) after the window appeared, `common.js` closes it; any
+input starts the count again, a Later stops it until the window comes back. A thin bar at the bottom
+runs down meanwhile. `0` keeps the page open. Defaults: posture 5 s (nobody at the desk means no
+posture to rate), water and fresh air 0. The settings window shows it as "Close after (s)".
+
 ## JavaScript API
 
 The page waits for pywebview, then uses `window.pywebview.api`:
@@ -59,11 +65,11 @@ const {settings = {}} = await R2R.hold(api.get_context());
 | Type | Settings (config key → meaning) |
 |---|---|
 | `eye_relax` | `relax_duration` s, `flash_frequency` Hz |
-| `posture` | none; the rating buttons react at once (older configs may still hold `wait_duration`, it is removed on load) |
-| `water` | `daily_goal_ml` ml per day (default 2000); `stop_at_goal` (default on): once today's goal is reached, the scheduler shows no more water reminders until tomorrow (a reminder opened by hand still shows) |
+| `posture` | `auto_close` s (default 5, see above); the rating buttons react at once (older configs may still hold `wait_duration`, it is removed on load) |
+| `water` | `daily_goal_ml` ml per day (default 2000); `stop_at_goal` (default on): once today's goal is reached, the scheduler shows no more water reminders until tomorrow (a reminder opened by hand still shows); `auto_close` s (default 0) |
 | `stretch` | `move_duration` s per move (default 20); four moves, then the page closes |
 | `breathing` | `cycles` 4-7-8 breaths (default 3); closes after the last exhale |
-| `airing` | none. "Done" closes, "Later" snoozes (see `snooze()`) |
+| `airing` | `auto_close` s (default 0). "Done" closes, "Later" snoozes (see `snooze()`) |
 
 Each type's config entry also has `enabled`, `every` (minutes between two reminders of the type) and
 `reminders` (minutes within the global interval, computed from `every` by the settings window).
