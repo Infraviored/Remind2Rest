@@ -86,6 +86,19 @@ class SnoozeTest(unittest.TestCase):
         self.assertNotIn("snooze_minutes", config["water"])
         self.assertNotIn("snooze_minutes", config["airing"])
 
+    def test_snooze_due_during_pause_waits_for_resume(self):
+        now = datetime(2026, 11, 4, 10, 5)
+        scheduler.snooze("water", now)
+        back = now + timedelta(minutes=17.5)
+        scheduler.pause(60)
+        self.assertTrue(scheduler.is_paused())
+        self.assertTrue(scheduler.snoozed("water"))
+        # While paused, due_snoozes() is not called in the tick loop so the snooze remains pending
+        scheduler.resume()
+        self.assertFalse(scheduler.is_paused())
+        self.assertEqual(scheduler.due_snoozes(back), ["water"])
+        self.assertFalse(scheduler.snoozed("water"))
+
 
 if __name__ == "__main__":
     unittest.main()

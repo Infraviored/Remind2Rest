@@ -5,3 +5,5 @@ pywebview
 PyGObject; sys_platform == "linux"
 # Tray icon on Windows (GNOME uses the top bar extension instead).
 pystray; sys_platform == "win32"
+# Microphone in use on Windows: the audio system's capture sessions (pulls in comtypes and psutil).
+pycaw; sys_platform == "win32"
