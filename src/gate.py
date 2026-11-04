@@ -115,7 +115,8 @@ class ReminderGate:
 
     @property
     def pending(self):
-        return self._pending[0] if self._pending else None
+        with self._mutex:
+            return self._pending[0] if self._pending else None
 
     @property
     def blocked_by_lock_or_conference(self):
