@@ -61,25 +61,18 @@ new Vue({
         cycle() {
             return this.config.global_interval;
         },
-        // CONFERENCE_SIGNALS for this platform: { key, label, hint, unavailable }.
+        // CONFERENCE_SIGNALS for this platform: { key, label, icon, hint, unavailable }.
         conferenceSignals() {
             const windows = this.platform === 'windows';
-            return CONFERENCE_SIGNALS.map(s => {
-                const unavailable = windows && s.winHint === null;
-                let hint = s.hint;
-                if (unavailable) {
-                    hint = 'Not available on Windows';
-                } else if (windows && s.winHint) {
-                    hint = s.winHint;
-                }
-                return { key: s.key, label: s.label, icon: s.icon, hint, unavailable };
+            return CONFERENCE_SIGNALS.map(({ winHint, ...s }) => {
+                const unavailable = windows && winHint === null;
+                const hint = unavailable ? 'Not available on Windows' : (windows && winHint) || s.hint;
+                return { ...s, hint, unavailable };
             });
         },
-        // "https://host/…" for the saved webhook URL; the path holds the secret webhook id.
-        webhookMasked() {
-            const url = (this.config.conference && this.config.conference.webhook_url) || '';
-            const match = url.match(/^([a-z][a-z0-9+.-]*:\/\/)(?:[^@\/]*@)?([^\/?#]*)/i);
-            return match ? match[1] + match[2] + '/…' : (url ? '…' : '');
+        // A webhook is set: the saved one (the page only gets webhook_set and webhook_masked), or one typed in.
+        hasWebhook() {
+            return !!(this.config.conference && (this.config.conference.webhook_url || this.config.conference.webhook_set));
         },
         enabledModules() {
             return this.modules.filter(m => this.config[m.key].enabled);
@@ -139,9 +132,9 @@ new Vue({
             call('test_reminder', module, this.config[module])
                 .catch(error => alert(`Error triggering test reminder: ${error.message || error}`));
         },
-        // Tests the URL being typed, else the saved one; the result stays next to the button.
+        // Tests the URL being typed, else the one applied, else (none sent) the saved one; the result stays next to the button.
         testWebhook() {
-            const url = (this.webhookEditing && this.webhookDraft.trim()) || this.config.conference.webhook_url;
+            const url = (this.webhookEditing && this.webhookDraft.trim()) || this.config.conference.webhook_url || null;
             this.webhookResult = 'sending';
             call('test_webhook', url)
                 .then(result => {
@@ -159,7 +152,13 @@ new Vue({
         // Takes the typed URL; an empty field keeps the saved one.
         applyWebhook() {
             const url = this.webhookDraft.trim();
-            if (url) this.config.conference.webhook_url = url;
+            if (url) {
+                const conference = this.config.conference;
+                conference.webhook_url = url;
+                conference.webhook_set = true;
+                conference.webhook_masked = '…';
+                call('mask_webhook', url).then(masked => { conference.webhook_masked = masked; }).catch(() => {});
+            }
             this.webhookDraft = '';
             this.webhookEditing = false;
         },
@@ -169,6 +168,7 @@ new Vue({
         },
         removeWebhook() {
             this.config.conference.webhook_url = '';
+            this.config.conference.webhook_set = false;
             this.webhookDraft = '';
             this.webhookEditing = false;
             this.webhookResult = null;
@@ -358,9 +358,6 @@ new Vue({
                 saved = saved || {};
                 const types = Object.fromEntries(library.map(m => [m.key, { ...JSON.parse(JSON.stringify(m.defaults)), ...saved[m.key] }]));
                 this.config = { ...this.config, ...saved, ...types };
-                if (this.config.conference && this.config.conference.microphone_needs_app === undefined) {
-                    this.$set(this.config.conference, 'microphone_needs_app', true);
-                }
                 this.modules = library;
                 this.updateNow();
             })

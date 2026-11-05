@@ -1,9 +1,9 @@
 import os
 import socket
-from src.config import ADDR, SOCKET_FAMILY
+from src.config import ADDR, IS_WINDOWS, SOCKET_FAMILY
 
 def cleanup_socket():
-    if os.name != 'nt' and isinstance(ADDR, str) and os.path.exists(ADDR):
+    if not IS_WINDOWS and isinstance(ADDR, str) and os.path.exists(ADDR):
         try:
             os.remove(ADDR)
         except Exception:
