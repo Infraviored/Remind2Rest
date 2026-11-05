@@ -53,20 +53,31 @@ Run the PowerShell installer script:
    .\Install-Remind2Rest.ps1
    ```
 This will:
-- Create a virtual environment in `%LOCALAPPDATA%\Remind2Rest\venv`.
-- Install all requirements.
+- Create a virtual environment in `%LOCALAPPDATA%\Remind2Rest\venv` and install the requirements (it stops if pip fails).
 - Add Remind2Rest to your **Windows Startup** folder.
-- Create a **Desktop Shortcut** for the settings window.
+- Create a **Start menu** entry and a **Desktop Shortcut** for the settings window.
+- Stop a running Remind2Rest and start the new one. Run it again after `git pull` to update.
+
+On Windows the service shows a **tray icon**: the logo with a small badge holding the minutes until
+the next reminder (pause bars while paused); the tooltip names it. Its menu shows the
+next reminder (or the pause, or the call it waits for) and today's water, and offers *Show now*,
+*Pause* 15 min to 2 h, *Resume*, *Settings…* (also a click on the icon) and *Quit Remind2Rest*.
+The settings window's Start/Stop button starts and stops the service.
+
+Logs on Windows are in `%LOCALAPPDATA%\Remind2Rest`: `Remind2Rest.log` (service: schedule, deferrals,
+which reminder opened and closed, warm or cold start), `notifications.log` (reminder windows: how long
+each took to appear, snoozes, crashes) and `overlay-errors.log` (native crash output of the windows).
+On Linux they are in `~/.local/share/Remind2Rest`.
 
 ### 3. Usage
 Once installed, the background service will start automatically on login. Open the settings from the app menu (**Remind2Rest**), the GNOME top bar menu, or with `python configurator.py`.
 
-The top bar extension and the settings window talk to the service over its socket (`~/.Remind2Rest.sock`) with plain-text commands: `STATUS`, `RELOAD`, `PAUSE <minutes>`, `RESUME`, `TRIGGER <type> [<settings json>]` (any type from `src/library.py`), `CONFERENCE` (the conference detector's state per signal, for debugging) and `SCREENSHARE on|off` (sent by the top bar extension). `STATUS` names the next reminder with `next_reminder`, `next_title` and `next_icon`, and the conference state as `conference: {active, reasons}`.
+The top bar extension and the settings window talk to the service over its socket (`~/.Remind2Rest.sock`) with plain-text commands: `STATUS`, `RELOAD`, `PAUSE <minutes>`, `RESUME`, `TRIGGER <type> [<settings json>]` (any type from `src/library.py`), `CONFERENCE` (the conference detector's state per signal, for debugging), `SCREENSHARE on|off` (sent by the top bar extension), `PREWARM` (Windows: start a hidden reminder window now, sent by the settings window so its test buttons open at once) and `QUIT` (stop the service; the settings window's Stop button and the tray use it). On Windows the socket is TCP `127.0.0.1:55555`, bound exclusively, so a second service exits instead of doubling every reminder. `STATUS` names the next reminder with `next_reminder`, `next_title` and `next_icon`, and the conference state as `conference: {active, reasons}`.
 
 ### One reminder at a time
 
 Reminders never stack (`src/gate.py`):
-- **Screen locked:** nothing opens. A reminder that falls due waits and shows about 45 s after unlock. The lock is read from logind (`LockedHint` of the display session), with GNOME's screensaver as fallback, every 5 s. Where neither answers (Windows), reminders show as before.
+- **Screen locked:** nothing opens. A reminder that falls due waits and shows about 45 s after unlock. The lock is read from logind (`LockedHint` of the display session), with GNOME's screensaver as fallback, every 5 s. On Windows the service checks whether it can open the input desktop (it cannot while the lock screen has it).
 - **A reminder window is open:** the next one waits and shows 30 s after the open one closes. A second reminder of the same type is dropped. A snoozed window still counts as open (its process lives on), so it holds back the others until it is closed. This also holds for `TRIGGER` and the test button in the settings.
 - **Suspend:** after waking up, missed reminders are not repeated; only the latest one shows, 45 s after unlock.
 
@@ -81,8 +92,8 @@ The daemon checks every 3 s whether a call is running (`src/conference.py`). Eac
 | Signal | Default | Active when |
 |---|---|---|
 | Screen share | on | The screen is shared or recorded. The top bar extension reports GNOME's own screen-sharing sessions; without it, PipeWire's screencast streams (`meta-screen-cast-src`) are used. |
-| Microphone | on | An app records from the microphone (PipeWire capture stream in state `running`). Recordings of the speakers (monitors), level meters (pavucontrol, GNOME Shell) and the apps in *Ignore mic of* (default `VibeVoice`) do not count. With *Mic only with an app* (default on) the microphone counts only while one of the *Apps* runs, so dictation alone is no call. |
-| Camera | on | A camera's PipeWire node is running, or any process other than PipeWire has a `/dev/video*` open (Chrome and Teams open it directly). |
+| Microphone | on | An app records from the microphone (PipeWire capture stream in state `running`). Recordings of the speakers (monitors), level meters (pavucontrol, GNOME Shell) and the apps in *Ignore mic of* (default `VibeVoice`) do not count. With *Only as a call* (default on) the microphone counts only while the camera is on too (a video call, in any app) or one of the *Apps* runs, so dictation alone is no call. |
+| Camera | on | A camera's PipeWire node is running, or any process other than PipeWire has a `/dev/video*` open (Chrome and Teams open it directly). With *Only as a call* only while a microphone records too: a camera app or face unlock alone is no call. |
 | Apps | off | One of the listed processes runs (default `teams`, `teams-for-linux`, `ms-teams`, `zoom`). |
 | Do Not Disturb | on | GNOME's Do Not Disturb is on. |
 
@@ -94,8 +105,9 @@ The same settings apply, but the signals come from other sources. `pw-dump`, `gs
 
 | Signal | Active when |
 |---|---|
-| Screen share | Not available on Windows: there is no reliable way to tell. The settings window shows it as such. A Teams or Zoom screen share usually keeps the microphone open, so *Microphone* covers it. |
-| Microphone, Camera | Windows' privacy store (the source of the "in use" icon in the taskbar) says an app uses the device right now: under `HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone` (or `\webcam`), an app's `LastUsedTimeStop` is 0. Store apps appear by package name (`MSTeams`), desktop apps by their exe (`chrome.exe`, `Zoom.exe`). *Ignore mic of* matches these names, with or without `.exe`. HKCU is enough: it records every app the logged-in user runs. |
+| Screen share | A browser shows its screen-sharing indicator: a visible window whose title contains one of `share_indicators`. Firefox opens *Firefox — Sharing Indicator* while a page shares the screen or a window, and only then (not for microphone or camera); Chrome and Edge show a bar *… is sharing your screen.* / *… is sharing a window.* (the Chrome/Edge titles are not verified on a real machine yet). Covers Teams, Meet or Zoom in the browser; a native app's own share is covered by its microphone. |
+| Microphone | The audio system's live capture sessions (WASAPI, what the taskbar's microphone icon shows): every process recording from an active microphone, by exe name (`ms-teams.exe`, `firefox.exe`, `Zoom.exe`). Newer Windows 11 builds stopped updating the privacy store below, so this is the main source; the store is still read as well. With *Only as a call* it counts while the camera is on too, or while a meeting app runs: a process from *processes*, or a visible window whose title contains one of `window_titles` (default `Microsoft Teams`, `Zoom Meeting`, `Google Meet`), which covers Teams in a browser. Once a recorder counted for a call it keeps counting while it records, even with the camera off or another browser tab in front. *Ignore mic of* matches exe names, with or without `.exe`. |
+| Camera | Media Foundation's sensor activity monitor (Windows 10 1809 and later, no admin rights): every process streaming from a camera right now, by exe name (`firefox.exe`, `ms-teams.exe`). The privacy store under `HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\webcam` (`LastUsedTimeStop` 0) is read as well, but newer Windows 11 builds no longer update it. With *Only as a call* the camera counts only while a microphone records too. |
 | Apps | One of the listed processes runs, from `tasklist`, matched case-insensitively and with or without `.exe` (`teams` matches `Teams.exe`, `ms-teams` the new Teams). |
 | Do Not Disturb | Best effort: Windows has no stable interface for Focus Assist or Do Not Disturb. The signal is on while Windows 11's notifications are switched off (`NOC_GLOBAL_SETTING_TOASTS_ENABLED` = 0 under `HKCU\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings`). Elsewhere it stays off. |
 

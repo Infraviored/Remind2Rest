@@ -13,7 +13,11 @@ def create_server_socket():
     cleanup_socket()
     s = socket.socket(SOCKET_FAMILY, socket.SOCK_STREAM)
     try:
-        if SOCKET_FAMILY == socket.AF_INET:
+        if os.name == 'nt':
+            # On Windows SO_REUSEADDR lets a second daemon bind the same port, and both would show
+            # every reminder. Exclusive use makes the second one fail and exit.
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        elif SOCKET_FAMILY == socket.AF_INET:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(ADDR)
         s.listen()

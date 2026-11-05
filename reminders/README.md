@@ -14,7 +14,22 @@ Stretch walks through four moves with an animated figure, breathing paces 4-7-8 
 growing and shrinking circle, fresh air shows an open window. Pages close right after the user's
 action or when their sequence ends.
 
+On Windows the window stays hidden until the page has built its first view, then appears complete
+and takes the keyboard focus. `common.js` tells it when (`api.ready()`): after the page's own
+`await R2R.api` and the data it wrapped in `R2R.hold(...)` (at most 1.5 s). A page that never calls
+`ready()` is shown after 4 s. Shortly before a reminder is due the service starts the window hidden
+in advance (`notifications.py standby`), so it opens without the cold start of Python and WebView2.
+
 `Escape` must always close the page (call `api.close()`).
+
+A page that waits for the user (posture, water, fresh air) can close itself: `settings.auto_close`
+seconds without input after the window appeared, `common.js` closes it. Moving the mouse or
+scrolling restarts the count (at most every 500 ms) while nobody has clicked or typed. The first
+click or keypress (any key except `Escape`) stops auto-close for good (timer cleared, bar hidden,
+never restarted). A Later stops it until the window comes back (unless already stopped for good).
+A thin bar at the bottom runs down meanwhile. `0` keeps the page open. Defaults: posture 5 s
+(nobody at the desk means no posture to rate), water and fresh air 0. The settings window shows
+it as "Close after (s)".
 
 ## JavaScript API
 
@@ -29,11 +44,20 @@ const api = await new Promise(resolve => {
 
 All methods return promises.
 
+Wrap the data the first view needs in `R2R.hold()`, right after `await R2R.api`, so the window
+appears with it filled in:
+
+```js
+const api = await R2R.api;
+const {settings = {}} = await R2R.hold(api.get_context());
+```
+
 | Method | Returns / does |
 |---|---|
 | `get_context()` | `{type, settings, now}`. `settings` = this type's config entry (e.g. `{relax_duration: 20, flash_frequency: 2}` for eye relax), `now` = ISO local time |
 | `close()` | closes the window and ends the process |
-| `snooze(minutes)` | hides the window and shows it again after `minutes` |
+| `ready()` | the first view is built: shows the window (called by `common.js`, pages need not call it) |
+| `snooze()` | "Later": closes the window; the daemon shows it again halfway to the type's next regular time; a second Later in a row (or one less than 10 min before that time) lets it drop out until the next regular time. Without a daemon the window hides and comes back itself after `minutes` (optional argument, default 10) |
 | `save_rating(rating)` | posture: appends `YYYY-MM-DD HH:MM:SS - Rating: <1-5>` to the ratings file |
 | `get_ratings(days)` | posture: `[{time: "YYYY-MM-DD HH:MM:SS", rating: 1-5}, ...]` of the last `days` days, oldest first |
 | `log_water(ml)` | water: appends `YYYY-MM-DD HH:MM:SS <ml>` to the water log (`ml` a whole number, 1-2000), returns `{today_ml, goal_ml}` |
@@ -44,11 +68,11 @@ All methods return promises.
 | Type | Settings (config key → meaning) |
 |---|---|
 | `eye_relax` | `relax_duration` s, `flash_frequency` Hz |
-| `posture` | none; the rating buttons react at once (older configs may still hold `wait_duration`, it is removed on load) |
-| `water` | `daily_goal_ml` ml per day (default 2000) |
+| `posture` | `auto_close` s (default 5, see above); the rating buttons react at once (older configs may still hold `wait_duration`, it is removed on load) |
+| `water` | `daily_goal_ml` ml per day (default 2000); `stop_at_goal` (default on): once today's goal is reached, the scheduler shows no more water reminders until tomorrow (a reminder opened by hand still shows); `auto_close` s (default 0) |
 | `stretch` | `move_duration` s per move (default 20); four moves, then the page closes |
 | `breathing` | `cycles` 4-7-8 breaths (default 3); closes after the last exhale |
-| `airing` | none. "Done" closes, "Later" snoozes 10 min |
+| `airing` | `auto_close` s (default 0). "Done" closes, "Later" snoozes (see `snooze()`) |
 
 Each type's config entry also has `enabled`, `every` (minutes between two reminders of the type) and
 `reminders` (minutes within the global interval, computed from `every` by the settings window).

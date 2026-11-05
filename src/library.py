@@ -7,6 +7,10 @@ from src import conference
 # defaults["every"]: how often the type should fire (minutes). It is only the input of the settings window's
 # Auto-arrange button (static/js/distribute.js); the daemon reads config[type]["reminders"], which the user
 # can also edit by hand on the timeline.
+# auto_close: seconds without input after which a page that waits for the user closes itself; 0 = stays open.
+AUTO_CLOSE = {"key": "auto_close", "label": "Close after (s)", "line2": True,
+              "title": "Closes the reminder after this many seconds without input; 0 keeps it open"}
+
 LIBRARY = {
     "eye_relax": {
         "title": "Eye Relax",
@@ -24,16 +28,20 @@ LIBRARY = {
         "icon": "accessibility_new",
         "symbolic_icon": "preferences-desktop-accessibility-symbolic",
         "color": "#2dd4bf",
-        "defaults": {"enabled": True, "every": 20, "reminders": [10, 30, 50]},
-        "fields": [],
+        "defaults": {"enabled": True, "every": 20, "reminders": [10, 30, 50], "auto_close": 5},
+        "fields": [AUTO_CLOSE],
     },
     "water": {
         "title": "Water",
         "icon": "water_drop",
         "symbolic_icon": "weather-showers-symbolic",
         "color": "#38bdf8",
-        "defaults": {"enabled": False, "every": 40, "reminders": [], "daily_goal_ml": 2000},
-        "fields": [{"key": "daily_goal_ml", "label": "Goal (ml/day)"}],
+        "defaults": {"enabled": False, "every": 40, "reminders": [], "daily_goal_ml": 2000,
+                     "stop_at_goal": True, "auto_close": 0},
+        # stop_at_goal: once today's water reaches the goal, no more water reminders until tomorrow.
+        "fields": [{"key": "daily_goal_ml", "label": "Goal (ml/day)"}, AUTO_CLOSE,
+                   {"key": "stop_at_goal", "label": "Stop at goal", "type": "check",
+                    "title": "Once today's goal is reached, no more water reminders until tomorrow"}],
     },
     "stretch": {
         "title": "Stretch",
@@ -56,14 +64,14 @@ LIBRARY = {
         "icon": "air",
         "symbolic_icon": "weather-windy-symbolic",
         "color": "#4ade80",
-        "defaults": {"enabled": False, "every": 120, "reminders": []},
-        "fields": [],
+        "defaults": {"enabled": False, "every": 120, "reminders": [], "auto_close": 0},
+        "fields": [AUTO_CLOSE],
     },
 }
 
 
 # Settings that older versions wrote and that no page reads any more.
-RETIRED = {"posture": ["wait_duration"]}
+RETIRED = {"posture": ["wait_duration"], "water": ["snooze_minutes"], "airing": ["snooze_minutes"]}
 
 
 def fill_defaults(config):

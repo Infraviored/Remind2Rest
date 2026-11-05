@@ -8,7 +8,7 @@ const MOVES = [
 
 (async () => {
     const api = await R2R.api;
-    const {settings = {}} = await api.get_context();
+    const {settings = {}} = await R2R.hold(api.get_context());
     const perMove = Math.max(3, Number(settings.move_duration) || 20) * 1000;
 
     const figure = document.getElementById('figure');
@@ -57,5 +57,5 @@ const MOVES = [
         items[i].style.setProperty('--p', `${(inMove / perMove) * 100}%`);
         rafId = requestAnimationFrame(tick);
     };
-    rafId = requestAnimationFrame(tick);
+    tick();
 })();

@@ -93,7 +93,7 @@
 <script>
 (async () => {
     const api = await R2R.api;
-    const {settings = {}} = await api.get_context();
+    const {settings = {}} = await R2R.hold(api.get_context());
     const duration = Math.max(1, Number(settings.relax_duration) || 20);
     const freq = Number(settings.flash_frequency) || 0;
 

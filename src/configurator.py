@@ -7,6 +7,7 @@ import urllib.parse
 from pathlib import Path
 
 import threading
+import time
 import webview
 
 from src.conference import post_webhook, redact, format_error
@@ -16,7 +17,8 @@ from src.scheduler import spawn_reminder
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 reminder_app_path = os.path.join(script_dir, "Remind2Rest.py")
-icon_path = os.path.join(script_dir, "Remind2Rest.png")
+# pywebview's Windows backend only takes an .ico for the window icon (a PNG crashes it at start).
+icon_path = os.path.join(script_dir, "Remind2Rest.ico" if os.name == "nt" else "Remind2Rest.png")
 index_path = os.path.join(script_dir, "templates", "index.html")
 
 SERVICE = "Remind2Rest"
@@ -67,6 +69,30 @@ def systemctl(*args):
 
 def windows_startup_path():
     return os.path.join(os.environ["APPDATA"], "Microsoft\\Windows\\Start Menu\\Programs\\Startup\\Remind2Rest.lnk")
+
+
+def gui_python():
+    """pythonw.exe next to the running interpreter on Windows (no console window), else sys.executable."""
+    if IS_WINDOWS:
+        candidate = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if os.path.exists(candidate):
+            return candidate
+    return sys.executable
+
+
+def start_windows_service():
+    flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen([gui_python(), reminder_app_path], cwd=script_dir, creationflags=flags,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def wait_for_service(running, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if is_service_running() == running:
+            return True
+        time.sleep(0.2)
+    return False
 
 
 def ps_quote(s):
@@ -155,7 +181,15 @@ class Api:
 
     def toggle_service(self):
         if IS_WINDOWS:
-            raise RuntimeError("Service control is not implemented on Windows. Run Remind2Rest.py manually.")
+            if is_service_running():
+                send_command_to_service("QUIT")
+                if not wait_for_service(False):
+                    raise RuntimeError("Remind2Rest did not stop within 5 s")
+                return {"status": "Stopped", "running": False}
+            start_windows_service()
+            if not wait_for_service(True):
+                raise RuntimeError("Remind2Rest did not start; see Remind2Rest.log in %LOCALAPPDATA%\\Remind2Rest")
+            return {"status": "Running", "running": True}
         if systemctl("is-active").returncode == 0:
             systemctl("stop")
             return {"status": "Stopped", "running": False}
@@ -172,11 +206,14 @@ class Api:
             ps_cmd = (
                 f"$WshShell = New-Object -ComObject WScript.Shell; "
                 f"$Shortcut = $WshShell.CreateShortcut({ps_quote(startup_path)}); "
-                f"$Shortcut.TargetPath = {ps_quote(sys.executable)}; "
+                f"$Shortcut.TargetPath = {ps_quote(gui_python())}; "
                 f"$Shortcut.Arguments = {ps_quote(arguments)}; "
+                f"$Shortcut.WorkingDirectory = {ps_quote(script_dir)}; "
+                f"$Shortcut.IconLocation = {ps_quote(os.path.join(script_dir, 'Remind2Rest.ico'))}; "
                 f"$Shortcut.Save()"
             )
-            subprocess.run(["powershell", "-Command", ps_cmd], check=True)
+            subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], check=True,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
             return {"enabled": True}
         if systemctl("is-enabled").returncode == 0:
             systemctl("disable")
@@ -211,6 +248,8 @@ def main():
             GLib.set_application_name(SERVICE)
         except ImportError:
             pass
+    # Warm up an overlay now, so the test buttons open their reminder without the cold start.
+    threading.Thread(target=send_command_to_service, args=("PREWARM",), daemon=True).start()
     height = window_height()
     webview.create_window(
         "Remind2Rest",
