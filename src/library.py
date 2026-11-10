@@ -44,9 +44,9 @@ LIBRARY = {
                    {"key": "stop_at_goal", "label": "Stop at goal", "type": "check",
                     "title": "Once today's goal is reached, no more water reminders until tomorrow"},
                    # glass_sizes / cup_sizes: the water glasses and coffee cups on the page, in ml.
-                   {"key": "glass_sizes", "label": "Glasses (ml)", "type": "sizes",
+                   {"key": "glass_sizes", "label": "Glasses (ml)", "type": "sizes", "line2": True,
                     "title": "Sizes of the water glasses, comma separated (at most 4)"},
-                   {"key": "cup_sizes", "label": "Cups (ml)", "type": "sizes",
+                   {"key": "cup_sizes", "label": "Cups (ml)", "type": "sizes", "line2": True,
                     "title": "Sizes of the coffee cups, comma separated (at most 4; empty: no cups)"}],
     },
     "stretch": {
