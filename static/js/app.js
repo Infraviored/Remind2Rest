@@ -192,6 +192,10 @@ new Vue({
         fitWidth(value) {
             return { width: String(value === undefined ? '' : value).length + 0.6 + 'ch' };
         },
+        // "200, 300 500" -> [200, 300, 500]: whole ml in 1..2000, at most 4 (water glasses, coffee cups).
+        parseSizes(text) {
+            return (text.match(/\d+/g) || []).map(Number).filter(ml => ml > 0 && ml <= 2000).slice(0, 4);
+        },
         // Card border and tint in the type's library color (hex + alpha).
         cardStyle(m) {
             return this.config[m.key].enabled ? { borderColor: m.color + '4d', backgroundColor: m.color + '0d' } : {};

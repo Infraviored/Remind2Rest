@@ -396,6 +396,13 @@
                             <input v-model="config[m.key][f.key]" type="checkbox" :style="{ color: m.color }" />
                             <span>{{ f.label }}</span>
                         </label>
+                        <label v-else-if="f.type === 'sizes'" class="field" :title="f.title || f.label">
+                            <span>{{ fieldName(f.label) }}</span>
+                            <input type="text" :value="(config[m.key][f.key] || []).join(', ')"
+                                @change="config[m.key][f.key] = parseSizes($event.target.value); $event.target.value = config[m.key][f.key].join(', ')"
+                                :style="fitWidth((config[m.key][f.key] || []).join(', ') || '0')" placeholder="none" />
+                            <span>{{ fieldUnit(f.label) }}</span>
+                        </label>
                         <label v-else class="field" :title="f.title || f.label">
                             <span>{{ fieldName(f.label) }}</span>
                             <input v-model.number="config[m.key][f.key]" type="number" min="0" :style="fitWidth(config[m.key][f.key])" />

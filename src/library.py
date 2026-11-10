@@ -37,11 +37,17 @@ LIBRARY = {
         "symbolic_icon": "weather-showers-symbolic",
         "color": "#38bdf8",
         "defaults": {"enabled": False, "every": 40, "reminders": [], "daily_goal_ml": 2000,
-                     "stop_at_goal": True, "auto_close": 0},
+                     "stop_at_goal": True, "auto_close": 0, "glass_sizes": [200, 300, 500],
+                     "cup_sizes": [200, 300]},
         # stop_at_goal: once today's water reaches the goal, no more water reminders until tomorrow.
         "fields": [{"key": "daily_goal_ml", "label": "Goal (ml/day)"}, AUTO_CLOSE,
                    {"key": "stop_at_goal", "label": "Stop at goal", "type": "check",
-                    "title": "Once today's goal is reached, no more water reminders until tomorrow"}],
+                    "title": "Once today's goal is reached, no more water reminders until tomorrow"},
+                   # glass_sizes / cup_sizes: the water glasses and coffee cups on the page, in ml.
+                   {"key": "glass_sizes", "label": "Glasses (ml)", "type": "sizes",
+                    "title": "Sizes of the water glasses, comma separated (at most 4)"},
+                   {"key": "cup_sizes", "label": "Cups (ml)", "type": "sizes",
+                    "title": "Sizes of the coffee cups, comma separated (at most 4; empty: no cups)"}],
     },
     "stretch": {
         "title": "Stretch",

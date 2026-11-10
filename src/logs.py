@@ -32,24 +32,24 @@ def read_ratings(days):
 LEGACY_GLASS_ML = 250
 MAX_WATER_ML = 2000
 
+DRINKS = ("water", "coffee")
+
 _water_cache = {
     "mtime_ns": None,
     "size": None,
     "day": None,
-    "total": 0,
+    "totals": None,
 }
 
 
-def water_today_ml():
-    """Sum of the water logged today, in ml."""
+def drinks_today_ml():
+    """Today's logged drinks in ml, per kind: {"water": ..., "coffee": ...}."""
+    empty = dict.fromkeys(DRINKS, 0)
     try:
         stat = os.stat(WATER_LOG_PATH)
     except OSError:
-        _water_cache["mtime_ns"] = None
-        _water_cache["size"] = None
-        _water_cache["day"] = None
-        _water_cache["total"] = 0
-        return 0
+        _water_cache.update(mtime_ns=None, size=None, day=None, totals=None)
+        return empty
 
     today = datetime.now().strftime("%Y-%m-%d")
     if (
@@ -57,25 +57,29 @@ def water_today_ml():
         and _water_cache["mtime_ns"] == stat.st_mtime_ns
         and _water_cache["size"] == stat.st_size
     ):
-        return _water_cache["total"]
+        return dict(_water_cache["totals"])
 
-    total = 0
+    totals = empty
     try:
         with open(WATER_LOG_PATH, "r") as file:
             for line in file:
                 if not line.startswith(today):
                     continue
-                # "YYYY-MM-DD HH:MM:SS <ml>" or, in old logs, "YYYY-MM-DD HH:MM:SS"
+                # "YYYY-MM-DD HH:MM:SS <ml> [coffee]" or, in old logs, "YYYY-MM-DD HH:MM:SS"
                 parts = line.split()
                 if len(parts) == 2:
-                    total += LEGACY_GLASS_ML
-                elif len(parts) == 3 and parts[2].isdigit():
-                    total += int(parts[2])
+                    totals["water"] += LEGACY_GLASS_ML
+                elif len(parts) in (3, 4) and parts[2].isdigit():
+                    kind = parts[3] if len(parts) == 4 else "water"
+                    if kind in totals:
+                        totals[kind] += int(parts[2])
     except OSError:
-        return 0
+        return empty
 
-    _water_cache["mtime_ns"] = stat.st_mtime_ns
-    _water_cache["size"] = stat.st_size
-    _water_cache["day"] = today
-    _water_cache["total"] = total
-    return total
+    _water_cache.update(mtime_ns=stat.st_mtime_ns, size=stat.st_size, day=today, totals=totals)
+    return dict(totals)
+
+
+def water_today_ml():
+    """Everything drunk today in ml (water and coffee): what counts towards the daily goal."""
+    return sum(drinks_today_ml().values())

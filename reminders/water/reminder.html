@@ -12,16 +12,12 @@
 <div class="stage">
     <header>
         <h1 id="title">Time for some water</h1>
-        <p class="sub">Drag a glass to the carafe and tip it in, or press 1, 2 or 3</p>
+        <p class="sub">Drag a glass to the carafe and tip it in</p>
     </header>
 
     <div class="scene">
-        <!-- The shelf: water.js draws a glass into each slot. -->
-        <div class="shelf" id="glasses">
-            <div class="glass" data-ml="200" data-key="1" role="button" aria-label="200 ml glass, key 1"></div>
-            <div class="glass" data-ml="300" data-key="2" role="button" aria-label="300 ml glass, key 2"></div>
-            <div class="glass" data-ml="500" data-key="3" role="button" aria-label="500 ml glass, key 3"></div>
-        </div>
+        <!-- The shelf: water.js puts the glasses (and the coffee cups above them) in here. -->
+        <div class="shelf" id="glasses"></div>
 
         <!-- The day carafe: full = today's goal. -->
         <div class="carafe-wrap">
@@ -31,8 +27,8 @@
                         <path d="M44 14 L156 14 L156 44 C156 66 178 76 178 102 L178 320 Q178 342 156 342 L44 342 Q22 342 22 320 L22 102 C22 76 44 66 44 44 Z"/>
                     </clipPath>
                     <linearGradient id="carafeFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0" stop-color="#38bdf8" stop-opacity="0.8"/>
-                        <stop offset="1" stop-color="#818cf8" stop-opacity="0.7"/>
+                        <stop id="carafeTop" offset="0" stop-color="#38bdf8" stop-opacity="0.8"/>
+                        <stop id="carafeBottom" offset="1" stop-color="#818cf8" stop-opacity="0.7"/>
                     </linearGradient>
                 </defs>
                 <g clip-path="url(#carafeInside)">
@@ -63,7 +59,7 @@
 <svg class="stream-layer" aria-hidden="true">
     <path id="stream" fill="#38bdf8" fill-opacity="0.8" stroke-linejoin="round"/>
     <path id="streamCore" fill="#e0f2fe" fill-opacity="0.55"/>
-    <g id="drops" fill="#7dd3fc" fill-opacity="0.85"></g>
+    <g id="drops" fill-opacity="0.85"></g>
 </svg>
 <div class="esc-hint"><kbd>Esc</kbd> closes</div>
 
