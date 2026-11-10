@@ -339,7 +339,7 @@ const rot = (p, deg) => {
 
     // --- geometry (screen px), measured while nothing is moved ---
     let geo = null;
-    // The shelf: water glasses on the table, coffee cups on a board above. Keys 1.. in reading order.
+    // The shelf: water glasses on the table, coffee cups on a board above.
     const rows = [['cups', 'cup', 'coffee', state.cups || []], ['glasses', 'glass', 'water', state.glasses || []]]
         .filter(row => row[3].length);
     const order = [...rows].reverse();   // glasses first: they keep keys 1, 2, 3
@@ -351,8 +351,9 @@ const rot = (p, deg) => {
             + ` role="button" aria-label="${ml} ml ${drink === 'coffee' ? 'coffee cup' : 'glass'}, key ${key}"></div>`;
     }).join('')}</div>`).join('');
     const total = nextKey - 1;
-    document.querySelector('.sub').textContent = `Drag a ${rows.length > 1 ? 'glass or cup' : 'glass'} to the carafe `
-        + `and tip it in, or press ${total > 1 ? `1 to ${total}` : '1'}`;
+    const vessel = rows.length > 1 ? 'glass or cup' : (rows[0] ? (rows[0][1] === 'cup' ? 'cup' : 'glass') : 'glass');
+    const keyHint = total > 0 ? `, or press ${total > 1 ? `1 to ${total}` : '1'}` : '';
+    document.querySelector('.sub').textContent = `Drag a ${vessel} to the carafe and tip it in${keyHint}`;
 
     const glasses = [...shelf.querySelectorAll('.glass')].map((el, i) => {
         const ml = Number(el.dataset.ml);
