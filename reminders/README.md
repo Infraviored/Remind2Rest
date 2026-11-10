@@ -60,8 +60,8 @@ const {settings = {}} = await R2R.hold(api.get_context());
 | `snooze()` | "Later": closes the window; the daemon shows it again halfway to the type's next regular time; a second Later in a row (or one less than 10 min before that time) lets it drop out until the next regular time. Without a daemon the window hides and comes back itself after `minutes` (optional argument, default 10) |
 | `save_rating(rating)` | posture: appends `YYYY-MM-DD HH:MM:SS - Rating: <1-5>` to the ratings file |
 | `get_ratings(days)` | posture: `[{time: "YYYY-MM-DD HH:MM:SS", rating: 1-5}, ...]` of the last `days` days, oldest first |
-| `log_water(ml)` | water: appends `YYYY-MM-DD HH:MM:SS <ml>` to the water log (`ml` a whole number, 1-2000), returns `{today_ml, goal_ml}` |
-| `get_water_today()` | water: `{today_ml: <ml logged today>, goal_ml: <settings.daily_goal_ml>}`. Old log lines with only a timestamp count as 250 ml |
+| `log_water(ml, kind="water")` | water: appends `YYYY-MM-DD HH:MM:SS <ml> [coffee]` to the water log (`ml` a whole number, 1-2000; `kind` is `"water"` or `"coffee"`), returns `{today_ml, coffee_ml, goal_ml, glasses, cups}` |
+| `get_water_today()` | water: `{today_ml: <total ml today>, coffee_ml: <coffee ml today>, goal_ml: <settings.daily_goal_ml>, glasses: <glass sizes>, cups: <cup sizes>}`. Old log lines with only a timestamp count as 250 ml |
 
 ## Types and settings
 
@@ -69,7 +69,7 @@ const {settings = {}} = await R2R.hold(api.get_context());
 |---|---|
 | `eye_relax` | `relax_duration` s, `flash_frequency` Hz |
 | `posture` | `auto_close` s (default 5, see above); the rating buttons react at once (older configs may still hold `wait_duration`, it is removed on load) |
-| `water` | `daily_goal_ml` ml per day (default 2000); `stop_at_goal` (default on): once today's goal is reached, the scheduler shows no more water reminders until tomorrow (a reminder opened by hand still shows); `auto_close` s (default 0) |
+| `water` | `daily_goal_ml` ml per day (default 2000); `stop_at_goal` (default on): once today's goal is reached, the scheduler shows no more water reminders until tomorrow (a reminder opened by hand still shows); `auto_close` s (default 0); `glass_sizes` (default `[200, 300, 500]`); `cup_sizes` (default `[200, 300]`) |
 | `stretch` | `move_duration` s per move (default 20); four moves, then the page closes |
 | `breathing` | `cycles` 4-7-8 breaths (default 3); closes after the last exhale |
 | `airing` | `auto_close` s (default 0). "Done" closes, "Later" snoozes (see `snooze()`) |
