@@ -1,8 +1,11 @@
 import os
+import sys
 import tempfile
 import unittest
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+sys.modules.setdefault("webview", MagicMock())
 
 from src import logs, overlay
 

@@ -59,7 +59,7 @@ def drinks_today_ml():
     ):
         return dict(_water_cache["totals"])
 
-    totals = empty
+    totals = dict(empty)
     try:
         with open(WATER_LOG_PATH, "r") as file:
             for line in file:
