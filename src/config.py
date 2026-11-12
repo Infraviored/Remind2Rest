@@ -19,6 +19,7 @@ if os.name == 'nt':
     LOG_PATH = os.path.join(base_dir, 'Remind2Rest.log')
     RATINGS_FILE_PATH = os.path.join(base_dir, 'posture_ratings.txt')
     WATER_LOG_PATH = os.path.join(base_dir, 'water_log.txt')
+    ACTIVITY_PATH = os.path.join(base_dir, 'activity_today.json')
     ADDR = ('127.0.0.1', 55555)
     SOCKET_FAMILY = socket.AF_INET
 else:
@@ -26,6 +27,7 @@ else:
     LOG_PATH = os.path.expanduser("~/.local/share/Remind2Rest/Remind2Rest.log")
     RATINGS_FILE_PATH = os.path.join(script_dir, 'posture_ratings.txt')
     WATER_LOG_PATH = os.path.join(script_dir, 'water_log.txt')
+    ACTIVITY_PATH = os.path.expanduser("~/.local/share/Remind2Rest/activity_today.json")
     ADDR = os.path.expanduser("~/.Remind2Rest.sock")
     SOCKET_FAMILY = getattr(socket, 'AF_UNIX', socket.AF_INET)
 

@@ -15,7 +15,7 @@ from src.config import CONFIG_PATH, LOG_PATH, SOCKET_FAMILY, ADDR, VERSION, load
 from src.library import LIBRARY
 from src.conference import detector as conference
 from src.ipc import create_server_socket, cleanup_socket
-from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume, prewarm, snooze, report_drink, report_rating, emit, start_activity
+from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume, prewarm, snooze, report_drink, report_rating, emit, start_activity, activity
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -214,6 +214,8 @@ def main():
 
             time.sleep(0.1)
         logging.info("Remind2Rest daemon stopped")
+        activity.tick()
+        activity.save()
         task = emit("daemon", state="stopped", version=VERSION)
         if task is not None:
             task.join(timeout=3)

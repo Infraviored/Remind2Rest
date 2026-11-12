@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from apscheduler.triggers.interval import IntervalTrigger
 
 from src.activity import ActivityTracker, SnapshotSender
-from src.config import LOG_PATH
+from src.config import ACTIVITY_PATH, LOG_PATH
 from src.conference import detector as conference
 from src.gate import ReminderGate
 from src.library import LIBRARY, page_settings
@@ -394,7 +394,7 @@ def skip_reason():
 
 gate = ReminderGate(spawn_reminder, is_locked=is_locked, find_missed=find_missed, skip_reason=skip_reason,
                     in_conference=lambda: conference.active, on_event=_gate_event)
-activity = ActivityTracker()
+activity = ActivityTracker(path=ACTIVITY_PATH)
 snapshots = SnapshotSender(build_snapshot, report_snapshot)
 
 

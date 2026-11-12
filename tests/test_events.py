@@ -27,6 +27,22 @@ class Clock:
 
 
 class ActivityTest(unittest.TestCase):
+    def test_count_survives_a_restart_the_same_day_only(self):
+        import tempfile, os
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "activity.json")
+            c = Clock(datetime(2026, 11, 12, 10, 0, 0))
+            t = ActivityTracker(c, path=path)
+            t.reset()
+            self.run_for(t, c, 180)   # saved once a minute
+            restarted = ActivityTracker(c, path=path)
+            restarted.reset()
+            self.assertEqual(restarted.minutes, 3)
+            c.advance(86400)
+            next_day = ActivityTracker(c, path=path)
+            next_day.reset()
+            self.assertEqual(next_day.minutes, 0)
+
     def run_for(self, tracker, clock, seconds):
         for _ in range(seconds):
             clock.advance(1)
