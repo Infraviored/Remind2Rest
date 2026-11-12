@@ -4,6 +4,7 @@ ActivityTracker (minutes today with the screen unlocked and the machine awake) a
 import json
 import logging
 import os
+import threading
 import time
 from datetime import date, datetime, timedelta
 
@@ -27,43 +28,55 @@ class ActivityTracker:
         self._day = self._last.date()
         self._seconds = 0.0
         self._saved_at = self._last
+        self._lock = threading.Lock()
 
     def reset(self, locked=False):
         """Daemon start: count from now on, continuing today's saved count if there is one."""
-        self._locked = bool(locked)
-        self._last = self._clock()
-        self._day = self._last.date()
-        self._seconds = self._load()
-        self._saved_at = self._last
+        with self._lock:
+            self._locked = bool(locked)
+            self._last = self._clock()
+            self._day = self._last.date()
+            self._seconds = self._load()
+            self._saved_at = self._last
 
     def _load(self):
         if not self._path:
             return 0.0
         try:
-            with open(self._path) as f:
+            with open(self._path, encoding="utf-8") as f:
                 data = json.load(f)
             if date.fromisoformat(data["day"]) == self._day:
                 return max(0.0, float(data["seconds"]))
         except FileNotFoundError:
             pass
         except (OSError, ValueError, KeyError, TypeError) as e:
-            logging.warning(f"Could not read the activity count ({e}); starting at 0")
+            logging.warning("Could not read the activity count (%s); starting at 0", e)
         return 0.0
 
     def save(self):
+        with self._lock:
+            self._save_locked()
+
+    def _save_locked(self):
         if not self._path:
             return
         self._saved_at = self._last
         try:
-            os.makedirs(os.path.dirname(self._path), exist_ok=True)
+            dirname = os.path.dirname(self._path)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
             tmp = self._path + ".tmp"
-            with open(tmp, "w") as f:
+            with open(tmp, "w", encoding="utf-8") as f:
                 json.dump({"day": self._day.isoformat(), "seconds": round(self._seconds, 1)}, f)
             os.replace(tmp, self._path)
         except OSError as e:
-            logging.warning(f"Could not save the activity count ({e})")
+            logging.warning("Could not save the activity count (%s)", e)
 
     def tick(self):
+        with self._lock:
+            self._tick_locked()
+
+    def _tick_locked(self):
         now = self._clock()
         last, self._last = self._last, now
         if now <= last:
@@ -76,16 +89,18 @@ class ActivityTracker:
         if not self._locked and not is_suspend:
             self._seconds += (now - last).total_seconds()
         if (now - self._saved_at).total_seconds() >= SAVE_EVERY:
-            self.save()
+            self._save_locked()
 
     def set_locked(self, locked):
-        self.tick()  # time up to now still belongs to the old state
-        self._locked = bool(locked)
+        with self._lock:
+            self._tick_locked()  # time up to now still belongs to the old state
+            self._locked = bool(locked)
 
     @property
     def minutes(self):
-        self.tick()
-        return int(self._seconds // 60)
+        with self._lock:
+            self._tick_locked()
+            return int(self._seconds // 60)
 
 
 class SnapshotSender:

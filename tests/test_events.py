@@ -1,8 +1,10 @@
 """Webhook events beyond conference and drink. Nothing here reaches the live daemon socket or a URL:
 send_event and the socket helpers are patched."""
+import json
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, PropertyMock, patch
@@ -28,7 +30,6 @@ class Clock:
 
 class ActivityTest(unittest.TestCase):
     def test_count_survives_a_restart_the_same_day_only(self):
-        import tempfile, os
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "activity.json")
             c = Clock(datetime(2026, 11, 12, 10, 0, 0))
@@ -42,6 +43,49 @@ class ActivityTest(unittest.TestCase):
             next_day = ActivityTracker(c, path=path)
             next_day.reset()
             self.assertEqual(next_day.minutes, 0)
+
+    def test_save_with_bare_relative_filename(self):
+        with tempfile.TemporaryDirectory() as d:
+            old_cwd = os.getcwd()
+            os.chdir(d)
+            try:
+                c = Clock(datetime(2026, 11, 12, 10, 0, 0))
+                t = ActivityTracker(c, path="activity.json")
+                t.reset()
+                self.run_for(t, c, 60)
+                t.save()
+                self.assertTrue(os.path.exists("activity.json"))
+                with open("activity.json", encoding="utf-8") as f:
+                    data = json.load(f)
+                self.assertEqual(data["day"], "2026-11-12")
+                self.assertEqual(data["seconds"], 60.0)
+            finally:
+                os.chdir(old_cwd)
+
+    def test_concurrent_tick_and_save(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "activity.json")
+            c = Clock(datetime(2026, 11, 12, 10, 0, 0))
+            t = ActivityTracker(c, path=path)
+            t.reset()
+            errors = []
+
+            def worker():
+                try:
+                    for _ in range(50):
+                        t.tick()
+                        t.save()
+                        _ = t.minutes
+                except Exception as e:
+                    errors.append(e)
+
+            threads = [threading.Thread(target=worker) for _ in range(4)]
+            for th in threads:
+                th.start()
+            for th in threads:
+                th.join()
+
+            self.assertEqual(errors, [])
 
     def run_for(self, tracker, clock, seconds):
         for _ in range(seconds):
@@ -251,6 +295,10 @@ class SchedulerEventTest(unittest.TestCase):
         self.addCleanup(setattr, scheduler, "current_config", scheduler.current_config)
         scheduler._snoozes.clear()
         self.addCleanup(scheduler._snoozes.clear)
+        self.addCleanup(setattr, scheduler.activity, "_path", scheduler.activity._path)
+        scheduler.activity._path = None
+        self.addCleanup(setattr, scheduler.activity, "_seconds", scheduler.activity._seconds)
+        scheduler.activity._seconds = 0.0
 
     def events(self):
         return [(c.args[0], c.kwargs) for c in self.send.call_args_list]
