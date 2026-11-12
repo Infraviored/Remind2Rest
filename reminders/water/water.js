@@ -807,7 +807,7 @@ const rot = (p, deg) => {
                 impact = {x: (tip.x - geo.left) / geo.s, force: IMPACT * wBase * Math.sqrt(tip.q) / geo.s};
             }
         } else {
-            stream.removeAttribute('d'); streamCore.removeAttribute('d');
+            stream.removeAttribute('d'); streamCore.removeAttribute('d'); streamGlow.removeAttribute('d');
         }
 
         // The last drops from the rim, after the flow.
