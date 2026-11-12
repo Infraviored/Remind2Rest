@@ -7,6 +7,7 @@ import threading
 from datetime import datetime, timedelta
 from apscheduler.triggers.interval import IntervalTrigger
 
+from src.activity import ActivityTracker, SnapshotSender
 from src.config import LOG_PATH
 from src.conference import detector as conference
 from src.gate import ReminderGate
@@ -39,6 +40,60 @@ def get_current_status():
     return status
 
 
+def emit(event_type, **fields):
+    """Send a webhook event; never raises. Returns the WebhookTask or None."""
+    try:
+        return conference.send_event(event_type, **fields)
+    except Exception as e:
+        logging.debug(f"Event {event_type} not sent: {e}")
+        return None
+
+
+def _gate_event(event_type, **fields):
+    if event_type == "screen":
+        activity.set_locked(fields["state"] == "locked")
+    return emit(event_type, **fields)
+
+
+def _local_iso(moment):
+    return moment.astimezone().isoformat(timespec="seconds")
+
+
+def next_times(now=None):
+    """module -> ISO time of its next regular reminder, enabled modules with a regular time only
+    (not those whose goal is reached today)."""
+    now = (now or datetime.now()).replace(microsecond=0)
+    result = {}
+    for module in LIBRARY:
+        entry = (current_config or {}).get(module) or {}
+        minutes = minutes_to_next_regular(module, now)
+        if minutes is None or goal_reached(module, entry):
+            continue
+        result[module] = _local_iso(now + timedelta(minutes=minutes))
+    return result
+
+
+def build_snapshot():
+    """The state Home Assistant keeps as sensors (event "snapshot")."""
+    drinks = drinks_today_ml()
+    goal = page_settings("water", (current_config or {}).get("water", {})).get("daily_goal_ml", 2000)
+    return {"paused_until": _local_iso(paused_until) if is_paused() else None,
+            "conference": "on" if conference.active else "off",
+            "today_ml": sum(drinks.values()), "coffee_ml": drinks["coffee"], "goal_ml": goal,
+            "active_min_today": activity.minutes, "next": next_times()}
+
+
+def report_snapshot(snapshot):
+    return emit("snapshot", **snapshot)
+
+
+def report_rating(rating):
+    """A posture rating the reminder window just saved (RATING <n>)."""
+    if isinstance(rating, bool) or not isinstance(rating, int) or not 1 <= rating <= 5:
+        raise ValueError(f"invalid rating {rating!r}")
+    return emit("posture_rating", rating=rating)
+
+
 def report_drink(kind, ml):
     """A drink the reminder window just logged (DRINK <kind> <ml>): sent to the webhook with the
     day's totals from the log, so Home Assistant can keep its sensors. Returns the WebhookTask or
@@ -55,12 +110,14 @@ def pause(minutes):
     global paused_until
     paused_until = datetime.now() + timedelta(minutes=minutes)
     logging.info(f"Reminders paused until {paused_until:%H:%M}")
+    emit("pause", paused_until=_local_iso(paused_until))
 
 
 def resume():
     global paused_until
     paused_until = None
     logging.info("Reminders resumed")
+    emit("pause", paused_until=None)
 
 
 def is_paused() -> bool:
@@ -117,11 +174,14 @@ def snooze(module, now=None):
         _snoozes[module] = {"count": count, "due": due}
     if minutes is not None:
         logging.info(f"{module} snoozed for {minutes:.0f} min (Later #{count} in a row)")
+        emit("reminder_snoozed", module=module, minutes=round(minutes), count=count)
         return minutes
     if gap is None:
         logging.info(f"{module} dropped out after Later #{count}; it has no regular time")
+        emit("reminder_skipped", module=module, reason="dropped")
         return 0
     logging.info(f"{module} dropped out after Later #{count}; next regular time in {gap:.0f} min")
+    emit("reminder_skipped", module=module, reason="dropped")
     return gap
 
 
@@ -188,12 +248,14 @@ def log_goal_skipped(module, settings, today=None, action=""):
         goal = 2000
     extra = f" {action}" if action else ""
     logging.info(f"Skipping {module} reminder{extra}: today's goal is reached ({today} / {goal:g} ml)")
+    emit("reminder_skipped", module=module, reason="goal_reached")
 
 
 def trigger_reminder(module, settings):
     # During a video conference the gate defers the reminder until the conference has ended.
     if is_paused():
         logging.info(f"Skipping {module} reminder while paused")
+        emit("reminder_skipped", module=module, reason="paused")
         return
     if goal_reached(module, settings):
         log_goal_skipped(module, settings)
@@ -331,7 +393,18 @@ def skip_reason():
 
 
 gate = ReminderGate(spawn_reminder, is_locked=is_locked, find_missed=find_missed, skip_reason=skip_reason,
-                    in_conference=lambda: conference.active)
+                    in_conference=lambda: conference.active, on_event=_gate_event)
+activity = ActivityTracker()
+snapshots = SnapshotSender(build_snapshot, report_snapshot)
+
+
+def start_activity():
+    """Daemon start: the activity count begins now, unlocked unless the session says it is locked."""
+    try:
+        locked = bool(is_locked())
+    except Exception:
+        locked = False
+    activity.set_locked(locked)
 
 def schedule_reminders(scheduler, config):
     if not config or not isinstance(config, dict):
@@ -376,6 +449,11 @@ def schedule_reminders(scheduler, config):
     def check_and_trigger_reminders():
         current_time = datetime.now()
         gate.tick()
+        try:
+            activity.tick()
+            snapshots.tick()
+        except Exception as e:
+            logging.debug(f"Activity or snapshot failed: {e}")
         elapsed_minutes = (
             current_time.hour * 60 + current_time.minute
         ) % interval_minutes
@@ -409,6 +487,7 @@ def schedule_reminders(scheduler, config):
                             trigger_reminder(module, config[module])
                         else:
                             logging.info(f"Skipping scheduled {module} reminder: it is snoozed")
+                            emit("reminder_skipped", module=module, reason="snoozed")
 
         if not is_paused():
             for module in due_snoozes():
@@ -417,7 +496,7 @@ def schedule_reminders(scheduler, config):
                         log_goal_skipped(module, config[module], today=today_water, action="after snooze")
                         continue
                     logging.info(f"{module} back after snooze")
-                    gate.request(module, config[module])
+                    gate.request(module, config[module], trigger="after_snooze")
 
         # Not at 0: that is the tick the reminder fires in, which just used the warm overlay.
         if (0 < time_to_next <= PREWARM_LEAD or gate.can_prewarm_pending) and not is_paused():

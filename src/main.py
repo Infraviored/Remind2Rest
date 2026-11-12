@@ -11,11 +11,11 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from logging.handlers import RotatingFileHandler
 
-from src.config import CONFIG_PATH, LOG_PATH, SOCKET_FAMILY, ADDR, load_config
+from src.config import CONFIG_PATH, LOG_PATH, SOCKET_FAMILY, ADDR, VERSION, load_config
 from src.library import LIBRARY
 from src.conference import detector as conference
 from src.ipc import create_server_socket, cleanup_socket
-from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume, prewarm, snooze, report_drink
+from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume, prewarm, snooze, report_drink, report_rating, emit, start_activity
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -63,6 +63,8 @@ def main():
 
         logging.info("Remind2Rest daemon started successfully")
         schedule_reminders(scheduler, config)
+        start_activity()
+        emit("daemon", state="started", version=VERSION)
 
         stop = threading.Event()
         if os.name == "nt":
@@ -167,6 +169,16 @@ def main():
                                 conn.sendall(b"OK")
                             except ValueError as e:
                                 conn.sendall(f"ERR {e}".encode())
+                        elif command.startswith("RATING "):
+                            # RATING <1-5>: the posture page saved a rating; passed on to the webhook.
+                            parts = command.split()
+                            try:
+                                if len(parts) != 2:
+                                    raise ValueError("RATING takes a number from 1 to 5")
+                                report_rating(int(parts[1]))
+                                conn.sendall(b"OK")
+                            except ValueError as e:
+                                conn.sendall(f"ERR {e}".encode())
                         elif command.startswith("SNOOZE "):
                             # SNOOZE <type>: Later on a reminder page; the reply names the minutes until
                             # it is shown again (snooze, or its next regular time when it drops out).
@@ -202,6 +214,9 @@ def main():
 
             time.sleep(0.1)
         logging.info("Remind2Rest daemon stopped")
+        task = emit("daemon", state="stopped", version=VERSION)
+        if task is not None:
+            task.join(timeout=3)
     finally:
         if tray:
             tray.stop()

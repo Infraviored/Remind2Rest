@@ -120,6 +120,17 @@ If *Webhook* is set, Remind2Rest POSTs JSON messages there. Each carries `type`,
 - `conference`: every start and end of a conference, and the current state once when the daemon starts (so Home Assistant is right again after a reboot). `state` is `on` or `off` (`test` from the *Send test* button).
 - `drink`: every drink logged on the water page. `kind` is `water` or `coffee`; `today_ml` is the day's total including coffee.
 
+- `screen`: `state` is `locked` or `unlocked`.
+- `suspend`: the machine woke up after `gap_s` seconds.
+- `daemon`: `state` is `started` or `stopped`; `version`.
+- `reminder_shown`: `module`, `trigger` is `scheduled`, `now`, `after_snooze` or `deferred`.
+- `reminder_closed`: `module`, `duration_s`.
+- `reminder_snoozed`: `module`, `minutes`, `count` (Laters in a row).
+- `reminder_skipped`: `module`, `reason` is `paused`, `goal_reached`, `snoozed` or `dropped`.
+- `posture_rating`: `rating` (1 to 5).
+- `pause`: `paused_until` (ISO time with offset), or `null` on resume.
+- `snapshot`: the whole state at once, sent at start, every 15 minutes and (at most once a minute) when the pause, the conference or the drink totals changed: `paused_until` (or `null`), `conference` (`on`/`off`), `today_ml`, `coffee_ml`, `goal_ml`, `active_min_today` (minutes today with the screen unlocked and the machine awake) and `next` (module to ISO time of its next regular reminder, enabled modules only).
+
 ```json
 {"type": "conference", "host": "my-laptop", "time": "2026-10-30T10:15:00+01:00", "state": "on", "reasons": ["microphone", "camera"]}
 {"type": "drink", "host": "my-laptop", "time": "2026-10-30T10:20:00+01:00", "kind": "coffee", "ml": 200, "today_ml": 950, "coffee_ml": 400, "goal_ml": 2000}

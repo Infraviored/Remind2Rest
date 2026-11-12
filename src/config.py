@@ -7,6 +7,9 @@ from src.library import fill_defaults
 
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
+# Sent with the daemon events; no release numbering exists yet.
+VERSION = "dev"
+
 # Platform-specific paths and socket configuration
 if os.name == 'nt':
     appdata = os.environ.get('LOCALAPPDATA', os.path.expanduser('~/AppData/Local'))

@@ -177,6 +177,7 @@ class OverlayApi:
         os.makedirs(os.path.dirname(RATINGS_FILE_PATH), exist_ok=True)
         with open(RATINGS_FILE_PATH, "a") as file:
             file.write(f"{datetime.now().strftime(TIME_FORMAT)} - Rating: {r}\n")
+        self._tell_daemon_rating(r)
 
     def get_ratings(self, days):
         if isinstance(days, bool) or not isinstance(days, (int, float, str)):
@@ -207,20 +208,26 @@ class OverlayApi:
         self._tell_daemon_drink(kind, amount)
         return self.get_water_today()
 
-    def _tell_daemon_drink(self, kind, amount):
-        """The daemon sends the drink to the webhook (this window may close any moment). Best effort:
-        without a daemon the drink is only in the log."""
+    def _tell_daemon(self, command, what):
+        """Best effort: the daemon sends it to the webhook (this window may close any moment).
+        Without a daemon it is only in the log file."""
         try:
             with socket.socket(SOCKET_FAMILY, socket.SOCK_STREAM) as s:
                 s.settimeout(2)
                 s.connect(ADDR)
-                s.sendall(f"DRINK {kind} {amount}".encode())
+                s.sendall(command.encode())
                 reply = s.recv(64).decode(errors="replace")
         except OSError as e:
-            logging.warning(f"Could not tell the daemon about the drink ({e})")
+            logging.warning(f"Could not tell the daemon about the {what} ({e})")
             return
         if not reply.startswith("OK"):
-            logging.warning(f"Daemon refused the drink ({reply})")
+            logging.warning(f"Daemon refused the {what} ({reply})")
+
+    def _tell_daemon_drink(self, kind, amount):
+        self._tell_daemon(f"DRINK {kind} {amount}", "drink")
+
+    def _tell_daemon_rating(self, rating):
+        self._tell_daemon(f"RATING {rating}", "rating")
 
     def get_water_today(self):
         drinks = drinks_today_ml()
