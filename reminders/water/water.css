@@ -83,16 +83,28 @@ body.carrying .sub, body.pouring .sub { opacity: 0; }
     touch-action: none;
 }
 
+/* The glow is a soft gradient behind each vessel, not a CSS filter: the water inside moves every
+   frame, and a filter on it would be re-blurred every frame (25 instead of 60 fps in WebKitGTK). */
 .glass .art {
+    --glow: 56, 189, 248;
+    position: relative;
+    isolation: isolate;
     height: var(--h);
     aspect-ratio: 120 / 160;
-    filter: drop-shadow(0 0 22px rgba(56, 189, 248, 0.3));
-    transition: filter 200ms;
     will-change: transform;
 }
-.glass:hover .art { filter: drop-shadow(0 0 38px rgba(56, 189, 248, 0.65)); }
-.glass.coffee .art { filter: drop-shadow(0 0 22px rgba(176, 120, 80, 0.3)); }
-.glass.coffee:hover .art { filter: drop-shadow(0 0 38px rgba(176, 120, 80, 0.65)); }
+.glass.coffee .art { --glow: 176, 120, 80; }
+.glass .art::before {
+    content: "";
+    position: absolute;
+    inset: -30% -40%;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(closest-side, rgba(var(--glow), 0.32), rgba(var(--glow), 0.1) 60%, transparent);
+    opacity: 0.55;
+    transition: opacity 200ms;
+}
+.glass:hover .art::before { opacity: 1; }
 .glass svg { width: 100%; height: 100%; display: block; overflow: visible; }
 
 .glass .label {
@@ -108,13 +120,15 @@ body.carrying .sub, body.pouring .sub { opacity: 0; }
 
 /* The glass in hand floats above everything. */
 .glass.held, .glass.pouring { z-index: 10; }
-.glass.held .art, .glass.pouring .art { filter: drop-shadow(0 18px 40px rgba(56, 189, 248, 0.5)); }
+.glass.held .art::before, .glass.pouring .art::before { opacity: 1; }
 body.carrying, body.carrying * { cursor: grabbing !important; }
 .shelf.done { pointer-events: none; }
 .shelf.done .glass:not(.pouring) { opacity: 0.25; transition: opacity 200ms; }
 
 /* --- the day carafe --- */
 .carafe-wrap {
+    position: relative;
+    isolation: isolate;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -124,7 +138,15 @@ body.carrying, body.carrying * { cursor: grabbing !important; }
     height: 54vh;   /* the glasses are sized from this, true to volume (water.js) */
     aspect-ratio: 200 / 360;
     overflow: visible;
-    filter: drop-shadow(0 0 30px rgba(56, 189, 248, 0.22));
+}
+/* The carafe's glow, a gradient behind it for the same reason as the glasses'. */
+.carafe-wrap::before {
+    content: "";
+    position: absolute;
+    inset: -6% -30% var(--label-h);
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(closest-side, rgba(56, 189, 248, 0.16), rgba(56, 189, 248, 0.05) 65%, transparent);
 }
 #ticks line { stroke: rgba(226, 232, 255, 0.35); stroke-width: 2; }
 #ticks text { fill: var(--muted); font-size: 12px; font-family: var(--font); opacity: 0.8; }
@@ -147,7 +169,6 @@ body.carrying, body.carrying * { cursor: grabbing !important; }
     height: 100%;
     pointer-events: none;
     z-index: 20;
-    filter: drop-shadow(0 0 8px rgba(56, 189, 248, 0.6));
 }
 
 .actions {
