@@ -25,11 +25,12 @@ class ActivityTracker:
         last, self._last = self._last, now
         if now <= last:
             return
+        is_suspend = (now - last) > timedelta(seconds=WAKE_JUMP)
         if now.date() != self._day:
             self._day = now.date()
             self._seconds = 0.0
             last = max(last, datetime.combine(now.date(), datetime.min.time()))
-        if not self._locked and (now - last) <= timedelta(seconds=WAKE_JUMP):
+        if not self._locked and not is_suspend:
             self._seconds += (now - last).total_seconds()
 
     def set_locked(self, locked):

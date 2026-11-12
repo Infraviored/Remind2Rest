@@ -72,6 +72,14 @@ class ActivityTest(unittest.TestCase):
         t.tick()
         self.assertEqual(t._seconds, 30)
 
+    def test_suspend_across_midnight_is_excluded(self):
+        c = Clock(datetime(2026, 11, 12, 23, 0, 0))
+        t = ActivityTracker(c)
+        c.advance(3630)  # suspended until 00:00:30 on the new day
+        t.tick()
+        self.assertEqual(t.minutes, 0)
+        self.assertEqual(t._seconds, 0)
+
 
 class SnapshotTest(unittest.TestCase):
     def setUp(self):
