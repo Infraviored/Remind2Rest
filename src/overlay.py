@@ -204,7 +204,23 @@ class OverlayApi:
         with open(WATER_LOG_PATH, "a") as file:
             suffix = "" if kind == "water" else f" {kind}"   # plain water lines stay as before
             file.write(f"{datetime.now().strftime(TIME_FORMAT)} {amount}{suffix}\n")
+        self._tell_daemon_drink(kind, amount)
         return self.get_water_today()
+
+    def _tell_daemon_drink(self, kind, amount):
+        """The daemon sends the drink to the webhook (this window may close any moment). Best effort:
+        without a daemon the drink is only in the log."""
+        try:
+            with socket.socket(SOCKET_FAMILY, socket.SOCK_STREAM) as s:
+                s.settimeout(2)
+                s.connect(ADDR)
+                s.sendall(f"DRINK {kind} {amount}".encode())
+                reply = s.recv(64).decode(errors="replace")
+        except OSError as e:
+            logging.warning(f"Could not tell the daemon about the drink ({e})")
+            return
+        if not reply.startswith("OK"):
+            logging.warning(f"Daemon refused the drink ({reply})")
 
     def get_water_today(self):
         drinks = drinks_today_ml()

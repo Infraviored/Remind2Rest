@@ -944,6 +944,50 @@ class WebhookTest(unittest.TestCase):
         # "on" was attempted once; its pending retries were superseded by "off"
         self.assertEqual(posted, ["on", "off"])
 
+    def test_conference_payload_carries_type(self):
+        sent = []
+        with patch.object(conference.urllib.request, "urlopen",
+                          side_effect=lambda req, timeout: sent.append(req) or FakeResponse()):
+            conference.post_webhook(WEBHOOK, "off", [])
+        self.assertEqual(json.loads(sent[0].data)["type"], "conference")
+
+    def test_event_body_is_flat(self):
+        body = conference.event_body("drink", kind="coffee", ml=200)
+        self.assertEqual((body["type"], body["kind"], body["ml"]), ("drink", "coffee", 200))
+        self.assertIn("host", body)
+        self.assertIn("T", body["time"])
+
+    def test_events_are_not_superseded_by_states(self):
+        posted = []
+        failed = []
+
+        def post_state(url, state, reasons):
+            posted.append(state)
+
+        def post_event(url, body):
+            if not failed:
+                failed.append(1)
+                raise OSError("down")
+            posted.append(body["type"])
+
+        dispatcher = conference.WebhookDispatcher(post=post_state, attempts=3, sleep=lambda s: None,
+                                                  post_event=post_event)
+        task1 = dispatcher.send_event(WEBHOOK, {"type": "drink"})
+        task2 = dispatcher.send(WEBHOOK, "on", [])
+        task1.join(5)
+        task2.join(5)
+        dispatcher.stop()
+        self.assertEqual(posted, ["drink", "on"])
+
+    def test_detector_send_event_needs_a_url(self):
+        detector = conference.ConferenceDetector()
+        detector.configure({"webhook_url": ""})
+        with patch.object(conference, "send_event") as send:
+            self.assertIsNone(detector.send_event("drink", ml=1))
+            detector.configure({"webhook_url": WEBHOOK})
+            detector.send_event("drink", ml=1)
+        send.assert_called_once_with(WEBHOOK, "drink", ml=1)
+
     def test_redact_drops_credentials_and_path(self):
         self.assertEqual(conference.redact("https://user:pw@ha.example.invalid:8123/api/webhook/x"),
                          "https://ha.example.invalid:8123/…")

@@ -11,7 +11,7 @@ from src.config import LOG_PATH
 from src.conference import detector as conference
 from src.gate import ReminderGate
 from src.library import LIBRARY, page_settings
-from src.logs import water_today_ml
+from src.logs import DRINKS, MAX_WATER_ML, drinks_today_ml, water_today_ml
 from src.session_lock import is_locked
 
 # Determine root script directory
@@ -37,6 +37,18 @@ def get_current_status():
         status["water_today_ml"] = water_today_ml()
         status["water_goal_ml"] = page_settings("water", water).get("daily_goal_ml", 2000)
     return status
+
+
+def report_drink(kind, ml):
+    """A drink the reminder window just logged (DRINK <kind> <ml>): sent to the webhook with the
+    day's totals from the log, so Home Assistant can keep its sensors. Returns the WebhookTask or
+    None (no webhook URL)."""
+    if kind not in DRINKS or not 0 < ml <= MAX_WATER_ML:
+        raise ValueError(f"invalid drink {kind} {ml}")
+    drinks = drinks_today_ml()
+    goal = page_settings("water", (current_config or {}).get("water", {})).get("daily_goal_ml", 2000)
+    return conference.send_event("drink", kind=kind, ml=ml, today_ml=sum(drinks.values()),
+                                 coffee_ml=drinks["coffee"], goal_ml=goal)
 
 
 def pause(minutes):

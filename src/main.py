@@ -15,7 +15,7 @@ from src.config import CONFIG_PATH, LOG_PATH, SOCKET_FAMILY, ADDR, load_config
 from src.library import LIBRARY
 from src.conference import detector as conference
 from src.ipc import create_server_socket, cleanup_socket
-from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume, prewarm, snooze
+from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume, prewarm, snooze, report_drink
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -157,6 +157,16 @@ def main():
                         elif command == "RESUME":
                             resume()
                             conn.sendall(b"OK")
+                        elif command.startswith("DRINK "):
+                            # DRINK <kind> <ml>: the water page logged a drink; passed on to the webhook.
+                            parts = command.split()
+                            try:
+                                if len(parts) != 3:
+                                    raise ValueError("DRINK takes a kind and an amount in ml")
+                                report_drink(parts[1], int(parts[2]))
+                                conn.sendall(b"OK")
+                            except ValueError as e:
+                                conn.sendall(f"ERR {e}".encode())
                         elif command.startswith("SNOOZE "):
                             # SNOOZE <type>: Later on a reminder page; the reply names the minutes until
                             # it is shown again (snooze, or its next regular time when it drops out).

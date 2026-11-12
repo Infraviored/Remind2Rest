@@ -548,14 +548,25 @@ def format_error(e):
     return f"{type(e).__name__}"
 
 
-def post_webhook(url, state, reasons):
-    """POST one state change; raises on failure. Used directly by the settings window's test button."""
-    body = json.dumps({"state": state, "reasons": list(reasons), "host": socket.gethostname(),
-                       "time": datetime.now().astimezone().isoformat(timespec="seconds")}).encode()
-    request = urllib.request.Request(url, data=body, method="POST",
+def event_body(event_type, **fields):
+    """One webhook message: the envelope (type, host, time) with the type's fields flat beside it.
+    The receiver (Home Assistant) treats a message without type as conference, the older format."""
+    return {"type": event_type, "host": socket.gethostname(),
+            "time": datetime.now().astimezone().isoformat(timespec="seconds"), **fields}
+
+
+def post_json(url, body):
+    """POST one message; raises on failure."""
+    request = urllib.request.Request(url, data=json.dumps(body).encode(), method="POST",
                                      headers={"Content-Type": "application/json"})
     with urllib.request.urlopen(request, timeout=WEBHOOK_TIMEOUT) as response:
         return response.status
+
+
+def post_webhook(url, state, reasons):
+    """POST one conference state change; raises on failure. Used directly by the settings window's
+    test button."""
+    return post_json(url, event_body("conference", state=state, reasons=list(reasons)))
 
 
 class WebhookTask:
@@ -570,29 +581,40 @@ class WebhookTask:
 
 
 class WebhookDispatcher:
-    """Serializes webhook dispatches through a single worker thread. If a newer state arrives while
-    an older state is waiting to retry, the pending retries of the older state are superseded."""
+    """Serializes webhook dispatches through a single worker thread. Conference states supersede each
+    other: if a newer state arrives while an older one is waiting to retry, the older one's pending
+    retries are dropped. Other events (a drink, ...) are each delivered, never superseded."""
 
-    def __init__(self, post=post_webhook, attempts=WEBHOOK_ATTEMPTS, sleep=time.sleep):
+    def __init__(self, post=post_webhook, attempts=WEBHOOK_ATTEMPTS, sleep=time.sleep, post_event=post_json):
         self._post = post
+        self._post_event = post_event
         self._attempts = attempts
         self._sleep = sleep
         self._cond = threading.Condition()
         self._queue = []
-        self._latest_generation = 0
+        self._generations = {}   # supersede key -> latest generation
         self._thread = None
         self._stop = False
 
     def send(self, url, state, reasons, attempts=None, sleep=None):
+        return self._enqueue(url, lambda: self._post(url, state, reasons), f"conference {state}",
+                             "conference", attempts, sleep)
+
+    def send_event(self, url, body, attempts=None, sleep=None):
+        return self._enqueue(url, lambda: self._post_event(url, body), body.get("type", "event"),
+                             None, attempts, sleep)
+
+    def _enqueue(self, url, post, label, key, attempts, sleep):
         task = WebhookTask()
         attempts = self._attempts if attempts is None else attempts
         sleep = self._sleep if sleep is None else sleep
         with self._cond:
-            self._latest_generation += 1
-            gen = self._latest_generation
-            self._queue.append((url, state, reasons, gen, attempts, sleep, task))
+            gen = self._generations.get(key, 0) + 1
+            if key is not None:
+                self._generations[key] = gen
+            self._queue.append((url, post, label, key, gen, attempts, sleep, task))
             if self._thread is None:
-                self._thread = threading.Thread(target=self._run, name="conference-webhook", daemon=True)
+                self._thread = threading.Thread(target=self._run, name="webhook", daemon=True)
                 self._thread.start()
             self._cond.notify_all()
         return task
@@ -604,6 +626,9 @@ class WebhookDispatcher:
         if self._thread is not None:
             self._thread.join()
 
+    def _superseded(self, key, gen):
+        return key is not None and self._generations.get(key, 0) > gen
+
     def _run(self):
         while True:
             with self._cond:
@@ -611,30 +636,30 @@ class WebhookDispatcher:
                     self._cond.wait()
                 if self._stop:
                     return
-                url, state, reasons, gen, attempts, sleep, task = self._queue.pop(0)
+                url, post, label, key, gen, attempts, sleep, task = self._queue.pop(0)
 
             try:
                 for attempt in range(1, attempts + 1):
                     with self._cond:
-                        if self._latest_generation > gen:
+                        if self._superseded(key, gen):
                             break
                     try:
-                        self._post(url, state, reasons)
-                        logging.info(f"Conference webhook {redact(url)} sent: {state}")
+                        post()
+                        logging.info(f"Webhook {redact(url)} sent: {label}")
                         break
                     except Exception as e:
-                        logging.warning(f"Conference webhook {redact(url)} attempt {attempt}/{attempts} failed: "
+                        logging.warning(f"Webhook {redact(url)} {label} attempt {attempt}/{attempts} failed: "
                                         f"{format_error(e)}")
                         if attempt < attempts:
                             delay = 2 ** attempt
                             with self._cond:
-                                if self._latest_generation > gen:
+                                if self._superseded(key, gen):
                                     break
                                 if sleep != time.sleep:
                                     sleep(delay)
                                 else:
                                     self._cond.wait(timeout=delay)
-                                if self._latest_generation > gen:
+                                if self._superseded(key, gen):
                                     break
             finally:
                 task.set_done()
@@ -647,6 +672,12 @@ def send_webhook(url, state, reasons, attempts=WEBHOOK_ATTEMPTS, sleep=time.slee
     """post_webhook in a serialized background worker thread, retried with backoff (2 s, 4 s).
     A newer state supersedes pending retries of an older one; failures are only logged."""
     return _webhook_dispatcher.send(url, state, reasons, attempts=attempts, sleep=sleep)
+
+
+def send_event(url, event_type, **fields):
+    """One event (drink, ...) to the webhook in the background worker, retried like a state change
+    but never superseded. The time in the envelope is taken now, not when it is sent."""
+    return _webhook_dispatcher.send_event(url, event_body(event_type, **fields))
 
 
 # ---- Detector ----
@@ -863,6 +894,15 @@ class ConferenceDetector:
             url = self._settings.get("webhook_url", "").strip()
         if url:
             send_webhook(url, "on" if active else "off", reasons)
+
+    def send_event(self, event_type, **fields):
+        """POST one event to conference.webhook_url, the one webhook for everything Home Assistant
+        should know. Does nothing without a URL. Returns the WebhookTask or None."""
+        with self._mutex:
+            url = self._settings.get("webhook_url", "").strip()
+        if url:
+            return send_event(url, event_type, **fields)
+        return None
 
     def start(self):
         if self._thread is not None:
