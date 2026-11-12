@@ -119,7 +119,6 @@ If *Webhook* is set, Remind2Rest POSTs JSON messages there. Each carries `type`,
 
 - `conference`: every start and end of a conference, and the current state once when the daemon starts (so Home Assistant is right again after a reboot). `state` is `on` or `off` (`test` from the *Send test* button).
 - `drink`: every drink logged on the water page. `kind` is `water` or `coffee`; `today_ml` is the day's total including coffee.
-
 - `screen`: `state` is `locked` or `unlocked`.
 - `suspend`: the machine woke up after `gap_s` seconds.
 - `daemon`: `state` is `started` or `stopped`; `version`.
