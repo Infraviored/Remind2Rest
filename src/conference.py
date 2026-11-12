@@ -658,8 +658,13 @@ class WebhookDispatcher:
                                 if sleep != time.sleep:
                                     sleep(delay)
                                 else:
-                                    self._cond.wait(timeout=delay)
-                                if self._superseded(key, gen):
+                                    deadline = time.monotonic() + delay
+                                    while not self._superseded(key, gen) and not self._stop:
+                                        remaining = deadline - time.monotonic()
+                                        if remaining <= 0:
+                                            break
+                                        self._cond.wait(timeout=remaining)
+                                if self._superseded(key, gen) or self._stop:
                                     break
             finally:
                 task.set_done()

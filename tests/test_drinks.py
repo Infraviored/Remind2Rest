@@ -66,6 +66,10 @@ class DrinksLogTest(unittest.TestCase):
                 scheduler.report_drink("beer", 200)
             with self.assertRaises(ValueError):
                 scheduler.report_drink("water", 0)
+            with self.assertRaises(ValueError):
+                scheduler.report_drink("water", -1)
+            with self.assertRaises(ValueError):
+                scheduler.report_drink("water", 2001)
         send.assert_called_once_with("drink", kind="coffee", ml=200, today_ml=500, coffee_ml=200, goal_ml=1800)
 
     def test_drink_sizes(self):
