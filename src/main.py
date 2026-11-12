@@ -4,6 +4,7 @@ import json
 import time
 import socket
 import logging
+import signal
 import platform
 import subprocess
 import threading
@@ -67,6 +68,9 @@ def main():
         emit("daemon", state="started", version=VERSION)
 
         stop = threading.Event()
+        # systemd stops the service with SIGTERM: leave the loop like QUIT, so the shutdown below runs
+        # (log line, "daemon stopped" event, activity count saved).
+        signal.signal(signal.SIGTERM, lambda *_: stop.set())
         if os.name == "nt":
             try:
                 from src.tray_win import start_tray
