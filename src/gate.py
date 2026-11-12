@@ -158,6 +158,8 @@ class ReminderGate:
         return None
 
     def _defer(self, module, settings, reason):
+        if self._pending and self._pending[0] != module:
+            self._emit("reminder_skipped", module=self._pending[0], reason="dropped")
         replaced = f", replaces deferred {self._pending[0]}" if self._pending else ""
         logging.info(f"Deferred {module}: {reason}{replaced}")
         self._pending = (module, settings)

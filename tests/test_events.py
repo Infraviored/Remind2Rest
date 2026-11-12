@@ -191,6 +191,15 @@ class GateEventTest(unittest.TestCase):
         self.assertIn(("screen", {"state": "unlocked"}), self.events)
         self.assertEqual(self.events[-1], ("reminder_shown", {"module": "water", "trigger": "deferred"}))
 
+    def test_deferred_replaced_emits_skipped(self):
+        self.locked = True
+        self.run_s(6)
+        self.gate.request("water", {})
+        self.assertEqual(self.gate.pending, "water")
+        self.gate.request("posture", {})
+        self.assertEqual(self.gate.pending, "posture")
+        self.assertIn(("reminder_skipped", {"module": "water", "reason": "dropped"}), self.events)
+
     def test_deferred_dropped_while_paused(self):
         self.locked = True
         self.run_s(6)
