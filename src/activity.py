@@ -20,6 +20,12 @@ class ActivityTracker:
         self._day = self._last.date()
         self._seconds = 0.0
 
+    def reset(self, locked=False):
+        self._locked = bool(locked)
+        self._last = self._clock()
+        self._day = self._last.date()
+        self._seconds = 0.0
+
     def tick(self):
         now = self._clock()
         last, self._last = self._last, now

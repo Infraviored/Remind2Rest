@@ -260,6 +260,12 @@ class SchedulerEventTest(unittest.TestCase):
         set_locked.assert_called_once_with(True)
         self.assertEqual(self.events()[-1], ("screen", {"state": "locked"}))
 
+    def test_start_activity_starts_clean_when_locked(self):
+        with patch.object(scheduler, "is_locked", return_value=True):
+            scheduler.start_activity()
+        self.assertTrue(scheduler.activity._locked)
+        self.assertEqual(scheduler.activity._seconds, 0.0)
+
     def test_snapshot_fields(self):
         scheduler.current_config = {"global_interval": 60, "water": {"enabled": True, "reminders": [30]},
                                     "posture": {"enabled": False, "reminders": [0]}}

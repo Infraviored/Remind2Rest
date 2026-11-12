@@ -404,7 +404,7 @@ def start_activity():
         locked = bool(is_locked())
     except Exception:
         locked = False
-    activity.set_locked(locked)
+    activity.reset(locked=locked)
 
 def schedule_reminders(scheduler, config):
     if not config or not isinstance(config, dict):
