@@ -63,8 +63,8 @@ def main():
             return
 
         logging.info("Remind2Rest daemon started successfully")
-        schedule_reminders(scheduler, config)
         start_activity()
+        schedule_reminders(scheduler, config)
         emit("daemon", state="started", version=VERSION)
 
         stop = threading.Event()
@@ -218,6 +218,7 @@ def main():
 
             time.sleep(0.1)
         logging.info("Remind2Rest daemon stopped")
+        scheduler.shutdown(wait=True)
         activity.tick()
         activity.save()
         task = emit("daemon", state="stopped", version=VERSION)
@@ -226,7 +227,8 @@ def main():
     finally:
         if tray:
             tray.stop()
-        scheduler.shutdown(wait=False)
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
         s.close()
         cleanup_socket()
 
