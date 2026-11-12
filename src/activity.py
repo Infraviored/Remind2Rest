@@ -76,9 +76,9 @@ class SnapshotSender:
         key = {k: snapshot.get(k) for k in self._watched}
         if not due and key == self._sent:
             return False
-        self._sent_at, self._sent = now, key
         try:
             self._send(snapshot)
         except Exception:
-            pass
+            return False
+        self._sent_at, self._sent = now, key
         return True

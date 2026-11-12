@@ -124,6 +124,18 @@ class SnapshotTest(unittest.TestCase):
             raise RuntimeError("x")
         SnapshotSender(dict, boom, clock=lambda: 0).tick()
 
+    def test_send_failure_leaves_unsent_for_retry(self):
+        calls = []
+        def send_fn(s):
+            calls.append(s)
+            if len(calls) == 1:
+                raise RuntimeError("transient")
+        sender = SnapshotSender(dict, send_fn, clock=lambda: 1000)
+        self.assertFalse(sender.tick())
+        sender._checked_at = None
+        self.assertTrue(sender.tick())
+        self.assertEqual(len(calls), 2)
+
 
 class GateEventTest(unittest.TestCase):
     def setUp(self):
