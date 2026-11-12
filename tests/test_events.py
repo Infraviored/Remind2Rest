@@ -5,7 +5,7 @@ import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 sys.modules.setdefault("webview", MagicMock())
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -292,12 +292,13 @@ class SchedulerEventTest(unittest.TestCase):
                                     "posture": {"enabled": False, "reminders": [0]}}
         scheduler.paused_until = None
         with patch.object(scheduler, "drinks_today_ml", return_value={"water": 500, "coffee": 200}), \
-             patch.object(scheduler, "water_today_ml", return_value=700):
+             patch.object(scheduler, "water_today_ml", return_value=700), \
+             patch.object(ActivityTracker, "minutes", new_callable=PropertyMock, return_value=42):
             snap = scheduler.build_snapshot()
         self.assertEqual((snap["today_ml"], snap["coffee_ml"], snap["conference"]), (700, 200, "off"))
         self.assertIsNone(snap["paused_until"])
         self.assertEqual(list(snap["next"]), ["water"])
-        self.assertIsInstance(snap["active_min_today"], int)
+        self.assertEqual(snap["active_min_today"], 42)
 
 
 class RatingOverlayTest(unittest.TestCase):
