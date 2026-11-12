@@ -286,8 +286,8 @@ const SHAPES = {
 };
 // Colours per drink: the liquid (top, bottom of its gradient, back wave), drops and the stream's shine.
 const DRINKS = {
-    water: {top: '#38bdf8', bottom: '#818cf8', back: '#38bdf8', drop: '#7dd3fc', core: '#e0f2fe', glow: '56, 189, 248'},
-    coffee: {top: '#9a6440', bottom: '#4e2f1b', back: '#7a4b2e', drop: '#8a5a3a', core: '#d3a67e', glow: '176, 120, 80'},
+    water: {top: '#38bdf8', bottom: '#818cf8', back: '#38bdf8', drop: '#7dd3fc', core: '#e0f2fe'},
+    coffee: {top: '#9a6440', bottom: '#4e2f1b', back: '#7a4b2e', drop: '#8a5a3a', core: '#d3a67e'},
 };
 // The carafe holds the day's mix: water and coffee in their share, a muddy "stomach" colour.
 const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
@@ -315,7 +315,6 @@ const rot = (p, deg) => {
     const stream = document.getElementById('stream');
     const streamCore = document.getElementById('streamCore');
     const streamGlow = document.getElementById('streamGlow');
-    const streamLayer = document.querySelector('.stream-layer');
 
     let state = {today_ml: 0, coffee_ml: 0, goal_ml: 2000, glasses: [200, 300, 500], cups: [200, 300]};
     try { state = await R2R.hold(api.get_water_today()); } catch (e) { /* keep defaults */ }
