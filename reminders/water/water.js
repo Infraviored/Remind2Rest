@@ -286,8 +286,8 @@ const SHAPES = {
 };
 // Colours per drink: the liquid (top, bottom of its gradient, back wave), drops and the stream's shine.
 const DRINKS = {
-    water: {top: '#38bdf8', bottom: '#818cf8', back: '#38bdf8', drop: '#7dd3fc', core: '#e0f2fe', glow: '56, 189, 248'},
-    coffee: {top: '#9a6440', bottom: '#4e2f1b', back: '#7a4b2e', drop: '#8a5a3a', core: '#d3a67e', glow: '176, 120, 80'},
+    water: {top: '#38bdf8', bottom: '#818cf8', back: '#38bdf8', drop: '#7dd3fc', core: '#e0f2fe'},
+    coffee: {top: '#9a6440', bottom: '#4e2f1b', back: '#7a4b2e', drop: '#8a5a3a', core: '#d3a67e'},
 };
 // The carafe holds the day's mix: water and coffee in their share, a muddy "stomach" colour.
 const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
@@ -314,7 +314,7 @@ const rot = (p, deg) => {
     const carafeBack = document.getElementById('carafeBack');
     const stream = document.getElementById('stream');
     const streamCore = document.getElementById('streamCore');
-    const streamLayer = document.querySelector('.stream-layer');
+    const streamGlow = document.getElementById('streamGlow');
 
     let state = {today_ml: 0, coffee_ml: 0, goal_ml: 2000, glasses: [200, 300, 500], cups: [200, 300]};
     try { state = await R2R.hold(api.get_water_today()); } catch (e) { /* keep defaults */ }
@@ -622,7 +622,7 @@ const rot = (p, deg) => {
         let landedAll;
         stream.setAttribute('fill', g.drink.top);
         streamCore.setAttribute('fill', g.drink.core);
-        streamLayer.style.filter = `drop-shadow(0 0 8px rgba(${g.drink.glow}, 0.6))`;
+        streamGlow.setAttribute('stroke', g.drink.top);
         pour = {g, start: performance.now(), fromMl: shownMl, toMl: shownMl + g.ml, fromCoffee: shownCoffee, area: g.area,
                 drips: [...DRIPS], finished: new Promise(r => { landedAll = r; })};
         pour.finish = landedAll;
@@ -800,12 +800,13 @@ const rot = (p, deg) => {
                     + `${pts(r.reverse())}Z`;
             };
             stream.setAttribute('d', outline(left, right, tip.hw * 1.6));
+            streamGlow.setAttribute('d', stream.getAttribute('d'));
             streamCore.setAttribute('d', outline(shineL, shineR, tip.hw * 0.4));
             if (tip.reached && tip.q > 0.02) {
                 impact = {x: (tip.x - geo.left) / geo.s, force: IMPACT * wBase * Math.sqrt(tip.q) / geo.s};
             }
         } else {
-            stream.removeAttribute('d'); streamCore.removeAttribute('d');
+            stream.removeAttribute('d'); streamCore.removeAttribute('d'); streamGlow.removeAttribute('d');
         }
 
         // The last drops from the rim, after the flow.
@@ -830,7 +831,7 @@ const rot = (p, deg) => {
         // Pour progress drives the glass level, the carafe amount and the stream.
         let impact = null;   // where the stream lands on the carafe surface (viewBox x) and how hard
         if (pour) impact = drawStream((t - pour.start) / 1000);
-        else { stream.removeAttribute('d'); streamCore.removeAttribute('d'); }
+        else { stream.removeAttribute('d'); streamCore.removeAttribute('d'); streamGlow.removeAttribute('d'); }
 
         for (const g of glasses) {
             for (let left = dt; left > 1e-6; left -= 1 / 240) step(g, Math.min(left, 1 / 240));
