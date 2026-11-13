@@ -1,8 +1,10 @@
 import os
 import logging
 
+from src.config import IS_WINDOWS
+
 def update_env_from_systemd():
-    if os.name == 'nt':
+    if IS_WINDOWS:
         return
     try:
         import subprocess
@@ -25,7 +27,6 @@ def update_env_from_systemd():
 # Initialize environment at module import time
 update_env_from_systemd()
 
-IS_WINDOWS = os.name == 'nt'
 XDG_SESSION = os.environ.get('XDG_SESSION_TYPE', '').lower()
 
 HAS_GTK = False

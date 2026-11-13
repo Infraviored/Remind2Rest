@@ -10,7 +10,7 @@ from pathlib import Path
 import time
 import webview
 
-from src.config import ADDR, SOCKET_FAMILY, RATINGS_FILE_PATH, WATER_LOG_PATH
+from src.config import ADDR, IS_WINDOWS, SOCKET_FAMILY, RATINGS_FILE_PATH, WATER_LOG_PATH
 from src.logs import DRINKS, TIME_FORMAT, MAX_WATER_ML, drinks_today_ml, read_ratings
 from src.library import LIBRARY
 from src.session_lock import is_locked
@@ -254,7 +254,7 @@ def drink_sizes(value, default):
 
 
 def _set_gnome_app_name():
-    if os.name != "nt":
+    if not IS_WINDOWS:
         # Lets GNOME match the window to Remind2Rest.desktop (StartupWMClass) for the dock icon.
         try:
             from gi.repository import GLib
