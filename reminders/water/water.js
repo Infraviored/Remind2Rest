@@ -1,8 +1,3 @@
-// Same glass outline for every size; CSS sets the height. The rim (y 19) leaves little room above
-// the water, so a hard jerk sloshes over. The walls are the lines (14,10)-(24,146), cut at y 19.
-const OUTLINE = 'M14.66 19 L105.34 19 L96 146 Q95 152 89 152 L31 152 Q25 152 24 146 Z';
-const RIM_Y = 19;
-const FULL = 0.74;      // water level of a glass waiting to be drunk
 const FLOW = [0.06, 0.65]; // s after the pour starts: water runs over the rim (the glass empties)
 const DRIPS = [0.07, 0.19, 0.36]; // s after the flow ends: last drops from the rim
 const CLOSE_AFTER = 250; // after the last water landed, then close
@@ -28,11 +23,6 @@ const CARAFE_PROFILE = [
     ...curve(50, lerp2([78, 320], [78, 102])),
     ...curve(200, cubic([78, 102], [78, 76], [56, 66], [56, 44])),
     ...curve(20, lerp2([56, 44], [56, 14])),
-];
-// Glass clip path (centre x=60): bottom r=29, rounded corner, then a frustum up to r=46 at the rim.
-const GLASS_PROFILE = [
-    ...curve(100, quad([29, 152], [35, 152], [36, 146])),
-    ...curve(50, lerp2([36, 146], [45.34, RIM_Y])),
 ];
 // Cumulative volume from the bottom: sum of conical frustums pi*h*(r0^2 + r0*r1 + r1^2)/3.
 function volumeTable(profile) {
@@ -60,32 +50,31 @@ function volumeTable(profile) {
     return {volumeBelow, heightOf};
 }
 const CARAFE_VOL = volumeTable(CARAFE_PROFILE);
-const GLASS_VOL = volumeTable(GLASS_PROFILE);
 const CARAFE_GOAL_VOL = CARAFE_VOL.volumeBelow(CARAFE.fullY);        // the goal mark
 const CARAFE_MAX_FILL = CARAFE_VOL.volumeBelow(24) / CARAFE_GOAL_VOL; // above the goal it fills the neck
-const GLASS_WATER_VOL = GLASS_VOL.volumeBelow(152 - FULL * 142);      // a full glass = its nominal ml
 // Carafe y (viewBox) for a fraction of the goal, by volume.
 const carafeY = f => CARAFE_VOL.heightOf(clamp(f, 0, CARAFE_MAX_FILL) * CARAFE_GOAL_VOL);
 
-function glassSvg(id) {
+function vesselSvg(id, shape, drink) {
     return `
     <svg viewBox="0 0 120 160" aria-hidden="true">
         <defs>
-            <clipPath id="inside-${id}"><path d="${OUTLINE}"/></clipPath>
+            <clipPath id="inside-${id}"><path d="${shape.outline}"/></clipPath>
             <linearGradient id="fill-${id}" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0" stop-color="#38bdf8" stop-opacity="0.85"/>
-                <stop offset="1" stop-color="#818cf8" stop-opacity="0.75"/>
+                <stop offset="0" stop-color="${drink.top}" stop-opacity="0.85"/>
+                <stop offset="1" stop-color="${drink.bottom}" stop-opacity="0.75"/>
             </linearGradient>
         </defs>
+        ${shape.handle ? `<path d="${shape.handle}" fill="none" stroke="rgba(226,232,255,0.75)" stroke-width="7" stroke-linecap="round"/>` : ''}
         <g clip-path="url(#inside-${id})">
-            <rect x="0" y="0" width="120" height="160" fill="rgba(255,255,255,0.04)"/>
+            <rect x="0" y="0" width="120" height="160" fill="rgba(255,255,255,${shape.tint})"/>
             <g class="water">
-                <path class="wave-back" fill="#38bdf8" fill-opacity="0.35"/>
+                <path class="wave-back" fill="${drink.back}" fill-opacity="0.35"/>
                 <path class="wave" fill="url(#fill-${id})"/>
             </g>
         </g>
-        <path d="${OUTLINE}" fill="none" stroke="rgba(226,232,255,0.75)" stroke-width="3" stroke-linejoin="round"/>
-        <path d="M27.3 32 L23.5 90" stroke="rgba(255,255,255,0.35)" stroke-width="4" stroke-linecap="round"/>
+        <path d="${shape.outline}" fill="none" stroke="rgba(226,232,255,0.75)" stroke-width="3" stroke-linejoin="round"/>
+        <path d="${shape.shine}" stroke="rgba(255,255,255,0.35)" stroke-width="4" stroke-linecap="round"/>
     </svg>`;
 }
 
@@ -207,13 +196,7 @@ class Slosh {
     }
 }
 
-const glassTop = level => 152 - level * 142;
-
 // --- the water in a tilted glass keeps its amount (2D area of the glass outline below the surface) ---
-// Glass inside as a polygon (glass viewBox), the rounded bottom corners sampled.
-const GLASS_POLY = [[14.66, RIM_Y], [105.34, RIM_Y], [96, 146], [95.5, 150], [93, 151.6], [89, 152],
-                    [31, 152], [27, 151.6], [24.5, 150], [24, 146]];
-const RIM = [GLASS_POLY[0], GLASS_POLY[1]];
 // The water group is rotated by `angle` (deg) about (60, 90); its surface is the line y = top in that
 // frame. A glass point lies under water when, turned back by -angle, its y is below `top`.
 function waterFrame(angle) {
@@ -239,10 +222,10 @@ function areaBelow(pts, top) {   // pts already in the water frame; clip to y >=
     return Math.abs(a) / 2;
 }
 // Surface height (water frame) for `area` at `angle`, and how much fits before it runs over the rim.
-function tiltedWater(area, angle) {
+function tiltedWater(shape, area, angle) {
     const f = waterFrame(angle);
-    const pts = GLASS_POLY.map(f);
-    const rim = RIM.map(f);
+    const pts = shape.poly.map(f);
+    const rim = shape.rim.map(f);
     const spillTop = Math.max(rim[0][1], rim[1][1]);   // the lower rim corner: water can rise to it
     const capacity = areaBelow(pts, spillTop);
     let lo = Math.min(...pts.map(p => p[1])) - 1, hi = Math.max(...pts.map(p => p[1]));
@@ -253,8 +236,8 @@ function tiltedWater(area, angle) {
     return {top: (lo + hi) / 2, capacity, spillCorner: rim[0][1] > rim[1][1] ? 0 : 1};
 }
 // Where the water line y = top meets the glass walls (water frame): [left x, right x].
-function wallsAt(angle, top) {
-    const pts = GLASS_POLY.map(waterFrame(angle));
+function wallsAt(shape, angle, top) {
+    const pts = shape.poly.map(waterFrame(angle));
     let wl = Infinity, wr = -Infinity;
     for (let i = 0; i < pts.length; i++) {
         const p = pts[i], q = pts[(i + 1) % pts.length];
@@ -264,8 +247,54 @@ function wallsAt(angle, top) {
     }
     return wr - wl > 1 ? [wl, wr] : [55, 65];
 }
-const FULL_AREA = areaBelow(GLASS_POLY, glassTop(FULL));
 const SPILL_DROP_AREA = 22;   // glass area that leaves as one falling drop
+
+// --- vessels: every shape in the same 120 x 160 viewBox, bottom at y 152, centre x 60 ---
+// rim: the two top corners (the right one pours); poly: the inside, rounded bottom corners sampled;
+// profile: the inside as [radius, y] from the bottom up, for the volume; fullY: water level when
+// served; widthMm/refMl: real rim width of a vessel of refMl, for the slosh.
+function makeShape(def) {
+    const vol = volumeTable(def.profile);
+    return {...def, waterVol: vol.volumeBelow(def.fullY), fullArea: areaBelow(def.poly, def.fullY)};
+}
+const SHAPES = {
+    // A tumbler. The rim (y 19) leaves little room above the water, so a hard jerk sloshes over.
+    glass: makeShape({
+        outline: 'M14.66 19 L105.34 19 L96 146 Q95 152 89 152 L31 152 Q25 152 24 146 Z',
+        rim: [[14.66, 19], [105.34, 19]],
+        poly: [[14.66, 19], [105.34, 19], [96, 146], [95.5, 150], [93, 151.6], [89, 152],
+               [31, 152], [27, 151.6], [24.5, 150], [24, 146]],
+        profile: [...curve(100, quad([29, 152], [35, 152], [36, 146])), ...curve(50, lerp2([36, 146], [45.34, 19]))],
+        fullY: 152 - 0.74 * 142,
+        shine: 'M27.3 32 L23.5 90',
+        tint: 0.04,
+        widthMm: 75, refMl: 200,
+    }),
+    // A mug, wider than tall, the handle on the left (the right rim pours).
+    cup: makeShape({
+        outline: 'M20 62 L100 62 L96.5 146 Q96 152 90 152 L30 152 Q24 152 23.5 146 Z',
+        rim: [[20, 62], [100, 62]],
+        poly: [[20, 62], [100, 62], [96.5, 146], [96, 150], [94, 151.6], [90, 152],
+               [30, 152], [26, 151.6], [24, 150], [23.5, 146]],
+        profile: [...curve(100, quad([30, 152], [36, 152], [36.5, 146])), ...curve(50, lerp2([36.5, 146], [40, 62]))],
+        fullY: 76,
+        handle: 'M21.5 80 C0 80 0 130 23 130',
+        shine: 'M31 76 L33 132',
+        tint: 0.07,
+        widthMm: 82, refMl: 250,
+    }),
+};
+// Colours per drink: the liquid (top, bottom of its gradient, back wave), drops and the stream's shine.
+const DRINKS = {
+    water: {top: '#38bdf8', bottom: '#818cf8', back: '#38bdf8', drop: '#7dd3fc', core: '#e0f2fe', glow: '56, 189, 248'},
+    coffee: {top: '#9a6440', bottom: '#4e2f1b', back: '#7a4b2e', drop: '#8a5a3a', core: '#d3a67e', glow: '176, 120, 80'},
+};
+// The carafe holds the day's mix: water and coffee in their share, a muddy "stomach" colour.
+const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+const mixColour = (key, share) => {
+    const a = rgb(DRINKS.water[key]), b = rgb(DRINKS.coffee[key]);
+    return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * share)).join(',')})`;
+};
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const smooth = t => t * t * (3 - 2 * t);
@@ -285,11 +314,13 @@ const rot = (p, deg) => {
     const carafeBack = document.getElementById('carafeBack');
     const stream = document.getElementById('stream');
     const streamCore = document.getElementById('streamCore');
+    const streamLayer = document.querySelector('.stream-layer');
 
-    let state = {today_ml: 0, goal_ml: 2000};
+    let state = {today_ml: 0, coffee_ml: 0, goal_ml: 2000, glasses: [200, 300, 500], cups: [200, 300]};
     try { state = await R2R.hold(api.get_water_today()); } catch (e) { /* keep defaults */ }
     const goal = () => Math.max(1, Number(state.goal_ml) || 2000);
     let shownMl = Number(state.today_ml) || 0;   // what the carafe shows; animates during a pour
+    let shownCoffee = Number(state.coffee_ml) || 0;   // the coffee in it, for its colour
     if (shownMl >= goal()) title.textContent = 'Goal reached';
 
     const showAmount = ml => {
@@ -308,11 +339,28 @@ const rot = (p, deg) => {
 
     // --- geometry (screen px), measured while nothing is moved ---
     let geo = null;
-    const glasses = [...shelf.querySelectorAll('.glass')].map(el => {
+    // The shelf: water glasses on the table, coffee cups on a board above.
+    const rows = [['cups', 'cup', 'coffee', state.cups || []], ['glasses', 'glass', 'water', state.glasses || []]]
+        .filter(row => row[3].length);
+    const order = [...rows].reverse();   // glasses first: they keep keys 1, 2, 3
+    let nextKey = 1;
+    const keys = new Map(order.map(([name, , , sizes]) => [name, sizes.map(() => String(nextKey++))]));
+    shelf.innerHTML = rows.map(([name, shape, drink, sizes]) => `<div class="row ${name}">${sizes.map((ml, i) => {
+        const key = keys.get(name)[i];
+        return `<div class="glass ${drink}" data-ml="${ml}" data-shape="${shape}" data-drink="${drink}" data-key="${key}"`
+            + ` role="button" aria-label="${ml} ml ${drink === 'coffee' ? 'coffee cup' : 'glass'}, key ${key}"></div>`;
+    }).join('')}</div>`).join('');
+    const total = nextKey - 1;
+    const vessel = rows.length > 1 ? 'glass or cup' : (rows[0] ? (rows[0][1] === 'cup' ? 'cup' : 'glass') : 'glass');
+    const keyHint = total > 0 ? `, or press ${total > 1 ? `1 to ${total}` : '1'}` : '';
+    document.querySelector('.sub').textContent = `Drag a ${vessel} to the carafe and tip it in${keyHint}`;
+
+    const glasses = [...shelf.querySelectorAll('.glass')].map((el, i) => {
         const ml = Number(el.dataset.ml);
-        el.innerHTML = `<div class="art">${glassSvg(ml)}</div><span class="label">${ml} ml</span>`;
+        const shape = SHAPES[el.dataset.shape], drink = DRINKS[el.dataset.drink];
+        el.innerHTML = `<div class="art">${vesselSvg(i, shape, drink)}</div><span class="label">${ml} ml</span>`;
         return {
-            ml, el, key: el.dataset.key,
+            ml, el, key: el.dataset.key, shape, drink, kind: el.dataset.drink,
             art: el.querySelector('.art'),
             water: el.querySelector('.water'),
             wave: el.querySelector('.wave'),
@@ -320,10 +368,10 @@ const rot = (p, deg) => {
             mode: 'rest',          // rest | held | back | fly | pour
             off: {x: 0, y: 0}, vel: {x: 0, y: 0}, want: {x: 0, y: 0},
             tilt: 0,
-            slosh: new Slosh(75 * Math.cbrt(ml / 200)),   // a 200 ml glass is ~75 mm wide at the rim
+            slosh: new Slosh(shape.widthMm * Math.cbrt(ml / shape.refMl)),
             L: 86, depth: 100,                            // water width and depth (viewBox), per frame
             spray: [0, 0],                                // spray drops due at the left / right wall
-            area: FULL_AREA, spilled: 0, phase: ml / 97,
+            area: shape.fullArea, spilled: 0, phase: ml / 97 + i,
             home: null, k: 1, grab: null,
         };
     });
@@ -332,7 +380,7 @@ const rot = (p, deg) => {
     function sizeGlasses() {
         const carafeH = carafe.getBoundingClientRect().height;
         for (const g of glasses) {
-            const linear = Math.cbrt(g.ml / goal() * CARAFE_GOAL_VOL / GLASS_WATER_VOL);
+            const linear = Math.cbrt(g.ml / goal() * CARAFE_GOAL_VOL / g.shape.waterVol);
             g.el.style.setProperty('--h', `${carafeH / 360 * 160 * linear}px`);
         }
     }
@@ -356,7 +404,7 @@ const rot = (p, deg) => {
     addEventListener('resize', measure);
 
     // The pouring rim (top right corner of the glass) relative to the glass centre.
-    const lipAt = (g, tilt) => rot({x: (RIM[1][0] - 60) * g.k, y: (RIM_Y - 80) * g.k}, tilt);
+    const lipAt = (g, tilt) => rot({x: (g.shape.rim[1][0] - 60) * g.k, y: (g.shape.rim[1][1] - 80) * g.k}, tilt);
     const lip = g => {
         const o = lipAt(g, g.tilt);
         return {x: g.home.x + g.off.x + o.x, y: g.home.y + g.off.y + o.y};
@@ -385,10 +433,11 @@ const rot = (p, deg) => {
     const drops = [];
     // A splash drop starts inside the carafe and just falls back into its water. A drop with a
     // `life` (s) is spray inside a glass: it vanishes when it is back down at the water.
-    function makeDrop(x, y, vx, vy, r, splash = false, life = 0) {
+    function makeDrop(x, y, vx, vy, r, colour, splash = false, life = 0) {
         if (drops.length >= 50) return;
         const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         el.setAttribute('r', r.toFixed(1));
+        el.setAttribute('fill', colour);
         dropLayer.appendChild(el);
         drops.push({el, x, y, vx, vy, r, inside: splash, splash, life});
     }
@@ -408,15 +457,15 @@ const rot = (p, deg) => {
                 const vy = -Math.min(up, 500) * (0.35 + Math.random() * 0.4) * g.k;
                 const vx = -side * (15 + Math.random() * 55) * g.k;
                 makeDrop(px, py, g.vel.x + vx, g.vel.y + vy, (0.7 + Math.random() * 1.0) * g.k,
-                         false, 2 * -vy / Math.max(1, GRAVITY * geo.s));
+                         g.drink.drop, false, 2 * -vy / Math.max(1, GRAVITY * geo.s));
             }
         }
     }
     function spillDrop(g, corner) {
-        const p = glassPoint(g, RIM[corner]);
+        const p = glassPoint(g, g.shape.rim[corner]);
         const out = rot({x: corner ? 60 : -60, y: -30}, g.tilt);   // over the rim, away from the glass
         makeDrop(p.x, p.y, g.vel.x + out.x * g.k + (Math.random() - 0.5) * 40,
-                 g.vel.y + out.y * g.k + (Math.random() - 0.5) * 40, (1.4 + Math.random() * 1.4) * g.k);
+                 g.vel.y + out.y * g.k + (Math.random() - 0.5) * 40, (1.4 + Math.random() * 1.4) * g.k, g.drink.drop);
     }
     // Falls; through the opening into the carafe it ends at the water, otherwise at the table.
     function moveDrops(dt) {
@@ -452,7 +501,7 @@ const rot = (p, deg) => {
         makeDrop(geo.left + at * geo.s, geo.top + (surfaceAt(at) - 1.5) * geo.s,
                  (Math.random() - 0.5) * 260 * strength * geo.s,
                  -(120 + Math.random() * 320) * strength * geo.s,
-                 (1.0 + Math.random() * 1.4) * geo.s * Math.sqrt(strength), true);
+                 (1.0 + Math.random() * 1.4) * geo.s * Math.sqrt(strength), mixColour('drop', carafeShare), true);
     }
     const bubbleLayer = document.getElementById('bubbles');
     const foam = document.getElementById('foam');
@@ -571,10 +620,13 @@ const rot = (p, deg) => {
         shelf.classList.add('done');
         actions.classList.add('gone');
         let landedAll;
-        pour = {g, start: performance.now(), fromMl: shownMl, toMl: shownMl + g.ml, area: g.area,
+        stream.setAttribute('fill', g.drink.top);
+        streamCore.setAttribute('fill', g.drink.core);
+        streamLayer.style.filter = `drop-shadow(0 0 8px rgba(${g.drink.glow}, 0.6))`;
+        pour = {g, start: performance.now(), fromMl: shownMl, toMl: shownMl + g.ml, fromCoffee: shownCoffee, area: g.area,
                 drips: [...DRIPS], finished: new Promise(r => { landedAll = r; })};
         pour.finish = landedAll;
-        const savePromise = api.log_water(g.ml).then(res => ({saved: true, state: res}))
+        const savePromise = api.log_water(g.ml, g.kind).then(res => ({saved: true, state: res}))
             .catch(() => ({saved: false, state: null}));
         await Promise.race([pour.finished, R2R.wait(4000)]);
         const {saved, state: newState} = await Promise.race([savePromise, R2R.wait(1500)])
@@ -583,6 +635,8 @@ const rot = (p, deg) => {
             state = newState;
             title.textContent = state.today_ml >= state.goal_ml ? 'Goal reached' : `+${g.ml} ml`;
             showAmount(state.today_ml);
+            shownMl = Number(state.today_ml) || 0;
+            shownCoffee = Number(state.coffee_ml) || 0;
             await R2R.wait(CLOSE_AFTER);
         } else {
             title.textContent = 'Could not save';
@@ -617,13 +671,14 @@ const rot = (p, deg) => {
         try {
             state = await api.get_water_today();
             shownMl = Number(state.today_ml) || 0;
+            shownCoffee = Number(state.coffee_ml) || 0;
             showAmount(shownMl);
             if (shownMl >= goal()) title.textContent = 'Goal reached';
         } catch (e) {}
         actions.classList.remove('gone');
         shelf.classList.remove('done');
         for (const g of glasses) {
-            g.area = FULL_AREA;
+            g.area = g.shape.fullArea;
             g.spilled = 0;
             g.mode = 'rest';
             g.off = {x: 0, y: 0};
@@ -671,6 +726,16 @@ const rot = (p, deg) => {
     }
 
     let carafeLevel = 0;
+    // Coffee share of the carafe's colour; follows the amounts slowly, like stirring in.
+    const carafeTop = document.getElementById('carafeTop'), carafeBottom = document.getElementById('carafeBottom');
+    let carafeShare = shownMl > 0 ? clamp(shownCoffee / shownMl, 0, 1) : 0, paintedShare = -1;
+    function paintCarafe() {
+        if (Math.abs(carafeShare - paintedShare) < 0.002) return;
+        paintedShare = carafeShare;
+        carafeTop.setAttribute('stop-color', mixColour('top', carafeShare));
+        carafeBottom.setAttribute('stop-color', mixColour('bottom', carafeShare));
+        carafeBack.setAttribute('fill', mixColour('back', carafeShare));
+    }
     const carafeSurface = new Surface(22, 178, 32, {speed: 160, rest: 3, damping: 2.2, limit: 9});
     // The stream: water leaves the rim at each moment tau of the flow with its own speed and then
     // falls freely, so the stream is a parabola. Same flow, more speed: it gets thinner as it falls.
@@ -698,6 +763,7 @@ const rot = (p, deg) => {
         // The carafe gets what has landed by now.
         const arrived = poured(share(es - parcel(es - landAge(speedOf(0.5))).land));
         shownMl = pour.fromMl + (pour.toMl - pour.fromMl) * arrived;
+        if (g.kind === 'coffee') shownCoffee = pour.fromCoffee + g.ml * arrived;
         if (!pour.done) showAmount(shownMl);
 
         // Parcels in the air: left the rim between tauLo (lowest) and tauHi (at the rim).
@@ -746,7 +812,7 @@ const rot = (p, deg) => {
         while (pour.drips.length && es >= fe + pour.drips[0]) {
             pour.drips.shift();
             makeDrop(a.x, a.y, dir.x * 30 * geo.s + (Math.random() - 0.5) * 10,
-                     dir.y * 30 * geo.s, (1.7 + Math.random() * 0.9) * g.k);
+                     dir.y * 30 * geo.s, (1.7 + Math.random() * 0.9) * g.k, g.drink.drop);
         }
         if (!pour.done && !pour.drips.length && es > fe + 0.05 && tauHi - tauLo <= 0.004 && !drops.length) {
             pour.done = true;
@@ -777,10 +843,10 @@ const rot = (p, deg) => {
             if (g.mode === 'rest' && Math.abs(g.tilt) < 0.01 && Math.abs(g.slosh.a[0]) < 0.01 && g._restCache && g._restCache.area === g.area) {
                 ({level, wl, wr, w} = g._restCache);
             } else {
-                level = tiltedWater(g.area, -g.tilt);
-                [wl, wr] = wallsAt(-g.tilt, level.top);
+                level = tiltedWater(g.shape, g.area, -g.tilt);
+                [wl, wr] = wallsAt(g.shape, -g.tilt, level.top);
                 g.L = wr - wl; g.depth = Math.max(5, g.area / g.L);
-                w = tiltedWater(g.area, g.slosh.angle(g.L) - g.tilt);
+                w = tiltedWater(g.shape, g.area, g.slosh.angle(g.L) - g.tilt);
                 if (g.mode === 'rest' && Math.abs(g.tilt) < 0.01 && Math.abs(g.slosh.a[0]) < 0.01) {
                     g._restCache = {area: g.area, level, wl, wr, w};
                 }
@@ -810,6 +876,9 @@ const rot = (p, deg) => {
         }
         churn(impact, dt);
         moveBubbles(dt, s);
+        const share = shownMl > 0 ? clamp(shownCoffee / shownMl, 0, 1) : 0;
+        carafeShare += (share - carafeShare) * (1 - Math.exp(-dt * 2.5));
+        paintCarafe();
         const y = carafeY(carafeLevel);
         carafeWater.setAttribute('d', carafeSurface.path(y, -10, 210, 370,
             {extra: x => Math.sin(x / 18 + s * 1.1) * 0.5}));

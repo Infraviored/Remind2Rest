@@ -26,12 +26,15 @@ class ReminderGate:
     LOCK_POLL seconds. in_conference() returns whether a conference runs (cheap, read every tick).
     find_missed(since, until) returns the (module, settings) of the latest reminder
     due between two wall-clock times, for a suspend. skip_reason() returns why a deferred reminder
-    should be dropped instead of shown (paused) or None.
+    should be dropped instead of shown (paused) or None. on_event(type, **fields), if given, is told
+    about screen, suspend, reminder_shown, reminder_closed and reminder_skipped (it must not raise
+    or block; errors are swallowed here anyway).
     """
 
     def __init__(self, spawn, is_locked=lambda: None, clock=time.time,
                  find_missed=lambda since, until: None, skip_reason=lambda: None,
-                 in_conference=lambda: False):
+                 in_conference=lambda: False, on_event=None):
+        self._on_event = on_event or (lambda event_type, **fields: None)
         self._spawn = spawn
         self._is_locked = is_locked
         self._in_conference = in_conference
@@ -50,20 +53,29 @@ class ReminderGate:
         self._lock_checked_at = None
         self._last_tick = None
 
-    def request(self, module, settings, manual=False):
+    def _emit(self, event_type, **fields):
+        try:
+            self._on_event(event_type, **fields)
+        except Exception as e:
+            logging.debug(f"Event {event_type} failed: {e}")
+
+    def request(self, module, settings, manual=False, trigger=None):
         """A reminder is due (or asked for by TRIGGER/test, manual=True: no wait after a close).
-        Returns "shown", "deferred" or "dropped"."""
+        trigger names why it opens, for the event: "scheduled" (default), "now" (manual) or
+        "after_snooze". Returns "shown", "deferred" or "dropped"."""
+        trigger = trigger or ("now" if manual else "scheduled")
         with self._mutex:
             now = self._clock()
             self._check_edges(now)
             if self._window_open() and module == self._open_module:
                 logging.info(f"Dropped {module}: the same reminder is still open")
+                self._emit("reminder_skipped", module=module, reason="dropped")
                 return "dropped"
             reason = self._blocked(now, manual)
             if reason:
                 self._defer(module, settings, reason)
                 return "deferred"
-            self._launch(module, settings)
+            self._launch(module, settings, trigger)
             return "shown"
 
     def tick(self):
@@ -82,15 +94,18 @@ class ReminderGate:
                 skip = self._skip_reason()
                 if skip:
                     logging.info(f"Dropped deferred {module}: {skip}")
+                    self._emit("reminder_skipped", module=module,
+                               reason=skip if skip in ("paused", "goal_reached") else "dropped")
                 else:
                     logging.info(f"Showing deferred {module} after {self._hold_reason}")
-                    self._launch(module, settings)
+                    self._launch(module, settings, "deferred")
 
     def _check_edges(self, now):
         was_locked = self._locked
         self._poll_lock(now)
         if was_locked and not self._locked:
             logging.info("Screen unlocked")
+            self._emit("screen", state="unlocked")
             self._hold(now, UNLOCK_DELAY, "unlock")
 
         was_conference = self._conference
@@ -109,6 +124,7 @@ class ReminderGate:
             code = self._proc.poll()
             logging.info(f"{self._open_module} window closed after {now - self._opened_at:.0f} s"
                          + (f" (exit code {code})" if code else ""))
+            self._emit("reminder_closed", module=self._open_module, duration_s=int(now - self._opened_at))
             self._proc = None
             self._open_module = None
             self._hold(now, AFTER_CLOSE_DELAY, "the last reminder closed")
@@ -142,14 +158,17 @@ class ReminderGate:
         return None
 
     def _defer(self, module, settings, reason):
+        if self._pending and self._pending[0] != module:
+            self._emit("reminder_skipped", module=self._pending[0], reason="dropped")
         replaced = f", replaces deferred {self._pending[0]}" if self._pending else ""
         logging.info(f"Deferred {module}: {reason}{replaced}")
         self._pending = (module, settings)
 
-    def _launch(self, module, settings):
+    def _launch(self, module, settings, trigger="scheduled"):
         self._proc = self._spawn(module, settings)
         self._open_module = module
         self._opened_at = self._clock()
+        self._emit("reminder_shown", module=module, trigger=trigger)
 
     def _hold(self, now, delay, reason):
         self._ready_at = max(self._ready_at, now + delay)
@@ -166,10 +185,12 @@ class ReminderGate:
             locked = False
         if locked and not self._locked:
             logging.info("Screen locked; reminders wait until unlock")
+            self._emit("screen", state="locked")
         self._locked = locked
 
     def _woke(self, since, now):
         logging.info(f"Clock jumped {int(now - since)} s (suspend?); missed reminders are not repeated")
+        self._emit("suspend", gap_s=int(now - since))
         self._lock_checked_at = None  # the session is usually locked after a resume: check right away
         self._hold(now, UNLOCK_DELAY, "waking up")
         missed = self._find_missed(since, now)

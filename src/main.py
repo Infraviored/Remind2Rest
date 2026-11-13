@@ -4,6 +4,7 @@ import json
 import time
 import socket
 import logging
+import signal
 import platform
 import subprocess
 import threading
@@ -11,11 +12,11 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from logging.handlers import RotatingFileHandler
 
-from src.config import CONFIG_PATH, LOG_PATH, SOCKET_FAMILY, ADDR, load_config
+from src.config import CONFIG_PATH, LOG_PATH, SOCKET_FAMILY, ADDR, VERSION, load_config
 from src.library import LIBRARY
 from src.conference import detector as conference
 from src.ipc import create_server_socket, cleanup_socket
-from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume, prewarm, snooze
+from src.scheduler import schedule_reminders, get_current_status, launch_reminder, pause, resume, prewarm, snooze, report_drink, report_rating, emit, start_activity, activity
 
 # Determine root script directory
 script_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -62,9 +63,14 @@ def main():
             return
 
         logging.info("Remind2Rest daemon started successfully")
+        start_activity()
         schedule_reminders(scheduler, config)
+        emit("daemon", state="started", version=VERSION)
 
         stop = threading.Event()
+        # systemd stops the service with SIGTERM: leave the loop like QUIT, so the shutdown below runs
+        # (log line, "daemon stopped" event, activity count saved).
+        signal.signal(signal.SIGTERM, lambda *_: stop.set())
         if os.name == "nt":
             try:
                 from src.tray_win import start_tray
@@ -157,6 +163,26 @@ def main():
                         elif command == "RESUME":
                             resume()
                             conn.sendall(b"OK")
+                        elif command.startswith("DRINK "):
+                            # DRINK <kind> <ml>: the water page logged a drink; passed on to the webhook.
+                            parts = command.split()
+                            try:
+                                if len(parts) != 3:
+                                    raise ValueError("DRINK takes a kind and an amount in ml")
+                                report_drink(parts[1], int(parts[2]))
+                                conn.sendall(b"OK")
+                            except ValueError as e:
+                                conn.sendall(f"ERR {e}".encode())
+                        elif command.startswith("RATING "):
+                            # RATING <1-5>: the posture page saved a rating; passed on to the webhook.
+                            parts = command.split()
+                            try:
+                                if len(parts) != 2:
+                                    raise ValueError("RATING takes a number from 1 to 5")
+                                report_rating(int(parts[1]))
+                                conn.sendall(b"OK")
+                            except ValueError as e:
+                                conn.sendall(f"ERR {e}".encode())
                         elif command.startswith("SNOOZE "):
                             # SNOOZE <type>: Later on a reminder page; the reply names the minutes until
                             # it is shown again (snooze, or its next regular time when it drops out).
@@ -192,10 +218,17 @@ def main():
 
             time.sleep(0.1)
         logging.info("Remind2Rest daemon stopped")
+        scheduler.shutdown(wait=True)
+        activity.tick()
+        activity.save()
+        task = emit("daemon", state="stopped", version=VERSION)
+        if task is not None:
+            task.join(timeout=3)
     finally:
         if tray:
             tray.stop()
-        scheduler.shutdown(wait=False)
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
         s.close()
         cleanup_socket()
 

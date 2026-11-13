@@ -50,10 +50,27 @@ body.carrying .sub, body.pouring .sub { opacity: 0; }
     background: linear-gradient(to right, transparent, rgba(148, 163, 184, 0.28) 8%, rgba(148, 163, 184, 0.28) 92%, transparent);
 }
 
-/* --- shelf: three glasses side by side, bottom left --- */
+/* --- shelf: the glasses side by side on the table, the coffee cups on a board above them --- */
 .shelf {
     display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(10px, 2vh, 28px);
+}
+.row {
+    position: relative;
+    display: flex;
     align-items: flex-end;
+}
+/* The board the cups stand on, like the table line below. */
+.row.cups::after {
+    content: "";
+    position: absolute;
+    left: -1vw;
+    right: -1vw;
+    bottom: var(--label-h);
+    height: 2px;
+    background: linear-gradient(to right, transparent, rgba(148, 163, 184, 0.28) 12%, rgba(148, 163, 184, 0.28) 88%, transparent);
 }
 .glass {
     --h: 15vh;   /* set by water.js from the carafe size, true to volume */
@@ -74,6 +91,8 @@ body.carrying .sub, body.pouring .sub { opacity: 0; }
     will-change: transform;
 }
 .glass:hover .art { filter: drop-shadow(0 0 38px rgba(56, 189, 248, 0.65)); }
+.glass.coffee .art { filter: drop-shadow(0 0 22px rgba(176, 120, 80, 0.3)); }
+.glass.coffee:hover .art { filter: drop-shadow(0 0 38px rgba(176, 120, 80, 0.65)); }
 .glass svg { width: 100%; height: 100%; display: block; overflow: visible; }
 
 .glass .label {

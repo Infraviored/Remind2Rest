@@ -11,7 +11,7 @@ import time
 import webview
 
 from src.config import ADDR, SOCKET_FAMILY, RATINGS_FILE_PATH, WATER_LOG_PATH
-from src.logs import TIME_FORMAT, MAX_WATER_ML, read_ratings, water_today_ml
+from src.logs import DRINKS, TIME_FORMAT, MAX_WATER_ML, drinks_today_ml, read_ratings
 from src.library import LIBRARY
 from src.session_lock import is_locked
 
@@ -177,6 +177,7 @@ class OverlayApi:
         os.makedirs(os.path.dirname(RATINGS_FILE_PATH), exist_ok=True)
         with open(RATINGS_FILE_PATH, "a") as file:
             file.write(f"{datetime.now().strftime(TIME_FORMAT)} - Rating: {r}\n")
+        self._tell_daemon_rating(r)
 
     def get_ratings(self, days):
         if isinstance(days, bool) or not isinstance(days, (int, float, str)):
@@ -189,7 +190,9 @@ class OverlayApi:
             return []
         return read_ratings(d)
 
-    def log_water(self, ml):
+    def log_water(self, ml, kind="water"):
+        if kind not in DRINKS:
+            raise ValueError(f"Drink must be one of {', '.join(DRINKS)}, got {kind!r}")
         if isinstance(ml, bool) or not isinstance(ml, (int, float, str)):
             raise ValueError(f"Amount must be a whole number of ml, got {ml!r}")
         try:
@@ -200,11 +203,54 @@ class OverlayApi:
             raise ValueError(f"Amount must be 1-{MAX_WATER_ML} ml, got {ml!r}")
         os.makedirs(os.path.dirname(WATER_LOG_PATH), exist_ok=True)
         with open(WATER_LOG_PATH, "a") as file:
-            file.write(f"{datetime.now().strftime(TIME_FORMAT)} {amount}\n")
+            suffix = "" if kind == "water" else f" {kind}"   # plain water lines stay as before
+            file.write(f"{datetime.now().strftime(TIME_FORMAT)} {amount}{suffix}\n")
+        self._tell_daemon_drink(kind, amount)
         return self.get_water_today()
 
+    def _tell_daemon(self, command, what):
+        """Best effort: the daemon sends it to the webhook (this window may close any moment).
+        Without a daemon it is only in the log file."""
+        try:
+            with socket.socket(SOCKET_FAMILY, socket.SOCK_STREAM) as s:
+                s.settimeout(2)
+                s.connect(ADDR)
+                s.sendall(command.encode())
+                reply = s.recv(64).decode(errors="replace")
+        except OSError as e:
+            logging.warning(f"Could not tell the daemon about the {what} ({e})")
+            return
+        if not reply.startswith("OK"):
+            logging.warning(f"Daemon refused the {what} ({reply})")
+
+    def _tell_daemon_drink(self, kind, amount):
+        self._tell_daemon(f"DRINK {kind} {amount}", "drink")
+
+    def _tell_daemon_rating(self, rating):
+        self._tell_daemon(f"RATING {rating}", "rating")
+
     def get_water_today(self):
-        return {"today_ml": water_today_ml(), "goal_ml": self._settings.get("daily_goal_ml", 2000)}
+        drinks = drinks_today_ml()
+        return {"today_ml": sum(drinks.values()), "coffee_ml": drinks["coffee"],
+                "goal_ml": self._settings.get("daily_goal_ml", 2000),
+                "glasses": drink_sizes(self._settings.get("glass_sizes"), [200, 300, 500]),
+                "cups": drink_sizes(self._settings.get("cup_sizes"), [200, 300])}
+
+
+def drink_sizes(value, default):
+    """The glass or cup sizes for the water page: up to 4 whole ml in 1..MAX_WATER_ML. A missing or
+    unreadable setting gives the default; an empty list stays empty (no cups)."""
+    if not isinstance(value, list):
+        return list(default)
+    sizes = []
+    for v in value:
+        try:
+            ml = int(v)
+        except (ValueError, TypeError, OverflowError):
+            continue
+        if not isinstance(v, bool) and 0 < ml <= MAX_WATER_ML:
+            sizes.append(ml)
+    return sizes[:4]
 
 
 def _set_gnome_app_name():
